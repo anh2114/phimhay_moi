@@ -70,6 +70,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   double _avgRating = 0;
   int _ratingCount = 0;
   int _myRating = 0;
+  List<String> _galleryImages = [];
 
   Map<String, dynamic> get _currentUser {
     return Provider.of<AuthProvider>(context, listen: false).user ?? {};
@@ -254,6 +255,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
           .map((e) => Movie.fromJson(e as Map<String, dynamic>))
           .toList();
       _isLoading = false;
+
+      _galleryImages = List.generate(10, (i) {
+        final num = (i + 1).toString().padLeft(2, '0');
+        return '${AppConfig.baseUrl}/thu_vien/$slug/$num.webp';
+      });
 
       // Fetch actors data — SAU KHI API load thành công
       // ignore: avoid_print
@@ -1056,15 +1062,37 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   }
 
   Widget _buildGalleryTab() {
-    return const Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.photo_library_outlined, size: 56, color: AppTheme.textMuted),
-          SizedBox(height: 12),
-          Text('Chưa có ảnh', style: TextStyle(color: AppTheme.textSub, fontSize: 14)),
-        ],
+    if (_galleryImages.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.photo_library_outlined, size: 56, color: AppTheme.textMuted),
+            SizedBox(height: 12),
+            Text('Chưa có ảnh', style: TextStyle(color: AppTheme.textSub, fontSize: 14)),
+          ],
+        ),
+      );
+    }
+    return GridView.builder(
+      padding: const EdgeInsets.all(8),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
       ),
+      itemCount: _galleryImages.length,
+      itemBuilder: (context, index) {
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: CachedNetworkImage(
+            imageUrl: _galleryImages[index],
+            fit: BoxFit.cover,
+            placeholder: (_, __) => Container(color: AppTheme.bgCard),
+            errorWidget: (_, __, ___) => const SizedBox.shrink(),
+          ),
+        );
+      },
     );
   }
 

@@ -170,6 +170,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
+
+    if (widget.initialPosition > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_isLandscape) _toggleFullscreen();
+      });
+    }
   }
 
   // ── Load watch progress từ DB ────────────────────────
@@ -693,9 +699,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     // Lắng nghe position để hiện/ẩn skip intro + detect seek + update custom controls
     _positionSub = _hlsPlayer!.stream.position.distinct().listen((pos) {
-      final shouldShow = pos.inSeconds >= 10 && pos.inSeconds <= 120;
-      if (shouldShow != _showSkipIntro && mounted) {
-        setState(() => _showSkipIntro = shouldShow);
+      final sec = pos.inSeconds;
+      final showSkip = sec >= 10 && sec <= 120;
+      if (showSkip != _showSkipIntro && mounted) {
+        setState(() => _showSkipIntro = showSkip);
       }
 
       // Update custom controls position (throttle UI update mỗi 500ms)
@@ -1506,6 +1513,17 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       );
   }
 
+  Map<String, dynamic>? _getNextEpisode() {
+    final eps = _currentServerEps;
+    if (eps.isEmpty) return null;
+    for (int i = 0; i < eps.length; i++) {
+      if (eps[i]['id'] == _currentEpId && i + 1 < eps.length) {
+        return eps[i + 1];
+      }
+    }
+    return null;
+  }
+
   Widget _skipIntroButton() {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -1535,6 +1553,19 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _nextEpisodeButton() {
+    final nextEp = _getNextEpisode();
+    if (nextEp == null) return const SizedBox.shrink();
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _switchEpisode(nextEp),
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 4),
+        child: AppSvgIcon('skip-forward.svg', size: 20, color: Colors.white),
       ),
     );
   }
@@ -2085,6 +2116,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 ),
               ),
               const Spacer(),
+              // Next episode button
+              _nextEpisodeButton(),
               // PiP button
               if (_pipAvailable)
                 GestureDetector(
