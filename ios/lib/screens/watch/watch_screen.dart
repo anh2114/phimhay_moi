@@ -96,6 +96,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   int _selectedServer = 0;
   dynamic _currentEpId;
   String _currentEpName = '';
+  bool _hasSwitchedEp = false; // Da chuyen tap → khong restore progress cu
 
   // Controls overlay
   bool _showControls = true;
@@ -238,48 +239,93 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   // ── Check và skip ad zone ────────────────────────
-  void _checkAdZone(int positionSec) {
-    if (_adSkipping || _currentUrl.isEmpty || _adMode) return;
+  int _lastAdCheckTime = 0; // Throttle periodic check
 
-    // ★ 1. Check parsed m3u8 ad zones (primary)
+  void _checkAdZone(int positionSec) {
+    if (_adSkipping || _currentUrl.isEmpty) return;
+
+    // ★ 0. Neu user vua seek → reset jump tracker (khong unmute sai)
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastSeekByUser < 2000) {
+      _lastPositionForJump = positionSec;
+      return; // Bo qua check sau seek
+    }
+
+    // ★ 1. Check parsed m3u8 ad zones
     if (_m3u8Result != null && _m3u8Result!.hasAds) {
       final adZone = _m3u8Result!.adZoneAt(positionSec.toDouble());
-      if (adZone != null) {
-        debugPrint('M3U8 AD HIT: $adZone at ${positionSec}s');
-        _skipAdZone(adZone.endTime.toInt() + 2); // +2s overshoot
+      if (adZone != null && !_adMuted) {
+        debugPrint('M3U8 AD HIT at ${positionSec}s → mute');
+        _muteForAdSkip();
         return;
       }
-
-      // ★ Look-ahead: nếu position sắp vào ad zone (< 3s) → mute trước
       final nextAd = _m3u8Result!.nextAdAfter(positionSec.toDouble());
       if (nextAd != null && nextAd.startTime - positionSec <= 3 && !_adMuted) {
-        debugPrint('AD LOOK-AHEAD: mute at ${positionSec}s, ad starts at ${nextAd.startTime}s');
+        debugPrint('AD LOOK-AHEAD: mute at ${positionSec}s');
         _muteForAdSkip();
+        return;
       }
     }
 
-    // ★ 2. Detect position jump (server-side ad injection)
-    if (_lastPositionForJump >= 0 && !_adSkipping) {
+    // ★ 2. Detect position jump
+    if (_lastPositionForJump >= 0) {
       final jump = positionSec - _lastPositionForJump;
-      // Jump backward > 5s OR jump forward > 15s → possible ad injection
-      if (jump < -5 || jump > 15) {
-        debugPrint('POSITION JUMP: ${_lastPositionForJump}s → ${positionSec}s (delta: ${jump}s)');
-        // Nếu jump backward nhiều → có thể ad vừa xong, seek tới vị trí hợp lý
-        if (jump < -10) {
-          _skipAdZone(positionSec.abs() + 2);
+
+      // Jump nguoc RẤT LỚN (>30s) → server dang phat ad (position reset ve 0)
+      // → SKIP NGAY: stop → open → seek den sau ad
+      if (jump < -30 && !_adSkipping) {
+        int lastPos = _lastPositionForJump;
+        int seekTarget = lastPos + 10; // fallback
+
+        // Tim ad marker gan nhat SAU position cu
+        int bestStart = 99999;
+        for (final ad in _adMarkers) {
+          final start = (ad['start_time'] as int?) ?? 0;
+          // Ad marker nam SAU position cu, trong vong 60s
+          if (start > lastPos && (start - lastPos) < 60) {
+            if (start < bestStart) bestStart = start;
+          }
         }
+        if (bestStart < 99999) {
+          seekTarget = bestStart + 2;
+        }
+
+        debugPrint('AD SKIP: ${lastPos}s → ${positionSec}s → seek to ${seekTarget}s');
+        _skipAdZone(seekTarget);
+      }
+      // Jump nguoc nho (3-30s) → mute
+      else if (jump < -3 && jump >= -30 && !_adSkipping) {
+        debugPrint('AD INJECT (mute): ${_lastPositionForJump}s → ${positionSec}s');
+        _muteForAdSkip();
+      }
+
+      // Jump tien > 3s + dang muted → ad xong, content tiep tuc
+      if (jump > 3 && _adMuted) {
+        debugPrint('AD END: ${_lastPositionForJump}s → ${positionSec}s → unmute');
+        _unmuteAfterAdSkip();
       }
     }
     _lastPositionForJump = positionSec;
 
-    // ★ 3. Fallback: API ad markers
-    if (_adMarkers.isEmpty) return;
-    for (final ad in _adMarkers) {
-      final start = (ad['start_time'] as int?) ?? 0;
-      if (positionSec >= start - 3 && positionSec < start + 5) {
-        debugPrint('API AD HIT: at ${positionSec}s, skip to ${start + 5}s');
-        _skipAdZone(start + 5);
-        return;
+    // ★ 3. Periodic check moi 2s — bat qua truong hop ad bi lo
+    if (now - _lastAdCheckTime > 2000 && !_adMuted) {
+      _lastAdCheckTime = now;
+      // Check API markers
+      for (final ad in _adMarkers) {
+        final start = (ad['start_time'] as int?) ?? 0;
+        if (positionSec >= start - 3 && positionSec < start + 5) {
+          debugPrint('API AD HIT (periodic) at ${positionSec}s → mute');
+          _muteForAdSkip();
+          return;
+        }
+      }
+      // Check m3u8 zones
+      if (_m3u8Result != null && _m3u8Result!.hasAds) {
+        final adZone = _m3u8Result!.adZoneAt(positionSec.toDouble());
+        if (adZone != null) {
+          debugPrint('M3U8 AD HIT (periodic) at ${positionSec}s → mute');
+          _muteForAdSkip();
+        }
       }
     }
   }
@@ -404,6 +450,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   // ── Restore server/episode từ saved progress (gọi sau khi có episodes) ──
   void _restoreFromProgress() {
+    // ★ FIX: Neu da chuyen tap trong watch screen → skip restore
+    if (_hasSwitchedEp) return;
     // ★ FIX: Nếu user đã chọn cụ thể tập từ movie detail → skip restore
     if (widget.episodeId != null && widget.episodeId > 0) return;
 
@@ -1205,7 +1253,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   // ── Chuyển tập ────────────────────────────────────
   void _switchEpisode(Map<String, dynamic> ep, {bool keepPosition = false}) {
-    // Lưu progress tập hiện tại trước khi chuyển
+    _hasSwitchedEp = true; // Danh dau da chuyen tap
+    // Luu progress tap hien tai truoc khi chuyen
     if (!keepPosition) _saveCurrentProgress();
 
     final epId = ep['id'];
@@ -1230,9 +1279,15 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       _playerReady = false;
       _playerMode = useHls ? _PlayerMode.hls : _PlayerMode.embed;
       if (!keepPosition) {
-        _currentPosition = 0; // Reset position cho tập mới
+        _currentPosition = 0;
         _lastSavedPosition = 0;
         _seekTargetTime = 0;
+        _seekCompleted = false;
+        _lastPositionForJump = -1; // Reset ad tracking
+        _adMarkers = [];
+        _m3u8Result = null;
+        _adMuted = false;
+        _adSkipping = false;
       }
     });
 

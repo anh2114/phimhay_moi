@@ -486,7 +486,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
         return false;
       },
       child: GridView.builder(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.of(context).padding.bottom + 80),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: Responsive.gridColumns(context), mainAxisSpacing: 12, crossAxisSpacing: 10, childAspectRatio: 0.55),
         itemCount: _results.length + (_hasMore ? 1 : 0),
         itemBuilder: (ctx, i) {
@@ -519,9 +519,9 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
                 ),
                 if ((m.quality ?? '').isNotEmpty)
                   Positioned(top: 6, right: 6, child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                    decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(4)),
-                    child: Text(m.quality!, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w700)),
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4)),
+                    child: Text(m.quality!.toUpperCase(), style: const TextStyle(color: Color(0xFF1A1100), fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
                   )),
                 if ((m.episodeCurrent ?? '').isNotEmpty)
                   Positioned(bottom: 6, left: 6, child: Container(
@@ -534,7 +534,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
           ),
         ),
         const SizedBox(height: 6),
-        Text(m.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w600)),
+        Text(m.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w600, height: 1.3)),
         if (m.year != null || (m.originName ?? '').isNotEmpty)
           Text.rich(
             TextSpan(
@@ -552,7 +552,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
 
   Widget _buildSkeletonLoading() {
     return GridView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.of(context).padding.bottom + 80),
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: Responsive.gridColumns(context), mainAxisSpacing: 12, crossAxisSpacing: 10, childAspectRatio: 0.55),
       itemCount: 9,
