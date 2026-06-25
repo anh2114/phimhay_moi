@@ -468,7 +468,6 @@
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-lswift_Concurrency",
-					"-lswiftCore",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.xiaofilm.sov;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -690,7 +689,6 @@
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-lswift_Concurrency",
-					"-lswiftCore",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.xiaofilm.sov;
 				PRODUCT_NAME = "$(TARGET_NAME)";
