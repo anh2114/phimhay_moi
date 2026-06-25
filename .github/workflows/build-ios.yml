@@ -19,6 +19,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '15.4'
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -56,24 +61,6 @@ jobs:
           sed -i '' "s/IPHONEOS_DEPLOYMENT_TARGET' = '.*'/IPHONEOS_DEPLOYMENT_TARGET' = '15.0'/" ios/Podfile
           # project.pbxproj
           sed -i '' "s/IPHONEOS_DEPLOYMENT_TARGET = .*/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/" ios/Runner.xcodeproj/project.pbxproj
-
-      - name: Add Swift Concurrency linker flag
-        run: |
-          python3 -c "
-          import re
-          with open('ios/Runner.xcodeproj/project.pbxproj', 'r') as f:
-              content = f.read()
-          ldflags = '\t\t\t\tOTHER_LDFLAGS = (\n\t\t\t\t\t\"$(inherited)\",\n\t\t\t\t\t\"-lswift_Concurrency\",\n\t\t\t\t);'
-          if '-lswift_Concurrency' not in content:
-              content = re.sub(
-                  r'(MARKETING_VERSION = [^;]+;)',
-                  r'\1\n' + ldflags,
-                  content
-              )
-          with open('ios/Runner.xcodeproj/project.pbxproj', 'w') as f:
-              f.write(content)
-          print('Added -lswift_Concurrency to Runner target OTHER_LDFLAGS')
-          "
 
       - name: Install dependencies
         run: flutter pub get
