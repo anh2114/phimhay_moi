@@ -11,6 +11,7 @@ import 'package:media_kit/media_kit.dart' show Player, Media;
 import 'package:media_kit_video/media_kit_video.dart' show Video, VideoController, NoVideoControls;
 import 'package:phimhay_app/config/app_config.dart';
 import 'package:phimhay_app/config/theme.dart';
+import 'package:phimhay_app/config/responsive.dart';
 import 'package:phimhay_app/providers/auth_provider.dart';
 import 'package:phimhay_app/services/api_client.dart';
 import 'package:provider/provider.dart';
@@ -56,6 +57,25 @@ class WatchScreen extends StatefulWidget {
 }
 
 class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
+
+  static bool get _isTablet {
+    final size = WidgetsBinding.instance.window.physicalSize;
+    final shortestSide = size.shortestSide / WidgetsBinding.instance.window.devicePixelRatio;
+    return shortestSide >= 600;
+  }
+
+  static void _restoreOrientations() {
+    if (_isTablet) {
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+    } else {
+      SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    }
+  }
   final Dio _dio = Dio();
   final MovieService _movieService = MovieService();
   InAppWebViewController? _webController;
@@ -176,6 +196,59 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         if (mounted && !_isLandscape) _toggleFullscreen();
       });
     }
+<<<<<<< HEAD
+=======
+  }
+
+  // ── Fetch ad markers từ API ────────────────────────
+  Future<void> _fetchAdMarkers(String m3u8Url, String serverName) async {
+    if (widget.movieId <= 0 || m3u8Url.isEmpty) return;
+    try {
+      final res = await _dio.get('${AppConfig.apiUrl}/ad_markers.php', queryParameters: {
+        'url': m3u8Url,
+        'movie_id': widget.movieId,
+        'server_name': serverName,
+      });
+      final data = res.data;
+      if (data is Map && data['success'] == true) {
+        final ads = data['ads'] as List<dynamic>? ?? [];
+        _adMarkers = ads.map((e) => Map<String, dynamic>.from(e)).toList();
+        if (_adMarkers.isNotEmpty) {
+          debugPrint('Ad markers: ${_adMarkers.length} zones');
+        }
+      }
+    } catch (_) {}
+  }
+
+  // ── Check và skip ad zone ────────────────────────
+  void _checkAdZone(int positionSec) {
+    if (_adMarkers.isEmpty || _adSkipping || _currentUrl.isEmpty) return;
+    for (final ad in _adMarkers) {
+      final start = (ad['start_time'] as int?) ?? 0;
+      if (positionSec >= start - 3 && positionSec < start + 5) {
+        final seekTo = start + 2;
+        debugPrint('Ad zone: ${start}s (at ${positionSec}s) → re-open at ${seekTo}s');
+        _adSkipping = true;
+
+        final wasPlaying = _hlsPlayer?.state.playing ?? false;
+
+        // Stop + re-open de clear toan bo buffer (audio ad)
+        _hlsPlayer?.stop().then((_) {
+          if (!mounted) return;
+          _hlsPlayer?.open(Media(_currentUrl)).then((_) {
+            // Seek den vi tri sau ad
+            _hlsPlayer?.seek(Duration(seconds: seekTo)).then((_) {
+              Future.delayed(const Duration(milliseconds: 300), () {
+                if (mounted && wasPlaying) _hlsPlayer?.play();
+                Future.delayed(const Duration(seconds: 3), () { _adSkipping = false; });
+              });
+            });
+          });
+        });
+        return;
+      }
+    }
+>>>>>>> 0e3d2fc ( update)
   }
 
   // ── Load watch progress từ DB ────────────────────────
@@ -571,7 +644,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _saveProgressOnExit();
     ActivityService.stopWatching();
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    _restoreOrientations();
     _hlsPlayer?.dispose();
     _webController?.dispose();
     super.dispose();
@@ -625,7 +698,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     if (url.isNotEmpty) {
       _currentUrl = url;
       final isM3u8 = url.contains('.m3u8');
-      if (isM3u8) _initHlsPlayer(url);
+      if (isM3u8) {
+        _adMarkers = [];
+        _initHlsPlayer(url);
+        _fetchAdMarkers(url, _currentServerName);
+      }
       if (mounted) setState(() { _playerMode = isM3u8 ? _PlayerMode.hls : _PlayerMode.embed; _isLoading = false; });
     } else {
       // Không có tập + không có streamUrl → load trang web phim (giống browser)
@@ -659,7 +736,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       // Ưu tiên HLS cho tất cả (mobile chạy được hết)
       if (m3u8.isNotEmpty) {
         _currentUrl = m3u8;
+        _adMarkers = []; // Reset ad markers cho tap moi
         _initHlsPlayer(m3u8);
+        _fetchAdMarkers(m3u8, _currentServerName);
         if (mounted) setState(() { _playerMode = _PlayerMode.hls; _isLoading = false; });
       } else if (embed.isNotEmpty) {
         _currentUrl = embed;
@@ -683,7 +762,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   int _seekTargetTime = 0; // Thời gian seek đang nhắm tới (chống position nhảy)
   int _lastPosForAdCheck = -1; // Position trước đó để detect crossed ad zone
 
-  // ── Ad tracking removed ──
+  // ── Ad markers ──
+  List<Map<String, dynamic>> _adMarkers = [];
+  bool _adSkipping = false; // Dang skip ad → khong trigger lai
+
   int _lastSeekByUser = 0;
   String _currentServerName = '';
 
@@ -704,6 +786,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (showSkip != _showSkipIntro && mounted) {
         setState(() => _showSkipIntro = showSkip);
       }
+
+      // Auto-skip ad zone
+      _checkAdZone(sec);
 
       // Update custom controls position (throttle UI update mỗi 500ms)
       if (mounted && !_isDragging) {
@@ -1005,7 +1090,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     if (useHls) {
       _hlsPlayer?.stop(); // Dừng player cũ
+      _adMarkers = [];
       _initHlsPlayer(url);
+      _fetchAdMarkers(url, _currentServerName);
       // Update PiP URL cho iOS (chuyển tập → PiP cũng phải update)
       _updatePipUrl();
     }
@@ -1063,13 +1150,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                     top: 8, left: 8,
                     child: GestureDetector(
                       onTap: () {
-                        SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+                        _restoreOrientations();
                         Future.delayed(const Duration(milliseconds: 300), () {
-                          SystemChrome.setPreferredOrientations([
-                            DeviceOrientation.portraitUp,
-                            DeviceOrientation.landscapeLeft,
-                            DeviceOrientation.landscapeRight,
-                          ]);
+                          _restoreOrientations();
                         });
                       },
                       child: Container(
@@ -1120,9 +1203,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                           builder: (context) {
                             final auth = context.watch<AuthProvider>();
                             return BottomNav(
-                              currentIndex: 3,
+                              currentIndex: -1,
                               onTabSelected: (index) {
-                                if (index == 3) return;
                                 Navigator.pushReplacement(
                                   context,
                                   MaterialPageRoute(builder: (_) => HomeScreen(initialIndex: index)),
@@ -1721,11 +1803,20 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       );
     }
 
-    final totalPages = eps.length > _epPerPage ? (eps.length / _epPerPage).ceil() : 1;
+    // Deduplicate theo ep_name
+    final seen = <String>{};
+    final uniqueEps = eps.where((e) {
+      final key = (e['ep_name'] ?? e['name'] ?? '').toString();
+      if (seen.contains(key)) return false;
+      seen.add(key);
+      return true;
+    }).toList();
+
+    final totalPages = uniqueEps.length > _epPerPage ? (uniqueEps.length / _epPerPage).ceil() : 1;
     final currentPage = _sheetEpPage.clamp(1, totalPages);
     final startIdx = (currentPage - 1) * _epPerPage;
-    final endIdx = (startIdx + _epPerPage).clamp(0, eps.length);
-    final pagedList = eps.sublist(startIdx, endIdx);
+    final endIdx = (startIdx + _epPerPage).clamp(0, uniqueEps.length);
+    final pagedList = uniqueEps.sublist(startIdx, endIdx);
 
     return Column(
       children: [
@@ -1744,7 +1835,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Center(
                       child: Text(
-                        '${startIdx + 1}-${endIdx}/${eps.length}',
+                        '${startIdx + 1}-${endIdx}/${uniqueEps.length}',
                         style: const TextStyle(color: Colors.white38, fontSize: 10),
                       ),
                     ),
@@ -2387,13 +2478,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   void _toggleFullscreen() {
     if (_isLandscape) {
-      SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+      _restoreOrientations();
       Future.delayed(const Duration(milliseconds: 300), () {
-        SystemChrome.setPreferredOrientations([
-          DeviceOrientation.portraitUp,
-          DeviceOrientation.landscapeLeft,
-          DeviceOrientation.landscapeRight,
-        ]);
+        _restoreOrientations();
       });
     } else {
       SystemChrome.setPreferredOrientations([
@@ -2608,11 +2695,21 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     }
 
     final list = allEps.isNotEmpty ? allEps : _flatEps;
-    final totalPages = list.length > _epPerPage ? (list.length / _epPerPage).ceil() : 1;
+
+    // Deduplicate theo ep_name
+    final seen = <String>{};
+    final uniqueList = list.where((e) {
+      final key = (e['ep_name'] ?? e['name'] ?? '').toString();
+      if (seen.contains(key)) return false;
+      seen.add(key);
+      return true;
+    }).toList();
+
+    final totalPages = uniqueList.length > _epPerPage ? (uniqueList.length / _epPerPage).ceil() : 1;
     final currentPage = _epPage.clamp(1, totalPages);
     final startIdx = (currentPage - 1) * _epPerPage;
-    final endIdx = (startIdx + _epPerPage).clamp(0, list.length);
-    final pagedList = list.sublist(startIdx, endIdx);
+    final endIdx = (startIdx + _epPerPage).clamp(0, uniqueList.length);
+    final pagedList = uniqueList.sublist(startIdx, endIdx);
 
     return Column(
       children: [
@@ -2635,7 +2732,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                     ),
                     child: Center(
                       child: Text(
-                        '${startIdx + 1}-${endIdx}/${list.length}',
+                        '${startIdx + 1}-${endIdx}/${uniqueList.length}',
                         style: const TextStyle(color: Colors.white38, fontSize: 10),
                       ),
                     ),
@@ -2675,8 +2772,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         Expanded(
           child: GridView.builder(
             padding: const EdgeInsets.fromLTRB(14, 4, 14, 16),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 5,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: Responsive.episodeColumns(context),
               crossAxisSpacing: 6,
               mainAxisSpacing: 6,
               childAspectRatio: 1.4,
@@ -2718,6 +2815,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             },
           ),
         ),
+        const SizedBox(height: 80), // Spacer cho BottomNav
       ],
     );
   }

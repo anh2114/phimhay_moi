@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../../config/app_config.dart';
 import '../../config/theme.dart';
+import '../../config/responsive.dart';
 import '../../models/movie.dart';
 import '../../widgets/movie_card.dart';
 import '../movie_detail/movie_detail_screen.dart';
@@ -186,8 +187,8 @@ class _ListScreenState extends State<ListScreen> with AutomaticKeepAliveClientMi
                     physics: const AlwaysScrollableScrollPhysics(),
                     controller: _scrollController,
                     padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: Responsive.gridColumns(context),
                       crossAxisSpacing: 10,
                       mainAxisSpacing: 14,
                       childAspectRatio: 132 / 248,

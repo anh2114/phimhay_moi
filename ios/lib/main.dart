@@ -22,9 +22,21 @@ import 'services/unity_ad_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-  ]);
+  // Tablet cho phep xoay tu do, mobile chi portrait
+  final size = WidgetsBinding.instance.window.physicalSize;
+  final shortestSide = size.shortestSide / WidgetsBinding.instance.window.devicePixelRatio;
+  final isTablet = shortestSide >= 600;
+
+  await SystemChrome.setPreferredOrientations(
+    isTablet
+        ? [
+            DeviceOrientation.portraitUp,
+            DeviceOrientation.portraitDown,
+            DeviceOrientation.landscapeLeft,
+            DeviceOrientation.landscapeRight,
+          ]
+        : [DeviceOrientation.portraitUp],
+  );
 
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,

@@ -25,6 +25,23 @@ class WatchRoomScreen extends StatefulWidget {
 }
 
 class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingObserver {
+
+  static bool get _isTablet {
+    final size = WidgetsBinding.instance.window.physicalSize;
+    final shortestSide = size.shortestSide / WidgetsBinding.instance.window.devicePixelRatio;
+    return shortestSide >= 600;
+  }
+
+  static void _restoreOrientations() {
+    if (_isTablet) {
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp, DeviceOrientation.portraitDown,
+        DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight,
+      ]);
+    } else {
+      SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    }
+  }
   final WatchPartyService _service = WatchPartyService();
   final MovieService _movieService = MovieService();
   final TextEditingController _chatController = TextEditingController();
@@ -207,7 +224,7 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
     _player?.dispose();
     WidgetsBinding.instance.removeObserver(this);
     // Restore UI khi thoát
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    _restoreOrientations();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
@@ -1914,11 +1931,7 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
       ]);
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     } else {
-      SystemChrome.setPreferredOrientations([
-        DeviceOrientation.portraitUp,
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
-      ]);
+      _restoreOrientations();
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     }
   }
