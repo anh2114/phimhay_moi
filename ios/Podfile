@@ -36,10 +36,6 @@ post_install do |installer|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
       config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)', 'HAVE_AV_CONFIG_H=1']
       config.build_settings['ENABLE_BITCODE'] = 'NO'
-      ldflags = config.build_settings['OTHER_LDFLAGS'] || ['$(inherited)']
-      ldflags = [ldflags] if ldflags.is_a?(String)
-      ldflags << '-lswift_Concurrency' unless ldflags.include?('-lswift_Concurrency')
-      config.build_settings['OTHER_LDFLAGS'] = ldflags
     end
   end
 end
