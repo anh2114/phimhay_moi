@@ -465,6 +465,11 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 2.2.3;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lswift_Concurrency",
+					"-lswiftCore",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.xiaofilm.sov;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -682,6 +687,11 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 2.2.3;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lswift_Concurrency",
+					"-lswiftCore",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.xiaofilm.sov;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
