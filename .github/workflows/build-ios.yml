@@ -25,6 +25,14 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: ios/Pods
+          key: pods-${{ runner.os }}-${{ hashFiles('ios/Podfile.lock') }}
+          restore-keys: |
+            pods-${{ runner.os }}-
+
       - name: Get version from input or tag
         id: version
         run: |
@@ -46,20 +54,14 @@ jobs:
           sed -i '' "s/version: .*/version: $NEW_VER/" pubspec.yaml
           echo "Updated to version: $NEW_VER"
 
-      - name: Create iOS platform
-        run: flutter create --platforms=ios --org com.phimhay .
-
       - name: Fix iOS build settings
         run: |
           PBXPROJ="ios/Runner.xcodeproj/project.pbxproj"
-          sed -i '' "s/platform :ios, '.*'/platform :ios, '15.0'/" ios/Podfile
-          sed -i '' "s/IPHONEOS_DEPLOYMENT_TARGET' = '.*'/IPHONEOS_DEPLOYMENT_TARGET' = '15.0'/" ios/Podfile
           sed -i '' "s/IPHONEOS_DEPLOYMENT_TARGET = .*/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/" "$PBXPROJ"
 
       - name: Inject Swift Concurrency linker flag
         run: |
           python3 << 'PYEOF'
-          import os
           pbxproj = "ios/Runner.xcodeproj/project.pbxproj"
           with open(pbxproj) as f:
               content = f.read()
@@ -84,11 +86,15 @@ jobs:
       - name: Install CocoaPods
         run: |
           cd ios
-          pod install --repo-update
+          if [ -f "Podfile.lock" ]; then
+            pod install
+          else
+            pod install --repo-update
+          fi
           cd ..
 
       - name: Build iOS
-        run: flutter build ios --release --no-codesign --no-spm
+        run: flutter build ios --release --no-codesign
 
       - name: Create IPA archive
         run: |
