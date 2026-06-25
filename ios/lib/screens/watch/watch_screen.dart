@@ -28,6 +28,7 @@ import 'package:phimhay_app/screens/actors/actors_list_screen.dart';
 import 'package:phimhay_app/screens/watch_room/watch_room_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:phimhay_app/services/m3u8_ad_parser.dart';
 
 /// Loại player hiện tại
 enum _PlayerMode { hls, embed }
@@ -218,9 +219,40 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
+  // ── Parse m3u8 để detect ad chính xác ──────────────────
+  Future<void> _parseM3u8ForAds(String m3u8Url) async {
+    try {
+      _m3u8Result = await _adParser.parse(m3u8Url);
+      if (_m3u8Result!.hasAds) {
+        debugPrint('=== M3U8 AD PARSER ===');
+        debugPrint('Segments: ${_m3u8Result!.segments.length}');
+        debugPrint('Ad zones: ${_m3u8Result!.adZones.length}');
+        for (final zone in _m3u8Result!.adZones) {
+          debugPrint('  $zone');
+        }
+        debugPrint('======================');
+      }
+    } catch (e) {
+      debugPrint('M3U8 parse error: $e');
+    }
+  }
+
   // ── Check và skip ad zone ────────────────────────
   void _checkAdZone(int positionSec) {
-    if (_adMarkers.isEmpty || _adSkipping || _currentUrl.isEmpty) return;
+    if (_adSkipping || _currentUrl.isEmpty || _adMode) return;
+
+    // ★ PRIMARY: Use m3u8 parsed ad zones (most accurate)
+    if (_m3u8Result != null && _m3u8Result!.hasAds) {
+      final adZone = _m3u8Result!.adZoneAt(positionSec.toDouble());
+      if (adZone != null) {
+        debugPrint('M3U8 AD HIT: $adZone at ${positionSec}s');
+        _showAdOverlay(adZone);
+        return;
+      }
+    }
+
+    // FALLBACK: Use API ad markers
+    if (_adMarkers.isEmpty) return;
     for (final ad in _adMarkers) {
       final start = (ad['start_time'] as int?) ?? 0;
       if (positionSec >= start - 3 && positionSec < start + 5) {
@@ -246,6 +278,46 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         return;
       }
     }
+  }
+
+  // ── Ad overlay simulation ──────────────────────────
+  void _showAdOverlay(AdZone adZone) {
+    _adMode = true;
+    _currentAdZone = adZone;
+    _adRemainingSec = adZone.duration.toInt();
+
+    // Pause movie
+    _hlsPlayer?.pause();
+
+    // Start countdown
+    _adCountdownTimer?.cancel();
+    _adCountdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) { timer.cancel(); return; }
+      setState(() {
+        _adRemainingSec--;
+        if (_adRemainingSec <= 0) {
+          _dismissAdOverlay();
+          timer.cancel();
+        }
+      });
+    });
+
+    setState(() {});
+  }
+
+  void _dismissAdOverlay() {
+    _adMode = false;
+    _adCountdownTimer?.cancel();
+    final adZone = _currentAdZone;
+    _currentAdZone = null;
+
+    if (adZone == null) return;
+
+    // Seek về vị trí kết thúc ad (nội dung tiếp tục)
+    _hlsPlayer?.seek(Duration(seconds: adZone.endTime.toInt()));
+    _hlsPlayer?.play();
+
+    setState(() {});
   }
 
   // ── Load watch progress từ DB ────────────────────────
@@ -411,7 +483,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   Future<void> _saveCurrentProgress() async {
     if (widget.movieId <= 0) return;
     // Watch room đang mở hoặc ad đang chạy → không lưu
-    if (_watchRoomActive) return;
+    if (_watchRoomActive || _adMode) return;
     // Chưa seek xong → không lưu
     if (!_seekCompleted && _currentPosition > 15) return;
     int pos = 0;
@@ -638,6 +710,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _playingSub?.cancel();
     _stuckDetector?.cancel();
     _stateSyncTimer?.cancel();
+    _adCountdownTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _saveProgressOnExit();
     ActivityService.stopWatching();
@@ -763,6 +836,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   List<Map<String, dynamic>> _adMarkers = [];
   bool _adSkipping = false; // Dang skip ad → khong trigger lai
 
+  // ── M3U8 Ad Parser ──
+  final M3u8AdParser _adParser = M3u8AdParser();
+  M3u8ParseResult? _m3u8Result;
+  bool _adMode = false;        // Đang hiển thị overlay ad?
+  int _adRemainingSec = 0;     // Đếm ngược ad
+  Timer? _adCountdownTimer;
+  AdZone? _currentAdZone;      // Ad zone hiện tại
+
   int _lastSeekByUser = 0;
   String _currentServerName = '';
 
@@ -867,6 +948,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       _playerReady = true;
       setState(() => _isLoading = false);
+
+      // ★ Parse m3u8 for ad detection (async, non-blocking)
+      if (url.contains('.m3u8')) {
+        _parseM3u8ForAds(url);
+      }
 
       // Setup PiP controller (iOS) — tạo AVPlayer sẵn khi video load
       _setupPip();
@@ -1587,6 +1673,60 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   label: const Text('Thử lại', style: TextStyle(color: AppTheme.accent)),
                 ),
               ]),
+            ),
+
+          // ── Ad overlay simulation ──
+          if (_adMode)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black87,
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.ad_units, color: Colors.amber, size: 48),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Quảng cáo',
+                        style: TextStyle(color: Colors.white70, fontSize: 14),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '$_adRemainingSec giây',
+                        style: const TextStyle(
+                          color: Colors.amber,
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // Progress bar
+                      SizedBox(
+                        width: 200,
+                        child: LinearProgressIndicator(
+                          value: _currentAdZone != null && _currentAdZone!.duration > 0
+                              ? (_currentAdZone!.duration - _adRemainingSec) / _currentAdZone!.duration
+                              : 0,
+                          backgroundColor: Colors.white24,
+                          valueColor: const AlwaysStoppedAnimation(Colors.amber),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      GestureDetector(
+                        onTap: _dismissAdOverlay,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.white38),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Text('Bỏ qua ▸', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
         ],
       );
