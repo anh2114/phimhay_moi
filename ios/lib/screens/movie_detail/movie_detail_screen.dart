@@ -1673,7 +1673,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   Widget _buildHeader(Movie movie) {
     final titleLines = movie.name.length > 35 ? 2 : 1;
     final originLines = (movie.originName ?? '').length > 45 ? 2 : 1;
-    final headerHeight = 60 + 170 + 10 + (titleLines * 26) + 3 + (originLines * 16) + 6 + 20 + 24;
+    final headerHeight = 115 + 170 + 10 + (titleLines * 26) + 3 + (originLines * 16) + 6 + 20 + 24;
 
     return Stack(
       clipBehavior: Clip.none,
@@ -1711,7 +1711,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         ),
         // Centered poster + title + toggle
         Positioned(
-          top: 60,
+          top: 115,
           left: 0,
           right: 0,
           child: Column(
