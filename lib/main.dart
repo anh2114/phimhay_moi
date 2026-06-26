@@ -18,6 +18,7 @@ import 'screens/home/home_screen.dart';
 import 'screens/splash/splash_screen.dart';
 import 'services/push_service.dart';
 import 'services/startapp_ad_service.dart';
+import 'services/applovin_ad_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -62,6 +63,7 @@ void main() async {
 
   // Initialize Ads
   StartAppAdService.init();
+  AppLovinAdService.init();
 
   // Initialize activity tracking
   ActivityService.init();

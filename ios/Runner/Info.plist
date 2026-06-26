@@ -104,6 +104,46 @@
 			<key>SKAdNetworkIdentifier</key>
 			<string>578prtvx9j.skadnetwork</string>
 		</dict>
+		<dict>
+			<key>SKAdNetworkIdentifier</key>
+			<string>l93v67r9pm.skadnetwork</string>
+		</dict>
+		<dict>
+			<key>SKAdNetworkIdentifier</key>
+			<string>prnn7qzen6.skadnetwork</string>
+		</dict>
+		<dict>
+			<key>SKAdNetworkIdentifier</key>
+			<string>5a6flcbh62.skadnetwork</string>
+		</dict>
+		<dict>
+			<key>SKAdNetworkIdentifier</key>
+			<string>yclnxrl5pm.skadnetwork</string>
+		</dict>
+		<dict>
+			<key>SKAdNetworkIdentifier</key>
+			<string>3qy47dc6ex.skadnetwork</string>
+		</dict>
+		<dict>
+			<key>SKAdNetworkIdentifier</key>
+			<string>dx0mt75g24.skadnetwork</string>
+		</dict>
+		<dict>
+			<key>SKAdNetworkIdentifier</key>
+			<string>c3b49uqz55.skadnetwork</string>
+		</dict>
+		<dict>
+			<key>SKAdNetworkIdentifier</key>
+			<string>3rdparty3.skadnetwork</string>
+		</dict>
+		<dict>
+			<key>SKAdNetworkIdentifier</key>
+			<string>n9x2a789qt.skadnetwork</string>
+		</dict>
+		<dict>
+			<key>SKAdNetworkIdentifier</key>
+			<string>e5onkc4kt2.skadnetwork</string>
+		</dict>
 	</array>
 </dict>
 </plist>
