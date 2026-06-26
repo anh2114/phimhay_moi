@@ -2,6 +2,7 @@ import UIKit
 import Flutter
 import AVFoundation
 import AVKit
+import Appodeal
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -25,6 +26,16 @@ import AVKit
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
+        // Initialize Appodeal SDK
+        let appKey = "3d38b6d1147aafeef29a80bd9d3c675598ccd6d705c8d51"
+        Appodeal.setAutocache(false, types: .interstitial)
+        Appodeal.setLogLevel(.verbose)
+        Appodeal.initialize(
+            withApiKey: appKey,
+            types: [.interstitial, .banner, .rewardedVideo]
+        )
+        print("[Appodeal] SDK initialized in AppDelegate")
+        
         let controller = window?.rootViewController as! FlutterViewController
         let audioChannel = FlutterMethodChannel(name: "phimhay_app/audio", binaryMessenger: controller.binaryMessenger)
 

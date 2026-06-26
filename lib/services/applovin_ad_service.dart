@@ -10,7 +10,6 @@ class AppLovinAdService {
   static bool _sdkReady = false;
   static bool get isReady => _sdkReady;
 
-  // Your Appodeal App Key
   static const String _appKey = '3d38b6d1147aafeef29a80bd9d3c675598ccd6d705c8d51';
 
   static Future<void> init() async {
@@ -25,23 +24,22 @@ class AppLovinAdService {
     try {
       final result = await _channel.invokeMethod('initialize', {
         'appKey': _appKey,
-        'adTypes': ['interstitial', 'banner', 'rewarded'],
       });
       _sdkReady = result == true;
       print('[Appodeal] SDK initialized: $_sdkReady on $platform');
+      if (_sdkReady) {
+        loadInterstitial();
+        loadRewarded();
+      }
     } catch (e) {
       print('[Appodeal] Init FAILED: $e');
     }
   }
 
-  // ── Interstitial ──────────────────────────────────
-  static bool _interstitialReady = false;
-
   static void loadInterstitial() {
     print('[Appodeal] Loading interstitial...');
     _channel.invokeMethod('loadInterstitial').then((_) {
-      _interstitialReady = true;
-      print('[Appodeal] Interstitial loaded');
+      print('[Appodeal] Interstitial load requested');
     }).catchError((e) {
       print('[Appodeal] Interstitial load FAILED: $e');
       Future.delayed(const Duration(seconds: 30), loadInterstitial);
@@ -57,6 +55,7 @@ class AppLovinAdService {
       if (shown == true) {
         AdFrequencyService.recordInterstitialShow();
         print('[Appodeal] Interstitial shown');
+        loadInterstitial();
       }
       onDone?.call();
     }).catchError((e) {
@@ -65,11 +64,10 @@ class AppLovinAdService {
     });
   }
 
-  // ── Rewarded ──────────────────────────────────────
   static void loadRewarded() {
     print('[Appodeal] Loading rewarded...');
     _channel.invokeMethod('loadRewarded').then((_) {
-      print('[Appodeal] Rewarded loaded');
+      print('[Appodeal] Rewarded load requested');
     }).catchError((e) {
       print('[Appodeal] Rewarded load FAILED: $e');
       Future.delayed(const Duration(seconds: 30), loadRewarded);
@@ -81,6 +79,7 @@ class AppLovinAdService {
       if (rewarded == true) {
         print('[Appodeal] Rewarded shown + reward earned');
         onReward?.call();
+        loadRewarded();
       }
       onDone?.call();
     }).catchError((e) {
@@ -89,17 +88,15 @@ class AppLovinAdService {
     });
   }
 
-  // ── Banner ────────────────────────────────────────
   static void loadBanner() {
     print('[Appodeal] Loading banner...');
     _channel.invokeMethod('loadBanner').then((_) {
-      print('[Appodeal] Banner loaded');
+      print('[Appodeal] Banner load requested');
     }).catchError((e) {
       print('[Appodeal] Banner load FAILED: $e');
     });
   }
 
-  // ── Pre-watch flow ────────────────────────────────
   static void showBeforeWatch(BuildContext context, Function onReady) {
     print('[Appodeal] showBeforeWatch called');
     showInterstitialIfAllowed(context, onDone: () => onReady());
