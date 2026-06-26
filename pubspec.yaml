@@ -42,7 +42,6 @@ dependencies:
   qr_flutter: ^4.1.0
   liquid_glass_widgets: ^0.17.1
   startapp_sdk: ^1.0.1
-  applovin_max: ^4.6.4
 
 dev_dependencies:
   flutter_test:

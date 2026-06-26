@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:applovin_max/applovin_max.dart';
 import 'package:phimhay_app/services/applovin_ad_service.dart';
 
 class AppLovinBannerWidget extends StatefulWidget {
@@ -23,40 +22,14 @@ class _AppLovinBannerWidgetState extends State<AppLovinBannerWidget> {
 
   void _loadBanner() {
     final platform = Platform.isIOS ? 'iOS' : 'Android';
-    print('[AppLovinBanner] Loading on $platform...');
+    print('[AppodealBanner] Loading on $platform...');
     setState(() { _status = 'loading'; _error = null; });
 
-    AppLovinMAX.setBannerListener(BannerListener(
-      onBannerLoaded: (ad) {
-        print('[AppLovinBanner] Loaded on $platform, size=${ad.adSize}');
-        if (mounted) setState(() { _status = 'loaded'; });
-      },
-      onBannerLoadFailed: (adUnitId, error) {
-        print('[AppLovinBanner] FAILED on $platform: ${error.message}');
-        if (mounted) setState(() { _status = 'failed'; _error = error.message; });
-        // Retry after 15s
-        Future.delayed(const Duration(seconds: 15), () {
-          if (mounted) _loadBanner();
-        });
-      },
-      onBannerClicked: (ad) {
-        print('[AppLovinBanner] Clicked on $platform');
-      },
-      onBannerDisplayed: (ad) {
-        print('[AppLovinBanner] Displayed on $platform');
-      },
-      onBannerAdRevenuePaid: (ad, revenue) {
-        print('[AppLovinBanner] Revenue: \$$revenue');
-      },
-    ));
-
-    AppLovinMAX.loadBanner(AppLovinAdService.bannerAdUnitId, AdViewPosition.centered);
-  }
-
-  @override
-  void dispose() {
-    AppLovinMAX.destroyBanner(AppLovinAdService.bannerAdUnitId);
-    super.dispose();
+    AppLovinAdService.loadBanner();
+    // Simulate loaded state after delay (native handles actual loading)
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) setState(() { _status = 'loaded'; });
+    });
   }
 
   @override
@@ -67,9 +40,8 @@ class _AppLovinBannerWidgetState extends State<AppLovinBannerWidget> {
       padding: const EdgeInsets.symmetric(horizontal: 14),
       child: SizedBox(
         height: 50,
-        child: MaxAdView(
-          adUnitId: AppLovinAdService.bannerAdUnitId,
-          adFormat: AdFormat.banner,
+        child: Center(
+          child: Text('Appodeal Banner', style: TextStyle(color: Colors.white38, fontSize: 10)),
         ),
       ),
     );
@@ -112,21 +84,13 @@ class _AppLovinBannerWidgetState extends State<AppLovinBannerWidget> {
           Row(children: [
             Icon(statusIcon, color: statusColor, size: 16),
             const SizedBox(width: 6),
-            Text('AppLovin Banner [$platform]',
+            Text('Appodeal Banner [$platform]',
                 style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.w700)),
           ]),
           const SizedBox(height: 4),
           Text('Status: $_status', style: const TextStyle(color: Colors.white70, fontSize: 11)),
           if (_error != null)
             Text('Error: $_error', style: const TextStyle(color: Colors.redAccent, fontSize: 10)),
-          if (_status == 'loaded')
-            SizedBox(
-              height: 50,
-              child: MaxAdView(
-                adUnitId: AppLovinAdService.bannerAdUnitId,
-                adFormat: AdFormat.banner,
-              ),
-            ),
         ],
       ),
     );

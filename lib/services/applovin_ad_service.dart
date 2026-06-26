@@ -1,86 +1,51 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:applovin_max/applovin_max.dart';
+import 'package:flutter/services.dart';
 import 'package:phimhay_app/services/ad_frequency_service.dart';
 
 class AppLovinAdService {
+  static const MethodChannel _channel = MethodChannel('com.xiaofilm/appodeal');
   static bool _initialized = false;
   static bool _sdkReady = false;
   static bool get isReady => _sdkReady;
 
-  // Your AppLovin SDK Key
-  static const String _sdkKey = '3d38b6d1147aafeef29a80bd9d3c675598ccd6d705c8d51';
-
-  // Ad Unit IDs — replace with your actual IDs from AppLovin dashboard
-  static const String _interstitialAdUnitId = Platform.isIOS
-      ? 'YOUR_IOS_INTERSTITIAL_AD_UNIT_ID'
-      : 'YOUR_ANDROID_INTERSTITIAL_AD_UNIT_ID';
-  static const String _bannerAdUnitId = Platform.isIOS
-      ? 'YOUR_IOS_BANNER_AD_UNIT_ID'
-      : 'YOUR_ANDROID_BANNER_AD_UNIT_ID';
-  static const String _rewardedAdUnitId = Platform.isIOS
-      ? 'YOUR_IOS_REWARDED_AD_UNIT_ID'
-      : 'YOUR_ANDROID_REWARDED_AD_UNIT_ID';
+  // Your Appodeal App Key
+  static const String _appKey = '3d38b6d1147aafeef29a80bd9d3c675598ccd6d705c8d51';
 
   static Future<void> init() async {
     if (_initialized) return;
     _initialized = true;
 
     final platform = Platform.isIOS ? 'iOS' : 'Android';
-    print('[AppLovin] Initializing on $platform...');
+    print('[Appodeal] Initializing on $platform...');
 
     await AdFrequencyService.init();
 
-    MaxConfiguration? config = await AppLovinMAX.initialize(_sdkKey);
-    if (config != null) {
-      _sdkReady = true;
-      print('[AppLovin] SDK initialized OK on $platform');
-      print('[AppLovin] SDK version: ${config.sdkVersion}');
-      _loadInterstitial();
-      _loadRewarded();
-    } else {
-      print('[AppLovin] SDK init FAILED on $platform');
+    try {
+      final result = await _channel.invokeMethod('initialize', {
+        'appKey': _appKey,
+        'adTypes': ['interstitial', 'banner', 'rewarded'],
+      });
+      _sdkReady = result == true;
+      print('[Appodeal] SDK initialized: $_sdkReady on $platform');
+    } catch (e) {
+      print('[Appodeal] Init FAILED: $e');
     }
   }
 
   // ── Interstitial ──────────────────────────────────
   static bool _interstitialReady = false;
 
-  static void _loadInterstitial() {
-    print('[AppLovin] Loading interstitial...');
-    AppLovinMAX.loadInterstitial(_interstitialAdUnitId);
-    AppLovinMAX.setInterstitialListener(InterstitialListener(
-      onInterstitialLoaded: (ad) {
-        _interstitialReady = true;
-        print('[AppLovin] Interstitial loaded');
-      },
-      onInterstitialLoadFailed: (adUnitId, error) {
-        _interstitialReady = false;
-        print('[AppLovin] Interstitial load FAILED: ${error.message}');
-        // Retry after 30s
-        Future.delayed(const Duration(seconds: 30), _loadInterstitial);
-      },
-      onInterstitialDisplayed: (ad) {
-        print('[AppLovin] Interstitial displayed');
-        _interstitialReady = false;
-        _loadInterstitial();
-      },
-      onInterstitialDisplayFailed: (ad, error) {
-        print('[AppLovin] Interstitial display FAILED: ${error.message}');
-        _loadInterstitial();
-      },
-      onInterstitialHidden: (ad) {
-        print('[AppLovin] Interstitial hidden');
-        _loadInterstitial();
-      },
-      onInterstitialClicked: (ad) {
-        print('[AppLovin] Interstitial clicked');
-      },
-      onInterstitialRevenuePaid: (ad, revenue) {
-        print('[AppLovin] Interstitial revenue: \$revenue');
-      },
-    ));
+  static void loadInterstitial() {
+    print('[Appodeal] Loading interstitial...');
+    _channel.invokeMethod('loadInterstitial').then((_) {
+      _interstitialReady = true;
+      print('[Appodeal] Interstitial loaded');
+    }).catchError((e) {
+      print('[Appodeal] Interstitial load FAILED: $e');
+      Future.delayed(const Duration(seconds: 30), loadInterstitial);
+    });
   }
 
   static void showInterstitialIfAllowed(BuildContext context, {VoidCallback? onDone}) {
@@ -88,73 +53,55 @@ class AppLovinAdService {
       onDone?.call();
       return;
     }
-    if (_interstitialReady) {
-      AdFrequencyService.recordInterstitialShow();
-      AppLovinMAX.showInterstitial(_interstitialAdUnitId);
+    _channel.invokeMethod('showInterstitial').then((shown) {
+      if (shown == true) {
+        AdFrequencyService.recordInterstitialShow();
+        print('[Appodeal] Interstitial shown');
+      }
       onDone?.call();
-    } else {
-      print('[AppLovin] Interstitial not ready');
+    }).catchError((e) {
+      print('[Appodeal] Interstitial show FAILED: $e');
       onDone?.call();
-    }
+    });
   }
 
   // ── Rewarded ──────────────────────────────────────
-  static bool _rewardedReady = false;
-
-  static void _loadRewarded() {
-    print('[AppLovin] Loading rewarded...');
-    AppLovinMAX.loadRewardedAd(_rewardedAdUnitId);
-    AppLovinMAX.setRewardedListener(RewardedListener(
-      onRewardedAdLoaded: (ad) {
-        _rewardedReady = true;
-        print('[AppLovin] Rewarded loaded');
-      },
-      onRewardedAdLoadFailed: (adUnitId, error) {
-        _rewardedReady = false;
-        print('[AppLovin] Rewarded load FAILED: ${error.message}');
-        Future.delayed(const Duration(seconds: 30), _loadRewarded);
-      },
-      onRewardedAdDisplayed: (ad) {
-        print('[AppLovin] Rewarded displayed');
-        _rewardedReady = false;
-        _loadRewarded();
-      },
-      onRewardedAdDisplayFailed: (ad, error) {
-        print('[AppLovin] Rewarded display FAILED: ${error.message}');
-        _loadRewarded();
-      },
-      onRewardedAdHidden: (ad) {
-        print('[AppLovin] Rewarded hidden');
-        _loadRewarded();
-      },
-      onRewardedAdClicked: (ad) {
-        print('[AppLovin] Rewarded clicked');
-      },
-      onRewardedAdReceivedReward: (ad, reward) {
-        print('[AppLovin] Rewarded received: ${reward.amount} ${reward.label}');
-      },
-      onRewardedAdRevenuePaid: (ad, revenue) {
-        print('[AppLovin] Rewarded revenue: \$revenue');
-      },
-    ));
+  static void loadRewarded() {
+    print('[Appodeal] Loading rewarded...');
+    _channel.invokeMethod('loadRewarded').then((_) {
+      print('[Appodeal] Rewarded loaded');
+    }).catchError((e) {
+      print('[Appodeal] Rewarded load FAILED: $e');
+      Future.delayed(const Duration(seconds: 30), loadRewarded);
+    });
   }
 
   static void showRewardedIfAllowed(BuildContext context, {VoidCallback? onReward, VoidCallback? onDone}) {
-    if (_rewardedReady) {
-      AppLovinMAX.showRewardedAd(_rewardedAdUnitId);
+    _channel.invokeMethod('showRewarded').then((rewarded) {
+      if (rewarded == true) {
+        print('[Appodeal] Rewarded shown + reward earned');
+        onReward?.call();
+      }
       onDone?.call();
-    } else {
-      print('[AppLovin] Rewarded not ready');
+    }).catchError((e) {
+      print('[Appodeal] Rewarded show FAILED: $e');
       onDone?.call();
-    }
+    });
+  }
+
+  // ── Banner ────────────────────────────────────────
+  static void loadBanner() {
+    print('[Appodeal] Loading banner...');
+    _channel.invokeMethod('loadBanner').then((_) {
+      print('[Appodeal] Banner loaded');
+    }).catchError((e) {
+      print('[Appodeal] Banner load FAILED: $e');
+    });
   }
 
   // ── Pre-watch flow ────────────────────────────────
   static void showBeforeWatch(BuildContext context, Function onReady) {
-    print('[AppLovin] showBeforeWatch called, ready=$_interstitialReady');
+    print('[Appodeal] showBeforeWatch called');
     showInterstitialIfAllowed(context, onDone: () => onReady());
   }
-
-  // ── Banner ────────────────────────────────────────
-  static String get bannerAdUnitId => _bannerAdUnitId;
 }

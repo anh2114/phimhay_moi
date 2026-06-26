@@ -153,6 +153,10 @@ import AVKit
         }
 
         GeneratedPluginRegistrant.register(with: self)
+        
+        // Register Appodeal plugin
+        AppodealPlugin.register(with: self)
+        
         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
     }
 
