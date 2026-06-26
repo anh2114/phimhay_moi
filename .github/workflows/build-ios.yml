@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version number (e.g., 3.3.6)'
+        description: 'Version (e.g., 3.4.7)'
         required: true
         type: string
   push:
@@ -18,6 +18,43 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION=${GITHUB_REF#refs/tags/v}
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Detect changes
+        id: changes
+        run: |
+          # Flutter deps changed?
+          echo "pubspec_changed=false" >> $GITHUB_OUTPUT
+          if [ -f ".last_build_pubspec" ]; then
+            CURRENT_HASH=$(md5sum pubspec.yaml pubspec.lock 2>/dev/null | md5sum | cut -d' ' -f1)
+            LAST_HASH=$(cat .last_build_pubspec)
+            if [ "$CURRENT_HASH" != "$LAST_HASH" ]; then
+              echo "pubspec_changed=true" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "pubspec_changed=true" >> $GITHUB_OUTPUT
+          fi
+
+          # iOS pods changed?
+          echo "pods_changed=false" >> $GITHUB_OUTPUT
+          if [ -f ".last_build_pods" ]; then
+            CURRENT_HASH=$(md5sum ios/Podfile ios/Podfile.lock 2>/dev/null | md5sum | cut -d' ' -f1)
+            LAST_HASH=$(cat .last_build_pods)
+            if [ "$CURRENT_HASH" != "$LAST_HASH" ]; then
+              echo "pods_changed=true" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "pods_changed=true" >> $GITHUB_OUTPUT
+          fi
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -36,36 +73,35 @@ jobs:
           restore-keys: |
             pods-${{ runner.os }}-
 
-      - name: Get version from input or tag
-        id: version
-        run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION=${GITHUB_REF#refs/tags/v}
-          fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Building version: $VERSION"
+      - name: Cache pub dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.PUB_CACHE }}
+            .dart_tool/
+          key: pub-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
+          restore-keys: |
+            pub-${{ runner.os }}-
 
-      - name: Update version in pubspec.yaml
+      - name: Update version
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           OLD_VER=$(grep -oE 'version: [0-9]+\.[0-9]+\.[0-9]+\+[0-9]+' pubspec.yaml | cut -d' ' -f2)
           BUILD=$(echo "$OLD_VER" | cut -d'+' -f2)
           NEW_BUILD=$((BUILD + 1))
-          NEW_VER="${VERSION}+${NEW_BUILD}"
-          sed -i '' "s/version: .*/version: $NEW_VER/" pubspec.yaml
-          echo "Updated to version: $NEW_VER"
+          sed -i '' "s/version: .*/version: ${VERSION}+${NEW_BUILD}/" pubspec.yaml
 
-      - name: Fix iOS build settings
+      - name: Fix iOS deployment target
         run: |
           PBXPROJ="ios/Runner.xcodeproj/project.pbxproj"
           sed -i '' "s/IPHONEOS_DEPLOYMENT_TARGET = .*/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/" "$PBXPROJ"
 
-      - name: Install dependencies
+      - name: Install Flutter dependencies
+        if: steps.changes.outputs.pubspec_changed == 'true'
         run: flutter pub get
 
       - name: Install CocoaPods
+        if: steps.changes.outputs.pods_changed == 'true' || steps.changes.outputs.pubspec_changed == 'true'
         run: |
           cd ios
           if [ -f "Podfile.lock" ]; then
@@ -73,27 +109,29 @@ jobs:
           else
             pod install --repo-update
           fi
-          cd ..
 
-      - name: Inject Swift Concurrency linker flags
+      - name: Patch Swift Concurrency flags
         run: |
           XCCONFIG_DIR="ios/Pods/Target Support Files/Pods-Runner"
           for f in "$XCCONFIG_DIR"/*.xcconfig; do
             if [ -f "$f" ] && ! grep -q "lswift_Concurrency" "$f"; then
               echo 'OTHER_LDFLAGS = $(inherited) -lswift_Concurrency' >> "$f"
-              echo "Patched: $f"
             fi
           done
           PBXPROJ="ios/Runner.xcodeproj/project.pbxproj"
           if ! grep -q "lswift_Concurrency" "$PBXPROJ"; then
             sed -i '' 's/ENABLE_BITCODE = NO;/ENABLE_BITCODE = NO;\n\t\t\t\tOTHER_LDFLAGS = (\n\t\t\t\t\t"$(inherited)",\n\t\t\t\t\t"-lswift_Concurrency",\n\t\t\t\t);/' "$PBXPROJ"
-            echo "Patched project.pbxproj"
           fi
 
       - name: Build iOS
         run: flutter build ios --release --no-codesign
 
-      - name: Create IPA archive
+      - name: Save cache keys
+        run: |
+          md5sum pubspec.yaml pubspec.lock 2>/dev/null | md5sum | cut -d' ' -f1 > .last_build_pubspec
+          md5sum ios/Podfile ios/Podfile.lock 2>/dev/null | md5sum | cut -d' ' -f1 > .last_build_pods
+
+      - name: Create IPA
         run: |
           cd build/ios/iphoneos
           mkdir -p Payload
@@ -101,7 +139,7 @@ jobs:
           zip -r xiaophim-${{ steps.version.outputs.version }}.ipa Payload
           mv xiaophim-${{ steps.version.outputs.version }}.ipa ../../../
 
-      - name: Upload IPA artifact
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: xiaophim-${{ steps.version.outputs.version }}-ios
