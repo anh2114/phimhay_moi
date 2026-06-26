@@ -28,6 +28,7 @@ import 'package:phimhay_app/screens/actors/actors_list_screen.dart';
 import 'package:phimhay_app/screens/watch_room/watch_room_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:phimhay_app/services/startapp_ad_service.dart';
 import 'package:phimhay_app/services/m3u8_ad_parser.dart';
 
 /// Loại player hiện tại
@@ -591,10 +592,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   Future<void> _saveCurrentProgress() async {
     if (widget.movieId <= 0) return;
-    // Watch room đang mở hoặc ad đang chạy → không lưu
     if (_watchRoomActive || _adMode) return;
-    // Chưa seek xong → không lưu
     if (!_seekCompleted && _currentPosition > 15) return;
+    // Dedup: skip if save in-flight or too recent (< 3s)
+    if (_isSaving) return;
+    if (_lastSaveTime != null && DateTime.now().difference(_lastSaveTime!).inSeconds < 3) return;
+    _isSaving = true;
+    try {
     int pos = 0;
     int dur = 0;
     if (_playerMode == _PlayerMode.hls && _hlsPlayer != null) {
@@ -648,6 +652,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     // Cập nhật vị trí đã lưu
     _lastSavedPosition = pos;
+    _lastSaveTime = DateTime.now();
+    } finally {
+      _isSaving = false;
+    }
   }
 
   // ── Save khi thoát ───────────────────────────────────
@@ -941,6 +949,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   StreamSubscription<Duration>? _durationSub; // Lắng nghe duration
   int _seekTargetTime = 0; // Thời gian seek đang nhắm tới (chống position nhảy)
   int _lastPosForAdCheck = -1; // Position trước đó để detect crossed ad zone
+  bool _isSaving = false; // Dedup concurrent save requests
+  DateTime? _lastSaveTime; // Minimum interval between saves
 
   // ── Ad markers ──
   List<Map<String, dynamic>> _adMarkers = [];
@@ -1253,6 +1263,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   // ── Chuyển tập ────────────────────────────────────
   void _switchEpisode(Map<String, dynamic> ep, {bool keepPosition = false}) {
+    // Show interstitial on episode switch (frequency-capped)
+    StartAppAdService.showInterstitialIfAllowed(context, onDone: () {
+      _doSwitchEpisode(ep, keepPosition: keepPosition);
+    });
+  }
+
+  void _doSwitchEpisode(Map<String, dynamic> ep, {bool keepPosition = false}) {
     _hasSwitchedEp = true; // Danh dau da chuyen tap
     // Luu progress tap hien tai truoc khi chuyen
     if (!keepPosition) _saveCurrentProgress();
@@ -1533,7 +1550,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           child: Row(
             children: [
               GestureDetector(
-                onTap: () => Navigator.pop(context),
+                onTap: () {
+                  StartAppAdService.showInterstitialIfAllowed(context, onDone: () {
+                    Navigator.pop(context);
+                  });
+                },
                 child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
               ),
               const SizedBox(width: 10),

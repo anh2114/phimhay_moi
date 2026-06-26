@@ -16,6 +16,7 @@ import 'package:phimhay_app/providers/favorite_provider.dart';
 import 'package:phimhay_app/providers/reminder_provider.dart';
 import 'package:phimhay_app/providers/watch_history_provider.dart';
 import 'package:phimhay_app/screens/watch/watch_screen.dart';
+import 'package:phimhay_app/screens/actors/actor_detail_screen.dart';
 import 'package:phimhay_app/screens/notification/notification_screen.dart';
 import 'package:phimhay_app/services/api_client.dart';
 import 'package:phimhay_app/services/movie_service.dart';
@@ -28,6 +29,9 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:phimhay_app/screens/home/home_screen.dart';
 import 'package:phimhay_app/screens/watch_party/watch_party_screen.dart';
 import 'package:phimhay_app/screens/actors/actors_list_screen.dart';
+import 'package:phimhay_app/services/startapp_ad_service.dart';
+import 'package:phimhay_app/widgets/startapp_banner_widget.dart';
+import 'package:phimhay_app/services/startapp_ad_service.dart';
 
 class MovieDetailScreen extends StatefulWidget {
   final int movieId;
@@ -162,19 +166,21 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       return;
     }
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => WatchScreen(
-          movieId: movieId,
-          episodeId: 1,
-          serverIdx: 0,
-          streamUrl: trailerUrl,
-          movieSlug: slug,
-          movieTitle: title,
+    StartAppAdService.showBeforeWatch(context, () {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => WatchScreen(
+            movieId: movieId,
+            episodeId: 1,
+            serverIdx: 0,
+            streamUrl: trailerUrl,
+            movieSlug: slug,
+            movieTitle: title,
+          ),
         ),
-      ),
-    );
+      );
+    });
   }
 
   @override
@@ -562,20 +568,24 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       url = '${AppConfig.baseUrl}/phim/$slug';
     }
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => WatchScreen(
-          movieId: movieId,
-          episodeId: targetEp?['id'] ?? savedEpId ?? 1,
-          serverIdx: savedServerIdx,
-          streamUrl: url,
-          movieSlug: slug,
-          movieTitle: title,
-          initialPosition: (progress['position'] as int?) ?? 0,
+    void _navigateToWatch() {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => WatchScreen(
+            movieId: movieId,
+            episodeId: targetEp?['id'] ?? savedEpId ?? 1,
+            serverIdx: savedServerIdx,
+            streamUrl: url,
+            movieSlug: slug,
+            movieTitle: title,
+            initialPosition: (progress['position'] as int?) ?? 0,
+          ),
         ),
-      ),
-    );
+      );
+    }
+
+    StartAppAdService.showInterstitialIfAllowed(context, onDone: _navigateToWatch);
   }
 
   @override
@@ -646,6 +656,13 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                 );
               },
             ),
+          ),
+          // Banner ad above BottomNav
+          const Positioned(
+            bottom: 100,
+            left: 0,
+            right: 0,
+            child: StartAppBannerWidget(),
           ),
         ],
       ),
@@ -1839,9 +1856,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                       style: TextStyle(color: AppTheme.textSub, fontSize: 12, height: 1.8),
                     ),
                   ],
-                ],
-              ),
-            );
+        ],
+      ),
+    );
   }
 
   Widget _infoTag(String label, Color bgColor, Color textColor, {Color? border}) {
@@ -2330,19 +2347,21 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         ? widget.movieId
         : (widget.movie?.id ?? (_movieData?['id'] as int? ?? 0));
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => WatchScreen(
-          movieId:    movieId,
-          episodeId:  epId,
-          serverIdx:  _selectedServer,
-          streamUrl:  url,
-          movieSlug:  slug,
-          movieTitle: title,
+    StartAppAdService.showBeforeWatch(context, () {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => WatchScreen(
+            movieId:    movieId,
+            episodeId:  epId,
+            serverIdx:  _selectedServer,
+            streamUrl:  url,
+            movieSlug:  slug,
+            movieTitle: title,
+          ),
         ),
-      ),
-    );
+      );
+    });
   }
 
   /// Fetch comments from server
@@ -2608,7 +2627,16 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   }
 
   Widget _buildActorCard(Map<String, dynamic> actor) {
-    return Container(
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(context, MaterialPageRoute(
+          builder: (_) => ActorDetailScreen(
+            name: actor['name'],
+            tmdbId: actor['tmdb_id'] ?? 0,
+          ),
+        ));
+      },
+      child: Container(
       decoration: BoxDecoration(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(12),
@@ -2660,6 +2688,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
           ),
         ],
       ),
+      ),
     );
   }
 
@@ -2705,6 +2734,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
               'name': a['name'] ?? '',
               'original_name': a['input'] ?? '',
               'photo': a['photo'] ?? '',
+              'tmdb_id': a['tmdb_id'] ?? 0,
             })
             .toList();
         // ignore: avoid_print

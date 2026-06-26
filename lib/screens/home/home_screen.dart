@@ -22,7 +22,8 @@ import '../profile/profile_screen.dart';
 import '../watch_party/watch_party_screen.dart';
 import '../notification/notification_screen.dart';
 import '../actors/actors_list_screen.dart';
-import '../../services/unity_ad_service.dart';
+import '../../services/startapp_ad_service.dart';
+import '../../widgets/startapp_banner_widget.dart';
 
 class HomeScreen extends StatefulWidget {
   final int initialIndex;
@@ -47,7 +48,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     // Pre-load interstitial ad — khi user duyệt home 5-10s thì ad đã ready
-    UnityAdService.init();
+    StartAppAdService.init();
   }
 
   /// Convert chip name → API filter param
@@ -180,6 +181,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
               },
             ),
+          ),
+          // Banner ad above BottomNav
+          const Positioned(
+            bottom: 100,
+            left: 0,
+            right: 0,
+            child: StartAppBannerWidget(),
           ),
         ],
       ),

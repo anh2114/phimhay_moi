@@ -5,6 +5,7 @@ import 'package:phimhay_app/config/app_config.dart';
 import 'package:phimhay_app/config/theme.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
+import 'package:phimhay_app/screens/actors/actor_detail_screen.dart';
 
 class ActorsListScreen extends StatefulWidget {
   const ActorsListScreen({super.key});
@@ -43,8 +44,8 @@ class _ActorsListScreenState extends State<ActorsListScreen> {
   }
 
   Future<void> _fetchActors({bool loadMore = false}) async {
-    if (_isLoading) return;
     if (loadMore && (_isLoadingMore || !_hasMore)) return;
+    if (!loadMore && _isLoading && _actors.isNotEmpty) return;
 
     setState(() {
       if (loadMore) _isLoadingMore = true;
@@ -176,6 +177,14 @@ class _ActorsListScreenState extends State<ActorsListScreen> {
           padding: const EdgeInsets.only(bottom: 4),
           child: ListTile(
             contentPadding: const EdgeInsets.symmetric(vertical: 4),
+            onTap: () {
+              Navigator.push(context, MaterialPageRoute(
+                builder: (_) => ActorDetailScreen(
+                  name: nameVi.isNotEmpty ? nameVi : nameEn,
+                  tmdbId: actor['tmdb_id'],
+                ),
+              ));
+            },
             leading: ClipOval(
               child: CachedNetworkImage(
                 imageUrl: photo,

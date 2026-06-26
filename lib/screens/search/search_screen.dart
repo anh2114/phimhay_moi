@@ -24,13 +24,18 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
   CancelToken? _pendingCancel;
 
   bool _isLoading = false;
-  bool _isSearching = false; // dang gui request
+  bool _isSearching = false;
   List<Movie> _results = [];
   bool _hasSearched = false;
   int _totalResults = 0;
   int _currentPage = 1;
   bool _hasMore = true;
   String? _errorMessage;
+
+  // Search cache: key = query+filters, value = {results, total}
+  final Map<String, List<Movie>> _cache = {};
+  final Map<String, int> _cacheTotal = {};
+  static const int _cacheMaxSize = 20;
 
   // Filters
   bool _showFilterPanel = false;
@@ -83,8 +88,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
 
   void _onSearchChanged(String query) {
     _debounce?.cancel();
-    setState(() {}); // fix clear button rebuild
-    _debounce = Timer(const Duration(milliseconds: 400), () {
+    _debounce = Timer(const Duration(milliseconds: 300), () {
       if (query.trim().isEmpty && !_hasActiveFilters) {
         setState(() { _results = []; _hasSearched = false; _errorMessage = null; });
         return;
@@ -95,11 +99,29 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
     });
   }
 
+  String _cacheKey(String q) {
+    return '$q|$_filterType|$_country|$_genre|$_year|$_sortBy';
+  }
+
   Future<void> _performSearch({bool loadMore = false}) async {
-    // Huy request truoc do neu dang chay
     _pendingCancel?.cancel();
     _pendingCancel = CancelToken();
     if (_isLoading) return;
+
+    final q = _searchCtrl.text.trim();
+    final key = _cacheKey(q);
+
+    // Check cache for page 1
+    if (!loadMore && _cache.containsKey(key)) {
+      setState(() {
+        _results = _cache[key]!;
+        _totalResults = _cacheTotal[key] ?? 0;
+        _hasSearched = true;
+        _isLoading = false;
+        _isSearching = false;
+      });
+      return;
+    }
 
     setState(() { _isLoading = true; _isSearching = true; _errorMessage = null; });
 
@@ -138,6 +160,16 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
           _isLoading = false;
           _isSearching = false;
         });
+        // Store in cache (page 1 only)
+        if (!loadMore) {
+          final key = _cacheKey(q);
+          _cache[key] = newResults;
+          _cacheTotal[key] = total;
+          if (_cache.length > _cacheMaxSize) {
+            _cache.remove(_cache.keys.first);
+            _cacheTotal.remove(_cacheTotal.keys.first);
+          }
+        }
       }
     } on DioException catch (e) {
       if (e.type == DioExceptionType.cancel) return;

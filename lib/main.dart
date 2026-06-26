@@ -17,7 +17,7 @@ import 'providers/reminder_provider.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/splash/splash_screen.dart';
 import 'services/push_service.dart';
-import 'services/unity_ad_service.dart';
+import 'services/startapp_ad_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -60,8 +60,8 @@ void main() async {
   // Initialize liquid glass widgets
   await LiquidGlassWidgets.initialize();
 
-  // Initialize Unity Ads
-  UnityAdService.init();
+  // Initialize Ads
+  StartAppAdService.init();
 
   // Initialize activity tracking
   ActivityService.init();
