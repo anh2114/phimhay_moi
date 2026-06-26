@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter/services.dart';
 import 'package:phimhay_app/config/app_config.dart';
 import 'package:phimhay_app/config/theme.dart';
+import 'package:phimhay_app/config/responsive.dart';
 import 'package:phimhay_app/models/movie.dart';
 import 'package:phimhay_app/providers/auth_provider.dart';
 import 'package:phimhay_app/screens/auth/auth_screen.dart';
@@ -48,7 +49,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final Dio _dio = Dio();
-  int _navIndex = 0;
+  int _navIndex = -1; // -1 = khong highlight tab nao (non-tab screen)
   bool _isLoading = true;
   String? _error;
   Map<String, dynamic>? _movieData;
@@ -260,6 +261,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         final num = (i + 1).toString().padLeft(2, '0');
         return '${AppConfig.baseUrl}/thu_vien/$slug/$num.webp';
       });
+      // ignore: avoid_print
+      print('=== Gallery hardcoded: ${_galleryImages.length} images, first=${_galleryImages.first} ===');
+
+      // Fetch gallery images from API
+      _fetchGallery(slug);
 
       // Fetch actors data — SAU KHI API load thành công
       // ignore: avoid_print
@@ -304,7 +310,6 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   }
 
   void _onNavSelected(int index) {
-    if (index == _navIndex) return;
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (_) => HomeScreen(initialIndex: index)),
@@ -1075,21 +1080,31 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       );
     }
     return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.all(8),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: Responsive.isMobile(context) ? 2 : 4,
         crossAxisSpacing: 8,
         mainAxisSpacing: 8,
+        childAspectRatio: 16 / 9,
       ),
       itemCount: _galleryImages.length,
       itemBuilder: (context, index) {
         return ClipRRect(
           borderRadius: BorderRadius.circular(8),
           child: CachedNetworkImage(
-            imageUrl: _galleryImages[index],
+            imageUrl: '${_galleryImages[index]}?v=${DateTime.now().millisecondsSinceEpoch ~/ 60000}',
             fit: BoxFit.cover,
             placeholder: (_, __) => Container(color: AppTheme.bgCard),
-            errorWidget: (_, __, ___) => const SizedBox.shrink(),
+            errorWidget: (_, __, ___) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && index < _galleryImages.length) {
+                  setState(() => _galleryImages.removeAt(index));
+                }
+              });
+              return const SizedBox.shrink();
+            },
           ),
         );
       },
@@ -1658,7 +1673,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   Widget _buildHeader(Movie movie) {
     final titleLines = movie.name.length > 35 ? 2 : 1;
     final originLines = (movie.originName ?? '').length > 45 ? 2 : 1;
-    final headerHeight = 60 + 170 + 10 + (titleLines * 26) + 3 + (originLines * 16) + 6 + 20 + 24;
+    final headerHeight = 115 + 170 + 10 + (titleLines * 26) + 3 + (originLines * 16) + 6 + 20 + 24;
 
     return Stack(
       clipBehavior: Clip.none,
@@ -1696,7 +1711,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         ),
         // Centered poster + title + toggle
         Positioned(
-          top: 60,
+          top: 115,
           left: 0,
           right: 0,
           child: Column(
@@ -2702,6 +2717,27 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     }
     // ignore: avoid_print
     print('=== _fetchActors END ===');
+  }
+
+  Future<void> _fetchGallery(String slug) async {
+    try {
+      final url = '${AppConfig.apiUrl}/gallery.php?slug=$slug';
+      // ignore: avoid_print
+      print('=== _fetchGallery URL: $url ===');
+      final res = await _dio.get(url);
+      // ignore: avoid_print
+      print('=== _fetchGallery response: ${res.statusCode} data=${res.data} ===');
+      final data = res.data is String ? jsonDecode(res.data as String) : res.data;
+      final images = (data['images'] as List<dynamic>? ?? [])
+          .map((e) => '${AppConfig.baseUrl}$e')
+          .toList();
+      // ignore: avoid_print
+      print('=== _fetchGallery images: ${images.length} ===');
+      if (mounted && images.isNotEmpty) setState(() => _galleryImages = images);
+    } catch (e) {
+      // ignore: avoid_print
+      print('=== _fetchGallery ERROR: $e ===');
+    }
   }
 
   // --- Related Tab ---

@@ -11,6 +11,7 @@ import 'package:media_kit/media_kit.dart' show Player, Media;
 import 'package:media_kit_video/media_kit_video.dart' show Video, VideoController, NoVideoControls;
 import 'package:phimhay_app/config/app_config.dart';
 import 'package:phimhay_app/config/theme.dart';
+import 'package:phimhay_app/config/responsive.dart';
 import 'package:phimhay_app/providers/auth_provider.dart';
 import 'package:phimhay_app/services/api_client.dart';
 import 'package:provider/provider.dart';
@@ -27,6 +28,7 @@ import 'package:phimhay_app/screens/actors/actors_list_screen.dart';
 import 'package:phimhay_app/screens/watch_room/watch_room_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:phimhay_app/services/m3u8_ad_parser.dart';
 
 /// Loại player hiện tại
 enum _PlayerMode { hls, embed }
@@ -56,6 +58,25 @@ class WatchScreen extends StatefulWidget {
 }
 
 class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
+
+  static bool get _isTablet {
+    final size = WidgetsBinding.instance.window.physicalSize;
+    final shortestSide = size.shortestSide / WidgetsBinding.instance.window.devicePixelRatio;
+    return shortestSide >= 600;
+  }
+
+  static void _restoreOrientations() {
+    if (_isTablet) {
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+    } else {
+      SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    }
+  }
   final Dio _dio = Dio();
   final MovieService _movieService = MovieService();
   InAppWebViewController? _webController;
@@ -75,6 +96,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   int _selectedServer = 0;
   dynamic _currentEpId;
   String _currentEpName = '';
+  bool _hasSwitchedEp = false; // Da chuyen tap → khong restore progress cu
 
   // Controls overlay
   bool _showControls = true;
@@ -178,6 +200,233 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     }
   }
 
+  // ── Fetch ad markers từ API ────────────────────────
+  Future<void> _fetchAdMarkers(String m3u8Url, String serverName) async {
+    if (widget.movieId <= 0 || m3u8Url.isEmpty) return;
+    try {
+      final res = await _dio.get('${AppConfig.apiUrl}/ad_markers.php', queryParameters: {
+        'url': m3u8Url,
+        'movie_id': widget.movieId,
+        'server_name': serverName,
+      });
+      final data = res.data;
+      if (data is Map && data['success'] == true) {
+        final ads = data['ads'] as List<dynamic>? ?? [];
+        _adMarkers = ads.map((e) => Map<String, dynamic>.from(e)).toList();
+        if (_adMarkers.isNotEmpty) {
+          debugPrint('Ad markers: ${_adMarkers.length} zones');
+        }
+      }
+    } catch (_) {}
+  }
+
+  // ── Parse m3u8 để detect ad chính xác ──────────────────
+  Future<void> _parseM3u8ForAds(String m3u8Url) async {
+    try {
+      _m3u8Result = await _adParser.parse(m3u8Url);
+      if (_m3u8Result!.hasAds) {
+        debugPrint('=== M3U8 AD PARSER ===');
+        debugPrint('Segments: ${_m3u8Result!.segments.length}');
+        debugPrint('Ad zones: ${_m3u8Result!.adZones.length}');
+        for (final zone in _m3u8Result!.adZones) {
+          debugPrint('  $zone');
+        }
+        debugPrint('======================');
+      }
+    } catch (e) {
+      debugPrint('M3U8 parse error: $e');
+    }
+  }
+
+  // ── Check và skip ad zone ────────────────────────
+  int _lastAdCheckTime = 0; // Throttle periodic check
+
+  void _checkAdZone(int positionSec) {
+    if (_adSkipping || _currentUrl.isEmpty) return;
+
+    // ★ 0. Neu user vua seek → reset jump tracker (khong unmute sai)
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastSeekByUser < 2000) {
+      _lastPositionForJump = positionSec;
+      return; // Bo qua check sau seek
+    }
+
+    // ★ 1. Check parsed m3u8 ad zones
+    if (_m3u8Result != null && _m3u8Result!.hasAds) {
+      final adZone = _m3u8Result!.adZoneAt(positionSec.toDouble());
+      if (adZone != null && !_adMuted) {
+        debugPrint('M3U8 AD HIT at ${positionSec}s → mute');
+        _muteForAdSkip();
+        return;
+      }
+      final nextAd = _m3u8Result!.nextAdAfter(positionSec.toDouble());
+      if (nextAd != null && nextAd.startTime - positionSec <= 3 && !_adMuted) {
+        debugPrint('AD LOOK-AHEAD: mute at ${positionSec}s');
+        _muteForAdSkip();
+        return;
+      }
+    }
+
+    // ★ 2. Detect position jump
+    if (_lastPositionForJump >= 0) {
+      final jump = positionSec - _lastPositionForJump;
+
+      // Jump nguoc RẤT LỚN (>30s) → server dang phat ad (position reset ve 0)
+      // → SKIP NGAY: stop → open → seek den sau ad
+      if (jump < -30 && !_adSkipping) {
+        int lastPos = _lastPositionForJump;
+        int seekTarget = lastPos + 10; // fallback
+
+        // Tim ad marker gan nhat SAU position cu
+        int bestStart = 99999;
+        for (final ad in _adMarkers) {
+          final start = (ad['start_time'] as int?) ?? 0;
+          // Ad marker nam SAU position cu, trong vong 60s
+          if (start > lastPos && (start - lastPos) < 60) {
+            if (start < bestStart) bestStart = start;
+          }
+        }
+        if (bestStart < 99999) {
+          seekTarget = bestStart + 2;
+        }
+
+        debugPrint('AD SKIP: ${lastPos}s → ${positionSec}s → seek to ${seekTarget}s');
+        _skipAdZone(seekTarget);
+      }
+      // Jump nguoc nho (3-30s) → mute
+      else if (jump < -3 && jump >= -30 && !_adSkipping) {
+        debugPrint('AD INJECT (mute): ${_lastPositionForJump}s → ${positionSec}s');
+        _muteForAdSkip();
+      }
+
+      // Jump tien > 3s + dang muted → ad xong, content tiep tuc
+      if (jump > 3 && _adMuted) {
+        debugPrint('AD END: ${_lastPositionForJump}s → ${positionSec}s → unmute');
+        _unmuteAfterAdSkip();
+      }
+    }
+    _lastPositionForJump = positionSec;
+
+    // ★ 3. Periodic check moi 2s — bat qua truong hop ad bi lo
+    if (now - _lastAdCheckTime > 2000 && !_adMuted) {
+      _lastAdCheckTime = now;
+      // Check API markers
+      for (final ad in _adMarkers) {
+        final start = (ad['start_time'] as int?) ?? 0;
+        if (positionSec >= start - 3 && positionSec < start + 5) {
+          debugPrint('API AD HIT (periodic) at ${positionSec}s → mute');
+          _muteForAdSkip();
+          return;
+        }
+      }
+      // Check m3u8 zones
+      if (_m3u8Result != null && _m3u8Result!.hasAds) {
+        final adZone = _m3u8Result!.adZoneAt(positionSec.toDouble());
+        if (adZone != null) {
+          debugPrint('M3U8 AD HIT (periodic) at ${positionSec}s → mute');
+          _muteForAdSkip();
+        }
+      }
+    }
+  }
+
+  /// ★ Mute để chặn audio leak trước khi skip ad
+  void _muteForAdSkip() {
+    if (_adMuted) return;
+    _adMuted = true;
+    _hlsPlayer?.setVolume(0.0);
+    debugPrint('AD SKIP: muted');
+  }
+
+  /// ★ Unmute sau khi skip ad xong
+  void _unmuteAfterAdSkip() {
+    _adUnmuteTimer?.cancel();
+    _adUnmuteTimer = Timer(const Duration(milliseconds: 800), () {
+      if (!mounted) return;
+      _adMuted = false;
+      final restoreVol = _isMuted ? 0.0 : (_volume > 0 ? _volume : 100.0);
+      _hlsPlayer?.setVolume(restoreVol);
+      debugPrint('AD SKIP: unmuted, volume=$restoreVol');
+    });
+  }
+
+  /// ★ Skip ad zone: Mute → Stop → Re-open → Wait ready → Seek → Unmute
+  void _skipAdZone(int seekToSec) {
+    _adSkipping = true;
+    final wasPlaying = _hlsPlayer?.state.playing ?? false;
+
+    // Step 1: MUTE ngay lập tức → zero audio leak
+    _muteForAdSkip();
+
+    // Step 2: STOP player → xóa sạch buffer (không đơ)
+    _hlsPlayer?.stop().then((_) {
+      if (!mounted) return;
+
+      // Step 3: Re-open stream
+      _hlsPlayer?.open(Media(_currentUrl));
+
+      // Step 4: Đợi player ready (duration > 0) rồi mới seek
+      StreamSubscription? durationSub;
+      durationSub = _hlsPlayer!.stream.duration.listen((dur) {
+        if (dur.inSeconds <= 0) return; // Chưa load xong
+        durationSub?.cancel(); // Chỉ trigger 1 lần
+
+        if (!mounted) return;
+
+        // Player đã ready → seek tới sau ad
+        _hlsPlayer!.seek(Duration(seconds: seekToSec)).then((_) {
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mounted && wasPlaying) _hlsPlayer?.play();
+            // Unmute sau khi video chạy ổn định
+            _unmuteAfterAdSkip();
+            Future.delayed(const Duration(seconds: 3), () {
+              _adSkipping = false;
+            });
+          });
+        });
+      });
+    });
+  }
+
+  // ── Ad overlay simulation ──────────────────────────
+  void _showAdOverlay(AdZone adZone) {
+    _adMode = true;
+    _currentAdZone = adZone;
+    _adRemainingSec = adZone.duration.toInt();
+
+    // ★ MUTE + Pause để zero audio leak
+    _muteForAdSkip();
+    _hlsPlayer?.pause();
+
+    // Start countdown
+    _adCountdownTimer?.cancel();
+    _adCountdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) { timer.cancel(); return; }
+      setState(() {
+        _adRemainingSec--;
+        if (_adRemainingSec <= 0) {
+          _dismissAdOverlay();
+          timer.cancel();
+        }
+      });
+    });
+
+    setState(() {});
+  }
+
+  void _dismissAdOverlay() {
+    _adMode = false;
+    _adCountdownTimer?.cancel();
+    final adZone = _currentAdZone;
+    _currentAdZone = null;
+
+    if (adZone == null) return;
+
+    // ★ Stop + Re-open → clear buffer, avoid freeze
+    final seekTo = adZone.endTime.toInt() + 2;
+    _skipAdZone(seekTo);
+  }
+
   // ── Load watch progress từ DB ────────────────────────
   Future<void> _loadWatchProgress() async {
     if (widget.movieId <= 0) return;
@@ -201,6 +450,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   // ── Restore server/episode từ saved progress (gọi sau khi có episodes) ──
   void _restoreFromProgress() {
+    // ★ FIX: Neu da chuyen tap trong watch screen → skip restore
+    if (_hasSwitchedEp) return;
     // ★ FIX: Nếu user đã chọn cụ thể tập từ movie detail → skip restore
     if (widget.episodeId != null && widget.episodeId > 0) return;
 
@@ -341,7 +592,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   Future<void> _saveCurrentProgress() async {
     if (widget.movieId <= 0) return;
     // Watch room đang mở hoặc ad đang chạy → không lưu
-    if (_watchRoomActive) return;
+    if (_watchRoomActive || _adMode) return;
     // Chưa seek xong → không lưu
     if (!_seekCompleted && _currentPosition > 15) return;
     int pos = 0;
@@ -568,10 +819,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _playingSub?.cancel();
     _stuckDetector?.cancel();
     _stateSyncTimer?.cancel();
+    _adCountdownTimer?.cancel();
+    _adUnmuteTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _saveProgressOnExit();
     ActivityService.stopWatching();
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    _restoreOrientations();
     _hlsPlayer?.dispose();
     _webController?.dispose();
     super.dispose();
@@ -625,7 +878,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     if (url.isNotEmpty) {
       _currentUrl = url;
       final isM3u8 = url.contains('.m3u8');
-      if (isM3u8) _initHlsPlayer(url);
+      if (isM3u8) {
+        _adMarkers = [];
+        _initHlsPlayer(url);
+        _fetchAdMarkers(url, _currentServerName);
+      }
       if (mounted) setState(() { _playerMode = isM3u8 ? _PlayerMode.hls : _PlayerMode.embed; _isLoading = false; });
     } else {
       // Không có tập + không có streamUrl → load trang web phim (giống browser)
@@ -659,7 +916,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       // Ưu tiên HLS cho tất cả (mobile chạy được hết)
       if (m3u8.isNotEmpty) {
         _currentUrl = m3u8;
+        _adMarkers = []; // Reset ad markers cho tap moi
         _initHlsPlayer(m3u8);
+        _fetchAdMarkers(m3u8, _currentServerName);
         if (mounted) setState(() { _playerMode = _PlayerMode.hls; _isLoading = false; });
       } else if (embed.isNotEmpty) {
         _currentUrl = embed;
@@ -683,7 +942,21 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   int _seekTargetTime = 0; // Thời gian seek đang nhắm tới (chống position nhảy)
   int _lastPosForAdCheck = -1; // Position trước đó để detect crossed ad zone
 
-  // ── Ad tracking removed ──
+  // ── Ad markers ──
+  List<Map<String, dynamic>> _adMarkers = [];
+  bool _adSkipping = false; // Dang skip ad → khong trigger lai
+
+  // ── M3U8 Ad Parser ──
+  final M3u8AdParser _adParser = M3u8AdParser();
+  M3u8ParseResult? _m3u8Result;
+  bool _adMode = false;        // Đang hiển thị overlay ad?
+  int _adRemainingSec = 0;     // Đếm ngược ad
+  Timer? _adCountdownTimer;
+  AdZone? _currentAdZone;      // Ad zone hiện tại
+  bool _adMuted = false;       // Đã mute để chống audio leak
+  int _lastPositionForJump = -1; // Track position để detect jump (ad injection)
+  Timer? _adUnmuteTimer;       // Timer unmute sau khi skip ad
+
   int _lastSeekByUser = 0;
   String _currentServerName = '';
 
@@ -704,6 +977,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (showSkip != _showSkipIntro && mounted) {
         setState(() => _showSkipIntro = showSkip);
       }
+
+      // Auto-skip ad zone
+      _checkAdZone(sec);
 
       // Update custom controls position (throttle UI update mỗi 500ms)
       if (mounted && !_isDragging) {
@@ -785,6 +1061,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       _playerReady = true;
       setState(() => _isLoading = false);
+
+      // ★ Parse m3u8 for ad detection (async, non-blocking)
+      if (url.contains('.m3u8')) {
+        _parseM3u8ForAds(url);
+      }
 
       // Setup PiP controller (iOS) — tạo AVPlayer sẵn khi video load
       _setupPip();
@@ -972,7 +1253,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   // ── Chuyển tập ────────────────────────────────────
   void _switchEpisode(Map<String, dynamic> ep, {bool keepPosition = false}) {
-    // Lưu progress tập hiện tại trước khi chuyển
+    _hasSwitchedEp = true; // Danh dau da chuyen tap
+    // Luu progress tap hien tai truoc khi chuyen
     if (!keepPosition) _saveCurrentProgress();
 
     final epId = ep['id'];
@@ -997,15 +1279,23 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       _playerReady = false;
       _playerMode = useHls ? _PlayerMode.hls : _PlayerMode.embed;
       if (!keepPosition) {
-        _currentPosition = 0; // Reset position cho tập mới
+        _currentPosition = 0;
         _lastSavedPosition = 0;
         _seekTargetTime = 0;
+        _seekCompleted = false;
+        _lastPositionForJump = -1; // Reset ad tracking
+        _adMarkers = [];
+        _m3u8Result = null;
+        _adMuted = false;
+        _adSkipping = false;
       }
     });
 
     if (useHls) {
       _hlsPlayer?.stop(); // Dừng player cũ
+      _adMarkers = [];
       _initHlsPlayer(url);
+      _fetchAdMarkers(url, _currentServerName);
       // Update PiP URL cho iOS (chuyển tập → PiP cũng phải update)
       _updatePipUrl();
     }
@@ -1063,13 +1353,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                     top: 8, left: 8,
                     child: GestureDetector(
                       onTap: () {
-                        SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+                        _restoreOrientations();
                         Future.delayed(const Duration(milliseconds: 300), () {
-                          SystemChrome.setPreferredOrientations([
-                            DeviceOrientation.portraitUp,
-                            DeviceOrientation.landscapeLeft,
-                            DeviceOrientation.landscapeRight,
-                          ]);
+                          _restoreOrientations();
                         });
                       },
                       child: Container(
@@ -1120,9 +1406,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                           builder: (context) {
                             final auth = context.watch<AuthProvider>();
                             return BottomNav(
-                              currentIndex: 3,
+                              currentIndex: -1,
                               onTabSelected: (index) {
-                                if (index == 3) return;
                                 Navigator.pushReplacement(
                                   context,
                                   MaterialPageRoute(builder: (_) => HomeScreen(initialIndex: index)),
@@ -1509,6 +1794,60 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 ),
               ]),
             ),
+
+          // ── Ad overlay simulation ──
+          if (_adMode)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black87,
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.ad_units, color: Colors.amber, size: 48),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Quảng cáo',
+                        style: TextStyle(color: Colors.white70, fontSize: 14),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '$_adRemainingSec giây',
+                        style: const TextStyle(
+                          color: Colors.amber,
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // Progress bar
+                      SizedBox(
+                        width: 200,
+                        child: LinearProgressIndicator(
+                          value: _currentAdZone != null && _currentAdZone!.duration > 0
+                              ? (_currentAdZone!.duration - _adRemainingSec) / _currentAdZone!.duration
+                              : 0,
+                          backgroundColor: Colors.white24,
+                          valueColor: const AlwaysStoppedAnimation(Colors.amber),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      GestureDetector(
+                        onTap: _dismissAdOverlay,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.white38),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Text('Bỏ qua ▸', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
         ],
       );
   }
@@ -1721,11 +2060,20 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       );
     }
 
-    final totalPages = eps.length > _epPerPage ? (eps.length / _epPerPage).ceil() : 1;
+    // Deduplicate theo ep_name
+    final seen = <String>{};
+    final uniqueEps = eps.where((e) {
+      final key = (e['ep_name'] ?? e['name'] ?? '').toString();
+      if (seen.contains(key)) return false;
+      seen.add(key);
+      return true;
+    }).toList();
+
+    final totalPages = uniqueEps.length > _epPerPage ? (uniqueEps.length / _epPerPage).ceil() : 1;
     final currentPage = _sheetEpPage.clamp(1, totalPages);
     final startIdx = (currentPage - 1) * _epPerPage;
-    final endIdx = (startIdx + _epPerPage).clamp(0, eps.length);
-    final pagedList = eps.sublist(startIdx, endIdx);
+    final endIdx = (startIdx + _epPerPage).clamp(0, uniqueEps.length);
+    final pagedList = uniqueEps.sublist(startIdx, endIdx);
 
     return Column(
       children: [
@@ -1744,7 +2092,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Center(
                       child: Text(
-                        '${startIdx + 1}-${endIdx}/${eps.length}',
+                        '${startIdx + 1}-${endIdx}/${uniqueEps.length}',
                         style: const TextStyle(color: Colors.white38, fontSize: 10),
                       ),
                     ),
@@ -2387,13 +2735,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   void _toggleFullscreen() {
     if (_isLandscape) {
-      SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+      _restoreOrientations();
       Future.delayed(const Duration(milliseconds: 300), () {
-        SystemChrome.setPreferredOrientations([
-          DeviceOrientation.portraitUp,
-          DeviceOrientation.landscapeLeft,
-          DeviceOrientation.landscapeRight,
-        ]);
+        _restoreOrientations();
       });
     } else {
       SystemChrome.setPreferredOrientations([
@@ -2608,11 +2952,21 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     }
 
     final list = allEps.isNotEmpty ? allEps : _flatEps;
-    final totalPages = list.length > _epPerPage ? (list.length / _epPerPage).ceil() : 1;
+
+    // Deduplicate theo ep_name
+    final seen = <String>{};
+    final uniqueList = list.where((e) {
+      final key = (e['ep_name'] ?? e['name'] ?? '').toString();
+      if (seen.contains(key)) return false;
+      seen.add(key);
+      return true;
+    }).toList();
+
+    final totalPages = uniqueList.length > _epPerPage ? (uniqueList.length / _epPerPage).ceil() : 1;
     final currentPage = _epPage.clamp(1, totalPages);
     final startIdx = (currentPage - 1) * _epPerPage;
-    final endIdx = (startIdx + _epPerPage).clamp(0, list.length);
-    final pagedList = list.sublist(startIdx, endIdx);
+    final endIdx = (startIdx + _epPerPage).clamp(0, uniqueList.length);
+    final pagedList = uniqueList.sublist(startIdx, endIdx);
 
     return Column(
       children: [
@@ -2635,7 +2989,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                     ),
                     child: Center(
                       child: Text(
-                        '${startIdx + 1}-${endIdx}/${list.length}',
+                        '${startIdx + 1}-${endIdx}/${uniqueList.length}',
                         style: const TextStyle(color: Colors.white38, fontSize: 10),
                       ),
                     ),
@@ -2675,8 +3029,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         Expanded(
           child: GridView.builder(
             padding: const EdgeInsets.fromLTRB(14, 4, 14, 16),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 5,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: Responsive.episodeColumns(context),
               crossAxisSpacing: 6,
               mainAxisSpacing: 6,
               childAspectRatio: 1.4,
@@ -2718,6 +3072,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             },
           ),
         ),
+        const SizedBox(height: 80), // Spacer cho BottomNav
       ],
     );
   }

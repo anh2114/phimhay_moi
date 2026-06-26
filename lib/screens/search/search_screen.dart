@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:phimhay_app/config/app_config.dart';
+import 'package:phimhay_app/config/responsive.dart';
 import 'package:phimhay_app/config/theme.dart';
 import 'package:phimhay_app/models/movie.dart';
 import 'package:phimhay_app/screens/movie_detail/movie_detail_screen.dart';
@@ -20,20 +21,23 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
   final FocusNode _searchFocus = FocusNode();
   final Dio _dio = Dio();
   Timer? _debounce;
+  CancelToken? _pendingCancel;
 
   bool _isLoading = false;
+  bool _isSearching = false; // dang gui request
   List<Movie> _results = [];
   bool _hasSearched = false;
   int _totalResults = 0;
   int _currentPage = 1;
   bool _hasMore = true;
+  String? _errorMessage;
 
   // Filters
   bool _showFilterPanel = false;
   String _country = '';
   String _genre = '';
   String _year = '';
-  String _sortBy = 'newest';
+  String _sortBy = '';
   String _filterType = '';
 
   // Filter data from API
@@ -44,23 +48,25 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
   @override
   bool get wantKeepAlive => widget.isTab;
 
+  bool get _hasActiveFilters => _country.isNotEmpty || _genre.isNotEmpty || _year.isNotEmpty || _sortBy.isNotEmpty || _filterType.isNotEmpty;
+
   @override
   void initState() {
     super.initState();
     _fetchFilterData();
-    if (widget.isTab) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _searchFocus.requestFocus());
+    if (!widget.isTab) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _searchFocus.requestFocus());
+    }
   }
 
   @override
   void dispose() {
+    _debounce?.cancel();
+    _pendingCancel?.cancel();
     _searchCtrl.dispose();
     _searchFocus.dispose();
-    _debounce?.cancel();
     super.dispose();
   }
-
-  bool get _hasActiveFilters => _country.isNotEmpty || _genre.isNotEmpty || _year.isNotEmpty || _sortBy != 'newest';
 
   Future<void> _fetchFilterData() async {
     try {
@@ -77,9 +83,10 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
 
   void _onSearchChanged(String query) {
     _debounce?.cancel();
+    setState(() {}); // fix clear button rebuild
     _debounce = Timer(const Duration(milliseconds: 400), () {
       if (query.trim().isEmpty && !_hasActiveFilters) {
-        setState(() { _results = []; _hasSearched = false; });
+        setState(() { _results = []; _hasSearched = false; _errorMessage = null; });
         return;
       }
       _currentPage = 1;
@@ -89,8 +96,13 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
   }
 
   Future<void> _performSearch({bool loadMore = false}) async {
+    // Huy request truoc do neu dang chay
+    _pendingCancel?.cancel();
+    _pendingCancel = CancelToken();
     if (_isLoading) return;
-    setState(() => _isLoading = true);
+
+    setState(() { _isLoading = true; _isSearching = true; _errorMessage = null; });
+
     try {
       final params = <String, dynamic>{
         'page': loadMore ? _currentPage + 1 : 1,
@@ -101,15 +113,17 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
       if (_country.isNotEmpty) params['country'] = _country;
       if (_genre.isNotEmpty) params['genre'] = _genre;
       if (_year.isNotEmpty) params['year'] = _year;
-      if (_sortBy.isNotEmpty && _sortBy != 'newest') params['sort'] = _sortBy;
+      if (_sortBy.isNotEmpty) params['sort'] = _sortBy;
       if (_filterType.isNotEmpty) params['type'] = _filterType;
 
-      final res = await _dio.get('${AppConfig.apiUrl}/danh_sach.php', queryParameters: params);
+      final res = await _dio.get('${AppConfig.apiUrl}/danh_sach.php', queryParameters: params, cancelToken: _pendingCancel);
+
       final data = res.data;
       if (data is Map) {
         final movies = (data['movies'] as List?) ?? [];
         final total = data['total'] ?? 0;
         final newResults = movies.map((e) => Movie.fromJson(e as Map<String, dynamic>)).toList();
+        if (!mounted) return;
         setState(() {
           if (loadMore) {
             _results.addAll(newResults);
@@ -122,10 +136,26 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
           _hasSearched = true;
           _hasMore = _results.length < total;
           _isLoading = false;
+          _isSearching = false;
         });
       }
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.cancel) return;
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _isSearching = false;
+        _errorMessage = 'Loi ket noi. Kiem tra mang va thu lai.';
+        if (!loadMore) { _results = []; _hasSearched = true; }
+      });
     } catch (_) {
-      setState(() { _isLoading = false; if (!loadMore) { _results = []; _hasSearched = true; } });
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _isSearching = false;
+        _errorMessage = 'Co loi xay ra. Thu lai sau.';
+        if (!loadMore) { _results = []; _hasSearched = true; }
+      });
     }
   }
 
@@ -134,12 +164,16 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
       _country = '';
       _genre = '';
       _year = '';
-      _sortBy = 'newest';
+      _sortBy = '';
       _filterType = '';
     });
     _currentPage = 1;
     _hasMore = true;
-    _performSearch();
+    if (_searchCtrl.text.trim().isEmpty) {
+      setState(() { _results = []; _hasSearched = false; });
+    } else {
+      _performSearch();
+    }
   }
 
   void _removeFilter(String type) {
@@ -148,13 +182,27 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
         case 'country': _country = ''; break;
         case 'genre': _genre = ''; break;
         case 'year': _year = ''; break;
-        case 'sort': _sortBy = 'newest'; break;
+        case 'sort': _sortBy = ''; break;
         case 'type': _filterType = ''; break;
       }
     });
     _currentPage = 1;
     _hasMore = true;
+    if (_searchCtrl.text.trim().isEmpty && !_hasActiveFilters) {
+      setState(() { _results = []; _hasSearched = false; });
+    } else {
+      _performSearch();
+    }
+  }
+
+  void _applyFilters() {
+    _currentPage = 1;
+    _hasMore = true;
     _performSearch();
+    // Giu panel mo de user thay ket qua, dong sau 300ms
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) setState(() => _showFilterPanel = false);
+    });
   }
 
   @override
@@ -172,13 +220,14 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
               controller: _searchCtrl,
               focusNode: _searchFocus,
               onChanged: _onSearchChanged,
+              onSubmitted: (_) => _performSearch(),
               style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16),
               decoration: InputDecoration(
-                hintText: 'Tìm kiếm phim yêu thích...',
+                hintText: 'Tim kiem phim yeu thich...',
                 hintStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 16),
                 prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.textMuted, size: 22),
                 suffixIcon: _searchCtrl.text.isNotEmpty
-                    ? IconButton(icon: const Icon(Icons.clear_rounded, color: AppTheme.textMuted, size: 20), onPressed: () { _searchCtrl.clear(); _onSearchChanged(''); })
+                    ? IconButton(icon: const Icon(Icons.clear_rounded, color: AppTheme.textMuted, size: 20), onPressed: () { _searchCtrl.clear(); _onSearchChanged(''); _searchFocus.requestFocus(); })
                     : null,
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(vertical: 14),
@@ -203,13 +252,12 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                         decoration: BoxDecoration(color: const Color(0x1AFF3B30), borderRadius: BorderRadius.circular(999), border: Border.all(color: const Color(0x40FF3B30))),
-                        child: const Text('Xoá bộ lọc', style: TextStyle(color: Color(0xFFFF3B30), fontSize: 12, fontWeight: FontWeight.w600)),
+                        child: const Text('Xoa bo loc', style: TextStyle(color: Color(0xFFFF3B30), fontSize: 12, fontWeight: FontWeight.w600)),
                       ),
                     ),
                   ],
                 ],
               ),
-              // Active filter chips
               if (_hasActiveFilters) ...[
                 const SizedBox(height: 8),
                 Wrap(
@@ -219,7 +267,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
                     if (_country.isNotEmpty) _activeChip(_countryLabel(_country), () => _removeFilter('country')),
                     if (_genre.isNotEmpty) _activeChip(_genreLabel(_genre), () => _removeFilter('genre')),
                     if (_year.isNotEmpty) _activeChip(_year, () => _removeFilter('year')),
-                    if (_sortBy != 'newest') _activeChip(_sortLabel(_sortBy), () => _removeFilter('sort')),
+                    if (_sortBy.isNotEmpty) _activeChip(_sortLabel(_sortBy), () => _removeFilter('sort')),
                     if (_filterType.isNotEmpty) _activeChip(_typeLabel(_filterType), () => _removeFilter('type')),
                   ],
                 ),
@@ -236,21 +284,35 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
 
         const SizedBox(height: 8),
 
-        // Result count
-        if (_hasSearched)
+        // Result count + error
+        if (_errorMessage != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: const Color(0x1AFF3B30), borderRadius: BorderRadius.circular(8)),
+              child: Row(children: [
+                const Icon(Icons.error_outline, color: Color(0xFFFF3B30), size: 16),
+                const SizedBox(width: 8),
+                Expanded(child: Text(_errorMessage!, style: const TextStyle(color: Color(0xFFFF6B6B), fontSize: 12))),
+                GestureDetector(onTap: _performSearch, child: const Text('Thu lai', style: TextStyle(color: AppTheme.gold, fontSize: 12, fontWeight: FontWeight.w600))),
+              ]),
+            ),
+          )
+        else if (_hasSearched)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text('$_totalResults kết quả', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+              child: Text('$_totalResults ket qua', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
             ),
           ),
 
         // Results
         Expanded(
           child: _isLoading && _results.isEmpty
-              ? const Center(child: CircularProgressIndicator(color: AppTheme.gold))
-              : _hasSearched && _results.isEmpty
+              ? _buildSkeletonLoading()
+              : _hasSearched && _results.isEmpty && _errorMessage == null
                   ? _buildEmptyState()
                   : _results.isNotEmpty
                       ? _buildResults()
@@ -266,7 +328,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
         backgroundColor: AppTheme.bg,
         elevation: 0,
         leading: IconButton(icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary), onPressed: () => Navigator.pop(context)),
-        title: const Text('Tìm kiếm', style: TextStyle(color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
+        title: const Text('Tim kiem', style: TextStyle(color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
       ),
       body: body,
     );
@@ -287,7 +349,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
           children: [
             Icon(Icons.filter_list_rounded, size: 16, color: _hasActiveFilters ? const Color(0xFF1A1100) : AppTheme.textSub),
             const SizedBox(width: 6),
-            Text('Bộ lọc', style: TextStyle(
+            Text('Bo loc', style: TextStyle(
               color: _hasActiveFilters ? const Color(0xFF1A1100) : AppTheme.textSub,
               fontSize: 13,
               fontWeight: FontWeight.w600,
@@ -336,36 +398,31 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Loại phim
-            _filterRow('Loại phim:', [
-              _filterOption('Phim mới', '', _filterType, (v) => setState(() => _filterType = '')),
-              _filterOption('Phim bộ', 'series', _filterType, (v) => setState(() => _filterType = 'series')),
-              _filterOption('Phim lẻ', 'single', _filterType, (v) => setState(() => _filterType = 'single')),
-              _filterOption('Hoạt hình', 'hoathinh', _filterType, (v) => setState(() => _filterType = 'hoathinh')),
+            _filterRow('Loai phim:', [
+              _filterOption('Tat ca', '', _filterType, (v) => setState(() => _filterType = '')),
+              _filterOption('Phim bo', 'series', _filterType, (v) => setState(() => _filterType = 'series')),
+              _filterOption('Phim le', 'single', _filterType, (v) => setState(() => _filterType = 'single')),
+              _filterOption('Hoa tinh', 'hoathinh', _filterType, (v) => setState(() => _filterType = 'hoathinh')),
               _filterOption('TV Shows', 'tvshows', _filterType, (v) => setState(() => _filterType = 'tvshows')),
             ]),
-            // Quốc gia
-            _filterRow('Quốc gia:', [
-              _filterOption('Tất cả', '', _country, (v) => setState(() => _country = '')),
+            _filterRow('Quoc gia:', [
+              _filterOption('Tat ca', '', _country, (v) => setState(() => _country = '')),
               ..._countries.map((c) => _filterOption(c['name'] ?? '', c['slug'] ?? '', _country, (v) => setState(() => _country = v))),
             ]),
-            // Thể loại
-            _filterRow('Thể loại:', [
-              _filterOption('Tất cả', '', _genre, (v) => setState(() => _genre = '')),
+            _filterRow('The loai:', [
+              _filterOption('Tat ca', '', _genre, (v) => setState(() => _genre = '')),
               ..._genres.map((g) => _filterOption(g['name'] ?? '', g['slug'] ?? '', _genre, (v) => setState(() => _genre = v))),
             ]),
-            // Năm
-            _filterRow('Năm:', [
-              _filterOption('Tất cả', '', _year, (v) => setState(() => _year = '')),
+            _filterRow('Nam:', [
+              _filterOption('Tat ca', '', _year, (v) => setState(() => _year = '')),
               ..._years.map((y) => _filterOption('$y', '$y', _year, (v) => setState(() => _year = v))),
             ]),
-            // Sắp xếp
-            _filterRow('Sắp xếp:', [
-              _filterOption('Mới nhất', 'newest', _sortBy, (v) => setState(() => _sortBy = 'newest')),
-              _filterOption('Điểm cao', 'imdb', _sortBy, (v) => setState(() => _sortBy = 'imdb')),
-              _filterOption('Xem nhiều', 'views', _sortBy, (v) => setState(() => _sortBy = 'views')),
+            _filterRow('Sap xep:', [
+              _filterOption('Mac dinh', '', _sortBy, (v) => setState(() => _sortBy = '')),
+              _filterOption('Moi nhat', 'newest', _sortBy, (v) => setState(() => _sortBy = 'newest')),
+              _filterOption('Diem cao', 'imdb', _sortBy, (v) => setState(() => _sortBy = 'imdb')),
+              _filterOption('Xem nhieu', 'views', _sortBy, (v) => setState(() => _sortBy = 'views')),
             ]),
-            // Apply button
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
@@ -376,13 +433,8 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
-                onPressed: () {
-                  setState(() => _showFilterPanel = false);
-                  _currentPage = 1;
-                  _hasMore = true;
-                  _performSearch();
-                },
-                child: const Text('Áp dụng', style: TextStyle(fontWeight: FontWeight.w700)),
+                onPressed: _applyFilters,
+                child: const Text('Ap dung', style: TextStyle(fontWeight: FontWeight.w700)),
               ),
             ),
           ],
@@ -399,11 +451,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
         children: [
           Text(label, style: TextStyle(color: AppTheme.textSub, fontSize: 12, fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: options,
-          ),
+          Wrap(spacing: 6, runSpacing: 6, children: options),
         ],
       ),
     );
@@ -438,8 +486,8 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
         return false;
       },
       child: GridView.builder(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, mainAxisSpacing: 12, crossAxisSpacing: 10, childAspectRatio: 0.55),
+        padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.of(context).padding.bottom + 80),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: Responsive.gridColumns(context), mainAxisSpacing: 12, crossAxisSpacing: 10, childAspectRatio: 0.55),
         itemCount: _results.length + (_hasMore ? 1 : 0),
         itemBuilder: (ctx, i) {
           if (i == _results.length) return const Center(child: CircularProgressIndicator(color: AppTheme.gold, strokeWidth: 2));
@@ -471,9 +519,9 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
                 ),
                 if ((m.quality ?? '').isNotEmpty)
                   Positioned(top: 6, right: 6, child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                    decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(4)),
-                    child: Text(m.quality!, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w700)),
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4)),
+                    child: Text(m.quality!.toUpperCase(), style: const TextStyle(color: Color(0xFF1A1100), fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
                   )),
                 if ((m.episodeCurrent ?? '').isNotEmpty)
                   Positioned(bottom: 6, left: 6, child: Container(
@@ -486,13 +534,13 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
           ),
         ),
         const SizedBox(height: 6),
-        Text(m.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w600)),
+        Text(m.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w600, height: 1.3)),
         if (m.year != null || (m.originName ?? '').isNotEmpty)
           Text.rich(
             TextSpan(
               children: [
                 if (m.year != null) TextSpan(text: '${m.year}', style: const TextStyle(color: Colors.white, fontSize: 10)),
-                if (m.year != null && (m.originName ?? '').isNotEmpty) TextSpan(text: ' · ', style: TextStyle(color: AppTheme.textMuted, fontSize: 10)),
+                if (m.year != null && (m.originName ?? '').isNotEmpty) TextSpan(text: ' . ', style: TextStyle(color: AppTheme.textMuted, fontSize: 10)),
                 if ((m.originName ?? '').isNotEmpty) TextSpan(text: m.originName!, style: TextStyle(color: AppTheme.textMuted, fontSize: 10)),
               ],
             ),
@@ -502,14 +550,42 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
     );
   }
 
+  Widget _buildSkeletonLoading() {
+    return GridView.builder(
+      padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.of(context).padding.bottom + 80),
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: Responsive.gridColumns(context), mainAxisSpacing: 12, crossAxisSpacing: 10, childAspectRatio: 0.55),
+      itemCount: 9,
+      itemBuilder: (ctx, i) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Container(color: AppTheme.bgCard),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Container(height: 12, width: double.infinity, color: AppTheme.bgCard),
+            const SizedBox(height: 4),
+            Container(height: 10, width: 60, color: AppTheme.bgCard),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildEmptyState() {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('🎬', style: TextStyle(fontSize: 48)),
+          const Icon(Icons.search_off_rounded, size: 56, color: AppTheme.textMuted),
           const SizedBox(height: 12),
-          Text('Không tìm thấy phim nào phù hợp', style: TextStyle(color: AppTheme.textSub, fontSize: 14)),
+          Text('Khong tim thay phim nao phu hop', style: TextStyle(color: AppTheme.textSub, fontSize: 14)),
+          const SizedBox(height: 4),
+          Text('Thu voi tu khoa khac hoac bo loc khac', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
         ],
       ),
     );
@@ -522,7 +598,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
         children: [
           Icon(Icons.search_rounded, size: 64, color: AppTheme.textMuted.withValues(alpha: 0.3)),
           const SizedBox(height: 12),
-          Text('Nhập từ khóa để tìm kiếm', style: TextStyle(color: AppTheme.textMuted, fontSize: 14)),
+          Text('Nhap tu khoa de tim kiem', style: TextStyle(color: AppTheme.textMuted, fontSize: 14)),
         ],
       ),
     );
@@ -530,6 +606,6 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
 
   String _countryLabel(String slug) => _countries.firstWhere((c) => c['slug'] == slug, orElse: () => {'name': slug})['name'] ?? slug;
   String _genreLabel(String slug) => _genres.firstWhere((g) => g['slug'] == slug, orElse: () => {'name': slug})['name'] ?? slug;
-  String _sortLabel(String s) => {'imdb': 'Điểm cao', 'views': 'Xem nhiều', 'newest': 'Mới nhất'}[s] ?? s;
-  String _typeLabel(String s) => {'series': 'Phim bộ', 'single': 'Phim lẻ', 'hoathinh': 'Hoạt hình', 'tvshows': 'TV Shows'}[s] ?? 'Phim mới';
+  String _sortLabel(String s) => {'imdb': 'Diem cao', 'views': 'Xem nhieu', 'newest': 'Moi nhat'}[s] ?? s;
+  String _typeLabel(String s) => {'series': 'Phim bo', 'single': 'Phim le', 'hoathinh': 'Hoa tinh', 'tvshows': 'TV Shows'}[s] ?? s;
 }

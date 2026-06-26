@@ -13,7 +13,7 @@ on:
 
 jobs:
   build-ios:
-    runs-on: macos-latest
+    runs-on: macos-14
 
     steps:
       - name: Checkout code
@@ -24,6 +24,9 @@ jobs:
         with:
           channel: 'stable'
           cache: true
+
+      - name: Disable Swift Package Manager
+        run: flutter config --no-enable-swift-package-manager
 
       - name: Cache CocoaPods
         uses: actions/cache@v4
@@ -59,27 +62,6 @@ jobs:
           PBXPROJ="ios/Runner.xcodeproj/project.pbxproj"
           sed -i '' "s/IPHONEOS_DEPLOYMENT_TARGET = .*/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/" "$PBXPROJ"
 
-      - name: Inject Swift Concurrency linker flag
-        run: |
-          python3 << 'PYEOF'
-          pbxproj = "ios/Runner.xcodeproj/project.pbxproj"
-          with open(pbxproj) as f:
-              content = f.read()
-          if "-lswift_Concurrency" not in content:
-              old = "ENABLE_BITCODE = NO;"
-              new = ('ENABLE_BITCODE = NO;\n'
-                     '\t\t\t\tOTHER_LDFLAGS = (\n'
-                     '\t\t\t\t\t"$(inherited)",\n'
-                     '\t\t\t\t\t"-lswift_Concurrency",\n'
-                     '\t\t\t\t);')
-              content = content.replace(old, new)
-              with open(pbxproj, "w") as f:
-                  f.write(content)
-              print("OK: injected -lswift_Concurrency")
-          else:
-              print("OK: flag already present")
-          PYEOF
-
       - name: Install dependencies
         run: flutter pub get
 
@@ -92,6 +74,21 @@ jobs:
             pod install --repo-update
           fi
           cd ..
+
+      - name: Inject Swift Concurrency linker flags
+        run: |
+          XCCONFIG_DIR="ios/Pods/Target Support Files/Pods-Runner"
+          for f in "$XCCONFIG_DIR"/*.xcconfig; do
+            if [ -f "$f" ] && ! grep -q "lswift_Concurrency" "$f"; then
+              echo 'OTHER_LDFLAGS = $(inherited) -lswift_Concurrency' >> "$f"
+              echo "Patched: $f"
+            fi
+          done
+          PBXPROJ="ios/Runner.xcodeproj/project.pbxproj"
+          if ! grep -q "lswift_Concurrency" "$PBXPROJ"; then
+            sed -i '' 's/ENABLE_BITCODE = NO;/ENABLE_BITCODE = NO;\n\t\t\t\tOTHER_LDFLAGS = (\n\t\t\t\t\t"$(inherited)",\n\t\t\t\t\t"-lswift_Concurrency",\n\t\t\t\t);/' "$PBXPROJ"
+            echo "Patched project.pbxproj"
+          fi
 
       - name: Build iOS
         run: flutter build ios --release --no-codesign
