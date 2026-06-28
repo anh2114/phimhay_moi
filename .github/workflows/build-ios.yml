@@ -82,15 +82,6 @@ jobs:
           pod install --repo-update
           cd ..
 
-      - name: Verify StartApp SDK installed
-        run: |
-          if grep -q "StartAppSDK" ios/Podfile.lock; then
-            echo "✅ StartAppSDK found in Podfile.lock"
-          else
-            echo "⚠️ StartAppSDK NOT found — checking pod install output..."
-            grep -i "startapp" ios/Podfile.lock || echo "StartAppSDK completely missing"
-          fi
-
       - name: Build iOS
         run: flutter build ios --release --no-codesign
 
