@@ -45,6 +45,7 @@ class AppLovinAdService {
       print('[Appodeal] Interstitial load requested');
     }).catchError((e) {
       print('[Appodeal] Interstitial load FAILED: $e');
+      return null;
     });
   }
 
@@ -71,6 +72,7 @@ class AppLovinAdService {
     }).catchError((e) {
       print('[Appodeal] Interstitial show FAILED: $e');
       onDone?.call();
+      return null;
     });
   }
 
@@ -81,6 +83,7 @@ class AppLovinAdService {
       print('[Appodeal] Rewarded load requested');
     }).catchError((e) {
       print('[Appodeal] Rewarded load FAILED: $e');
+      return null;
     });
   }
 
@@ -103,6 +106,7 @@ class AppLovinAdService {
     }).catchError((e) {
       print('[Appodeal] Rewarded show FAILED: $e');
       onDone?.call();
+      return null;
     });
   }
 
@@ -113,6 +117,7 @@ class AppLovinAdService {
       print('[Appodeal] Banner load requested');
     }).catchError((e) {
       print('[Appodeal] Banner load FAILED: $e');
+      return null;
     });
   }
 
