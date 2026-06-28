@@ -96,7 +96,6 @@ import AVKit
             switch call.method {
             case "showRoutePicker":
                 DispatchQueue.main.async {
-                    // Ensure audio session allows AirPlay video output
                     let session = AVAudioSession.sharedInstance()
                     do {
                         try session.setCategory(.playback, mode: .moviePlayback,
@@ -104,16 +103,46 @@ import AVKit
                         try session.setActive(true)
                     } catch {}
 
-                    let routePickerView = AVRoutePickerView(frame: CGRect(x: 0, y: 0, width: 44, height: 44))
-                    routePickerView.tintColor = .white
-                    routePickerView.activeTintColor = .systemBlue
+                    // Background overlay
+                    let overlay = UIView(frame: UIScreen.main.bounds)
+                    overlay.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+                    overlay.tag = 9999
+
+                    // AirPlay picker card
+                    let cardWidth: CGFloat = 280
+                    let cardHeight: CGFloat = 200
+                    let card = UIView(frame: CGRect(
+                        x: (UIScreen.main.bounds.width - cardWidth) / 2,
+                        y: (UIScreen.main.bounds.height - cardHeight) / 2,
+                        width: cardWidth, height: cardHeight
+                    ))
+                    card.backgroundColor = UIColor(white: 0.15, alpha: 1)
+                    card.layer.cornerRadius = 16
+
+                    let pickerView = AVRoutePickerView(frame: CGRect(x: 0, y: 20, width: cardWidth, height: 120))
+                    pickerView.tintColor = .white
+                    pickerView.activeTintColor = .systemBlue
+                    pickerView.backgroundColor = .clear
+                    card.addSubview(pickerView)
+
+                    let label = UILabel(frame: CGRect(x: 0, y: 145, width: cardWidth, height: 30))
+                    label.text = "Chạm để chọn thiết bị AirPlay"
+                    label.textColor = .white
+                    label.textAlignment = .center
+                    label.font = .systemFont(ofSize: 13, weight: .medium)
+                    card.addSubview(label)
+
+                    overlay.addSubview(card)
+
+                    let tapGesture = UITapGestureRecognizer(target: self, selector: #selector(self.dismissAirPlayPicker))
+                    overlay.addGestureRecognizer(tapGesture)
+
                     if let rootView = self.window?.rootViewController?.view {
-                        rootView.addSubview(routePickerView)
-                        routePickerView.center = rootView.center
-                        routePickerView.becomeFirstResponder()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
-                            routePickerView.removeFromSuperview()
-                        }
+                        rootView.addSubview(overlay)
+                    }
+
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
+                        overlay.removeFromSuperview()
                     }
                     result(true)
                 }
@@ -345,6 +374,12 @@ import AVKit
                 }
             }
         }
+    }
+
+    // MARK: - AirPlay
+
+    @objc func dismissAirPlayPicker() {
+        window?.rootViewController?.view.viewWithTag(9999)?.removeFromSuperview()
     }
 
     // MARK: - Position Timer
