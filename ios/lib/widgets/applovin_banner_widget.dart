@@ -31,9 +31,13 @@ class _AppLovinBannerWidgetState extends State<AppLovinBannerWidget> {
 
     AppLovinAdService.loadBanner();
     
-    // Check if banner is ready after delay
-    Future.delayed(const Duration(seconds: 3), () async {
+    // Check debug info after delay
+    Future.delayed(const Duration(seconds: 5), () async {
       if (!mounted) return;
+      try {
+        final debugInfo = await AppLovinAdService.getDebugInfo();
+        print('[AppodealBanner] Debug: $debugInfo');
+      } catch (_) {}
       final ready = await AppLovinAdService.showBanner();
       if (ready) {
         print('[AppodealBanner] Banner shown successfully on iOS');

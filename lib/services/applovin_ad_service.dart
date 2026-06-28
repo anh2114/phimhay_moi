@@ -144,6 +144,15 @@ class AppLovinAdService {
     }
   }
 
+  static Future<Map<String, dynamic>?> getDebugInfo() async {
+    if (!Platform.isIOS) return null;
+    try {
+      final result = await _channel.invokeMethod('getDebugInfo');
+      if (result is Map) return Map<String, dynamic>.from(result);
+    } catch (_) {}
+    return null;
+  }
+
   static void showBeforeWatch(BuildContext context, Function onReady) {
     print('[Appodeal] showBeforeWatch called');
     showInterstitialIfAllowed(context, onDone: () => onReady());
