@@ -134,7 +134,7 @@ import AVKit
 
                     overlay.addSubview(card)
 
-                    let tapGesture = UITapGestureRecognizer(target: self, selector: #selector(self.dismissAirPlayPicker))
+                    let tapGesture = UITapGestureRecognizer(target: self, action: #selector(self.dismissAirPlayPicker))
                     overlay.addGestureRecognizer(tapGesture)
 
                     if let rootView = self.window?.rootViewController?.view {
