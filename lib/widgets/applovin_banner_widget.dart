@@ -14,8 +14,9 @@ class AppLovinBannerWidget extends StatefulWidget {
 class _AppLovinBannerWidgetState extends State<AppLovinBannerWidget> {
   String _status = 'idle';
   String? _error;
+  Timer? _retryTimer;
   int _retryCount = 0;
-  static const int _maxRetries = 5;
+  static const int _maxRetries = 8;
 
   @override
   void initState() {
@@ -23,46 +24,47 @@ class _AppLovinBannerWidgetState extends State<AppLovinBannerWidget> {
     _loadBanner();
   }
 
-  Future<void> _loadBanner() async {
+  void _loadBanner() {
     if (!Platform.isIOS) return;
     print('[AppodealBanner] Loading on iOS (attempt ${_retryCount + 1})...');
     setState(() { _status = 'loading'; _error = null; });
 
-    try {
-      await AppLovinAdService.init();
-      AppLovinAdService.loadBanner();
-      await Future.delayed(const Duration(seconds: 3));
-      final shown = await AppLovinAdService.showBanner();
-      if (mounted) {
-        if (shown) {
-          setState(() { _status = 'loaded'; _error = null; });
-        } else if (_retryCount < _maxRetries) {
-          _retryCount++;
+    AppLovinAdService.loadBanner();
+    
+    // Check if banner is ready after delay
+    Future.delayed(const Duration(seconds: 3), () async {
+      if (!mounted) return;
+      final ready = await AppLovinAdService.showBanner();
+      if (ready) {
+        print('[AppodealBanner] Banner shown successfully on iOS');
+        if (mounted) setState(() { _status = 'loaded'; });
+      } else {
+        _retryCount++;
+        if (_retryCount < _maxRetries) {
           print('[AppodealBanner] Not ready, retry ${_retryCount}/$_maxRetries in 5s...');
-          await Future.delayed(const Duration(seconds: 5));
-          if (mounted) _loadBanner();
+          _retryTimer = Timer(const Duration(seconds: 5), () {
+            if (mounted) _loadBanner();
+          });
         } else {
-          setState(() { _status = 'failed'; _error = 'No fill after $_maxRetries retries'; });
+          print('[AppodealBanner] Failed after $_maxRetries retries');
+          if (mounted) setState(() { _status = 'failed'; _error = 'Max retries reached'; });
         }
       }
-    } catch (e) {
-      print('[AppodealBanner] FAILED on iOS: $e');
-      if (mounted) setState(() { _status = 'failed'; _error = e.toString(); });
-    }
+    });
   }
 
   @override
   void dispose() {
-    if (Platform.isIOS) AppLovinAdService.hideBanner();
+    _retryTimer?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!Platform.isIOS) return const SizedBox.shrink();
     if (widget.showDebug) return _buildDebug();
     if (_status != 'loaded') return const SizedBox.shrink();
-    return const SizedBox(height: 52);
+    // Appodeal renders banner natively at bottom — this widget is just a spacer
+    return const SizedBox(height: 50);
   }
 
   Widget _buildDebug() {
@@ -92,7 +94,7 @@ class _AppLovinBannerWidgetState extends State<AppLovinBannerWidget> {
       decoration: BoxDecoration(
         color: Colors.black87,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: statusColor.withValues(alpha: 0.5)),
+        border: Border.all(color: statusColor.withAlpha(128)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -106,10 +108,9 @@ class _AppLovinBannerWidgetState extends State<AppLovinBannerWidget> {
           ]),
           const SizedBox(height: 4),
           Text('Status: $_status', style: const TextStyle(color: Colors.white70, fontSize: 11)),
+          Text('Retries: $_retryCount/$_maxRetries', style: const TextStyle(color: Colors.white54, fontSize: 10)),
           if (_error != null)
             Text('Error: $_error', style: const TextStyle(color: Colors.redAccent, fontSize: 10)),
-          if (_status == 'loaded')
-            const SizedBox(height: 52),
         ],
       ),
     );
