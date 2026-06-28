@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:startapp_sdk/startapp.dart';
 import 'package:phimhay_app/services/ad_frequency_service.dart';
+import 'package:phimhay_app/services/applovin_ad_service.dart';
 
 class StartAppAdService {
   static final StartAppSdk _sdk = StartAppSdk();
@@ -15,11 +16,18 @@ class StartAppAdService {
   static void init() async {
     if (_initialized) return;
     _initialized = true;
+
+    if (Platform.isIOS) {
+      print('[StartApp] Disabled on iOS, initializing Appodeal instead...');
+      await AppLovinAdService.init();
+      return;
+    }
+
     await AdFrequencyService.init();
-    final platform = Platform.isIOS ? 'iOS' : (Platform.isAndroid ? 'Android' : 'Unknown');
+    final platform = Platform.isAndroid ? 'Android' : 'Unknown';
     print('[StartApp] Initializing SDK on $platform...');
     try {
-      await _sdk.setTestAdsEnabled(false);
+      await _sdk.setTestAdsEnabled(true);
       print('[StartApp] SDK initialized OK on $platform');
     } catch (e) {
       print('[StartApp] ERROR init on $platform: $e');
@@ -28,7 +36,8 @@ class StartAppAdService {
   }
 
   static void _preloadInterstitial() {
-    final platform = Platform.isIOS ? 'iOS' : 'Android';
+    if (Platform.isIOS) return;
+    final platform = Platform.isAndroid ? 'Android' : 'Unknown';
     print('[StartApp] Loading interstitial on $platform...');
     _sdk.loadInterstitialAd(
       onAdDisplayed: () {
@@ -59,8 +68,9 @@ class StartAppAdService {
 
   // ── Native Ad ──────────────────────────────────────
   static void loadNativeAd(String tag) {
+    if (Platform.isIOS) return;
     if (_nativeAds.containsKey(tag)) return;
-    final platform = Platform.isIOS ? 'iOS' : 'Android';
+    final platform = Platform.isAndroid ? 'Android' : 'Unknown';
     print('[StartApp] Loading native ad: $tag on $platform');
     _sdk.loadNativeAd(
       onAdImpression: () {},
@@ -73,15 +83,23 @@ class StartAppAdService {
     });
   }
 
-  static StartAppNativeAd? getNativeAd(String tag) => _nativeAds[tag];
+  static StartAppNativeAd? getNativeAd(String tag) {
+    if (Platform.isIOS) return null;
+    return _nativeAds[tag];
+  }
 
   static void disposeNativeAd(String tag) {
+    if (Platform.isIOS) return;
     _nativeAds[tag]?.dispose();
     _nativeAds.remove(tag);
   }
 
   // ── Frequency-capped interstitial ──────────────────
   static void showInterstitialIfAllowed(BuildContext context, {VoidCallback? onDone}) {
+    if (Platform.isIOS) {
+      AppLovinAdService.showInterstitialIfAllowed(context, onDone: onDone);
+      return;
+    }
     if (!AdFrequencyService.canShowInterstitial()) {
       print('[StartApp] Interstitial blocked by frequency cap (${AdFrequencyService.remainingAds} remaining)');
       onDone?.call();
@@ -112,6 +130,10 @@ class StartAppAdService {
 
   // ── Pre-watch flow ─────────────────────────────────
   static void showBeforeWatch(BuildContext context, Function onReady) {
+    if (Platform.isIOS) {
+      AppLovinAdService.showBeforeWatch(context, onReady);
+      return;
+    }
     print('[StartApp] showBeforeWatch called');
     print('[StartApp] interstitialAd=${_interstitialAd != null ? "READY" : "null"}');
     _showInterstitialAd(context, onReady);

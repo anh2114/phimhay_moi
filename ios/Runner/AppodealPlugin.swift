@@ -36,7 +36,7 @@ class AppodealPlugin: NSObject {
             }
             Appodeal.setLogLevel(.verbose)
             Appodeal.setAutocache(true, types: [.interstitial, .banner, .rewardedVideo])
-            Appodeal.setTestingEnabled(false)
+            Appodeal.setTestingEnabled(true)
             Appodeal.initialize(
                 withApiKey: appKey,
                 types: [.interstitial, .banner, .rewardedVideo]

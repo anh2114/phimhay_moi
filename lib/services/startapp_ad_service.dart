@@ -27,7 +27,7 @@ class StartAppAdService {
     final platform = Platform.isAndroid ? 'Android' : 'Unknown';
     print('[StartApp] Initializing SDK on $platform...');
     try {
-      await _sdk.setTestAdsEnabled(false);
+      await _sdk.setTestAdsEnabled(true);
       print('[StartApp] SDK initialized OK on $platform');
     } catch (e) {
       print('[StartApp] ERROR init on $platform: $e');
