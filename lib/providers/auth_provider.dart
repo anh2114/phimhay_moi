@@ -39,8 +39,6 @@ class AuthProvider extends ChangeNotifier {
 
   /// Kiểm tra trạng thái login từ server (session)
   Future<void> _checkAuthStatus() async {
-    // Không clear user nếu đang ở trạng thái logged-in (tránh mất login khi offline)
-    if (_user != null && _user!['logged_in'] == true) return;
     try {
       final res = await ApiClient.get('/auth_status.php');
       final data = res.data as Map<String, dynamic>;
@@ -53,7 +51,7 @@ class AuthProvider extends ChangeNotifier {
       }
       notifyListeners();
     } catch (_) {
-      // ignore — offline, giữ nguyên state cũ
+      // offline — giữ nguyên state cũ từ SharedPreferences
     }
   }
 

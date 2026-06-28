@@ -30,7 +30,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:phimhay_app/services/startapp_ad_service.dart';
 import 'package:phimhay_app/widgets/startapp_banner_widget.dart';
-import 'package:phimhay_app/widgets/applovin_banner_widget.dart';
+import 'package:phimhay_app/widgets/startapp_banner_widget.dart';
 import 'package:phimhay_app/services/m3u8_ad_parser.dart';
 
 /// Loại player hiện tại
@@ -86,6 +86,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   Player? _hlsPlayer;
   VideoController? _videoController;
   static const _pipChannel = MethodChannel('phimhay/pip');
+  static const _airplayChannel = MethodChannel('phimhay/airplay');
   bool _pipAvailable = false;
 
   bool _isLoading = true;
@@ -756,6 +757,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     if (!_pipAvailable || _currentUrl.isEmpty) return;
     try {
       await _pipChannel.invokeMethod('updatePipUrl', {'url': _currentUrl});
+    } catch (_) {}
+  }
+
+  Future<void> _showAirPlayPicker() async {
+    try {
+      await _airplayChannel.invokeMethod('showRoutePicker');
     } catch (_) {}
   }
 
@@ -1586,7 +1593,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   ]),
                 ),
               ),
-              // Badge player mode
+              // Badge player mode (debug only)
+              if (kDebugMode)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
@@ -1607,8 +1615,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         ),
         // Server selector — hiện cho mọi user
         if (_servers.length > 1) _buildServerSelector(),
-        // Debug banner ad
-        const AppLovinBannerWidget(showDebug: true),
+        // Real banner ad (StartApp)
+        StartAppBannerWidget(showDebug: kDebugMode),
         const Divider(color: Color(0x22FFFFFF), height: 1),
         // Episode list header
         Padding(
@@ -2498,6 +2506,15 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   child: const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 4),
                     child: AppSvgIcon('picture-in-picture-2.svg', size: 20, color: Colors.white),
+                  ),
+                ),
+              // AirPlay button (iOS only)
+              if (Platform.isIOS)
+                GestureDetector(
+                  onTap: _showAirPlayPicker,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4),
+                    child: AppSvgIcon('airplay.svg', size: 20, color: Colors.white),
                   ),
                 ),
               // Mic button → server popup

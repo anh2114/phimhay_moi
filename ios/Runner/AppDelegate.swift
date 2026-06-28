@@ -2,7 +2,6 @@ import UIKit
 import Flutter
 import AVFoundation
 import AVKit
-import Appodeal
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -26,16 +25,6 @@ import Appodeal
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
-        // Initialize Appodeal SDK
-        let appKey = "3d38b6d1147aafeef29a80bd9d3c675598ccd6d705c8d51"
-        Appodeal.setAutocache(false, types: .interstitial)
-        Appodeal.setLogLevel(.verbose)
-        Appodeal.initialize(
-            withApiKey: appKey,
-            types: [.interstitial, .banner, .rewardedVideo]
-        )
-        print("[Appodeal] SDK initialized in AppDelegate")
-        
         let controller = window?.rootViewController as! FlutterViewController
         let audioChannel = FlutterMethodChannel(name: "phimhay_app/audio", binaryMessenger: controller.binaryMessenger)
 
@@ -96,6 +85,34 @@ import Appodeal
                 self?.pipPlayer?.replaceCurrentItem(with: AVPlayerItem(url: url))
                 result(true)
 
+            default:
+                result(FlutterMethodNotImplemented)
+            }
+        }
+
+        // AirPlay channel
+        let airplayChannel = FlutterMethodChannel(name: "phimhay/airplay", binaryMessenger: controller.binaryMessenger)
+        airplayChannel.setMethodCallHandler { (call, result) in
+            switch call.method {
+            case "showRoutePicker":
+                DispatchQueue.main.async {
+                    let routePickerView = AVRoutePickerView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
+                    routePickerView.delegate = nil
+                    if let rootView = self.window?.rootViewController?.view {
+                        rootView.addSubview(routePickerView)
+                        // Find and tap the AirPlay button inside the route picker
+                        for subview in routePickerView.subviews {
+                            if subview isKindOfClass(NSClassFromString("AVButton")!) {
+                                subview.sendActions(for: .touchUpInside)
+                                break
+                            }
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            routePickerView.removeFromSuperview()
+                        }
+                    }
+                    result(true)
+                }
             default:
                 result(FlutterMethodNotImplemented)
             }
@@ -166,7 +183,7 @@ import Appodeal
         GeneratedPluginRegistrant.register(with: self)
         
         // Register Appodeal plugin
-        AppodealPlugin.register(with: self)
+        AppodealPlugin.register(controller: controller)
         
         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
     }
