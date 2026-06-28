@@ -96,19 +96,15 @@ import AVKit
             switch call.method {
             case "showRoutePicker":
                 DispatchQueue.main.async {
-                    let routePickerView = AVRoutePickerView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
-                    routePickerView.delegate = nil
+                    let routePickerView = AVRoutePickerView(frame: CGRect(x: 0, y: 0, width: 44, height: 44))
+                    routePickerView.tintColor = .white
+                    routePickerView.activeTintColor = .systemBlue
                     if let rootView = self.window?.rootViewController?.view {
                         rootView.addSubview(routePickerView)
-                        if let avButtonClass = NSClassFromString("AVButton") {
-                            for subview in routePickerView.subviews {
-                                if subview.isKind(of: avButtonClass) {
-                                    subview.sendActions(for: .touchUpInside)
-                                    break
-                                }
-                            }
-                        }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        routePickerView.center = rootView.center
+                        // Auto-focus the picker
+                        routePickerView.becomeFirstResponder()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
                             routePickerView.removeFromSuperview()
                         }
                     }
