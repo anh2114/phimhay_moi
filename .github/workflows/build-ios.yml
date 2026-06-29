@@ -70,7 +70,7 @@ jobs:
       - name: Fix iOS deployment target
         run: |
           PBXPROJ="ios/Runner.xcodeproj/project.pbxproj"
-          sed -i '' "s/IPHONEOS_DEPLOYMENT_TARGET = .*/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/" "$PBXPROJ"
+          sed -i '' "s/IPHONEOS_DEPLOYMENT_TARGET = .*/IPHONEOS_DEPLOYMENT_TARGET = 14.0;/" "$PBXPROJ"
 
       - name: Install Flutter dependencies
         run: flutter pub get
