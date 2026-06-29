@@ -1567,12 +1567,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             children: [
               GestureDetector(
                 onTap: () {
-                  StartAppAdService.showRewardedBeforeAction(
-                    context,
-                    onDone: () {
-                      Navigator.pop(context);
-                    },
-                  );
+                  Navigator.pop(context);
                 },
                 child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
               ),
