@@ -1,11 +1,10 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:stack_appodeal_flutter/appodeal.dart';
 import 'package:phimhay_app/services/ad_frequency_service.dart';
 
 class AppLovinAdService {
-  static const MethodChannel _channel = MethodChannel('com.xiaofilm/appodeal');
   static bool _initialized = false;
   static bool _sdkReady = false;
   static bool get isReady => _sdkReady;
@@ -22,16 +21,91 @@ class AppLovinAdService {
     await AdFrequencyService.init();
 
     try {
-      final result = await _channel.invokeMethod('initialize', {
-        'appKey': _appKey,
-      });
-      _sdkReady = result == true;
-      print('[Appodeal] SDK initialized: $_sdkReady on iOS');
-      if (_sdkReady) {
-        loadInterstitial();
-        loadRewarded();
-        loadBanner();
-      }
+      // Set callbacks before initialization
+      Appodeal.setBannerCallbacks(
+        onBannerLoaded: (isPrecache) {
+          print('[Appodeal] Banner loaded, precache=$isPrecache');
+          _sdkReady = true;
+        },
+        onBannerFailedToLoad: () {
+          print('[Appodeal] Banner failed to load');
+        },
+        onBannerShown: () {
+          print('[Appodeal] Banner shown');
+        },
+        onBannerShowFailed: () {
+          print('[Appodeal] Banner show failed');
+        },
+        onBannerClicked: () {
+          print('[Appodeal] Banner clicked');
+        },
+        onBannerExpired: () {
+          print('[Appodeal] Banner expired');
+        },
+      );
+
+      Appodeal.setInterstitialCallbacks(
+        onInterstitialLoaded: (isPrecache) {
+          print('[Appodeal] Interstitial loaded, precache=$isPrecache');
+        },
+        onInterstitialFailedToLoad: () {
+          print('[Appodeal] Interstitial failed to load');
+        },
+        onInterstitialShown: () {
+          print('[Appodeal] Interstitial shown');
+        },
+        onInterstitialShowFailed: () {
+          print('[Appodeal] Interstitial show failed');
+        },
+        onInterstitialClosed: () {
+          print('[Appodeal] Interstitial closed');
+          loadInterstitial();
+        },
+        onInterstitialExpired: () {
+          print('[Appodeal] Interstitial expired');
+        },
+      );
+
+      Appodeal.setRewardedVideoCallbacks(
+        onRewardedVideoLoaded: (isPrecache) {
+          print('[Appodeal] Rewarded loaded, precache=$isPrecache');
+        },
+        onRewardedVideoFailedToLoad: () {
+          print('[Appodeal] Rewarded failed to load');
+        },
+        onRewardedVideoShown: () {
+          print('[Appodeal] Rewarded shown');
+        },
+        onRewardedVideoFinished: (amount, reward) {
+          print('[Appodeal] Rewarded finished: $amount $reward');
+        },
+        onRewardedVideoClosed: (isFinished) {
+          print('[Appodeal] Rewarded closed, finished=$isFinished');
+          loadRewarded();
+        },
+        onRewardedVideoExpired: () {
+          print('[Appodeal] Rewarded expired');
+        },
+      );
+
+      // Initialize Appodeal
+      await Appodeal.initialize(
+        appKey: _appKey,
+        adTypes: [
+          AppodealAdType.Interstitial,
+          AppodealAdType.RewardedVideo,
+          AppodealAdType.Banner,
+        ],
+        onInitializationFinished: (errors) {
+          if (errors != null && errors.isNotEmpty) {
+            print('[Appodeal] Init errors: $errors');
+          }
+          _sdkReady = true;
+          print('[Appodeal] SDK initialized on iOS');
+          loadInterstitial();
+          loadRewarded();
+        },
+      );
     } catch (e) {
       print('[Appodeal] Init FAILED: $e');
       _sdkReady = false;
@@ -41,12 +115,7 @@ class AppLovinAdService {
   static void loadInterstitial() {
     if (!Platform.isIOS) return;
     print('[Appodeal] Loading interstitial...');
-    _channel.invokeMethod('loadInterstitial').then((_) {
-      print('[Appodeal] Interstitial load requested');
-    }).catchError((e) {
-      print('[Appodeal] Interstitial load FAILED: $e');
-      return null;
-    });
+    Appodeal.cache(AppodealAdType.Interstitial);
   }
 
   static void showInterstitialIfAllowed(BuildContext context, {VoidCallback? onDone}) {
@@ -58,13 +127,12 @@ class AppLovinAdService {
       onDone?.call();
       return;
     }
-    init().then((_) {
-      return _channel.invokeMethod('showInterstitial');
-    }).then((shown) {
-      if (shown == true) {
+    init().then((_) async {
+      final canShow = await Appodeal.canShow(AppodealAdType.Interstitial);
+      if (canShow) {
+        Appodeal.show(AppodealAdType.Interstitial);
         AdFrequencyService.recordInterstitialShow();
         print('[Appodeal] Interstitial shown');
-        loadInterstitial();
       } else {
         print('[Appodeal] Interstitial not ready / not shown');
       }
@@ -79,12 +147,7 @@ class AppLovinAdService {
   static void loadRewarded() {
     if (!Platform.isIOS) return;
     print('[Appodeal] Loading rewarded...');
-    _channel.invokeMethod('loadRewarded').then((_) {
-      print('[Appodeal] Rewarded load requested');
-    }).catchError((e) {
-      print('[Appodeal] Rewarded load FAILED: $e');
-      return null;
-    });
+    Appodeal.cache(AppodealAdType.RewardedVideo);
   }
 
   static void showRewardedIfAllowed(BuildContext context, {VoidCallback? onReward, VoidCallback? onDone}) {
@@ -92,13 +155,12 @@ class AppLovinAdService {
       onDone?.call();
       return;
     }
-    init().then((_) {
-      return _channel.invokeMethod('showRewarded');
-    }).then((rewarded) {
-      if (rewarded == true) {
-        print('[Appodeal] Rewarded shown + reward earned');
+    init().then((_) async {
+      final canShow = await Appodeal.canShow(AppodealAdType.RewardedVideo);
+      if (canShow) {
+        Appodeal.show(AppodealAdType.RewardedVideo);
         onReward?.call();
-        loadRewarded();
+        print('[Appodeal] Rewarded shown + reward earned');
       } else {
         print('[Appodeal] Rewarded not ready / not shown');
       }
@@ -113,21 +175,21 @@ class AppLovinAdService {
   static void loadBanner() {
     if (!Platform.isIOS) return;
     print('[Appodeal] Loading banner...');
-    _channel.invokeMethod('loadBanner').then((_) {
-      print('[Appodeal] Banner load requested');
-    }).catchError((e) {
-      print('[Appodeal] Banner load FAILED: $e');
-      return null;
-    });
+    Appodeal.cache(AppodealAdType.Banner);
   }
 
   static Future<bool> showBanner() async {
     if (!Platform.isIOS) return false;
     try {
       await init();
-      final shown = await _channel.invokeMethod('showBanner');
-      print('[Appodeal] Banner show result=$shown');
-      return shown == true;
+      final canShow = await Appodeal.canShow(AppodealAdType.Banner);
+      if (canShow) {
+        Appodeal.show(AppodealAdType.BannerBottom);
+        print('[Appodeal] Banner shown');
+        return true;
+      }
+      print('[Appodeal] Banner not ready');
+      return false;
     } catch (e) {
       print('[Appodeal] Banner show FAILED: $e');
       return false;
@@ -137,20 +199,35 @@ class AppLovinAdService {
   static Future<void> hideBanner() async {
     if (!Platform.isIOS) return;
     try {
-      await _channel.invokeMethod('hideBanner');
+      Appodeal.hide(AppodealAdType.BannerBottom);
       print('[Appodeal] Banner hidden');
     } catch (e) {
       print('[Appodeal] Banner hide FAILED: $e');
     }
   }
 
+  static Future<bool> isBannerLoaded() async {
+    if (!Platform.isIOS) return false;
+    try {
+      return await Appodeal.isLoaded(AppodealAdType.Banner);
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<Map<String, dynamic>?> getDebugInfo() async {
     if (!Platform.isIOS) return null;
     try {
-      final result = await _channel.invokeMethod('getDebugInfo');
-      if (result is Map) return Map<String, dynamic>.from(result);
-    } catch (_) {}
-    return null;
+      final canShow = await Appodeal.canShow(AppodealAdType.Banner);
+      final isLoaded = await Appodeal.isLoaded(AppodealAdType.Banner);
+      return {
+        'bannerCanShow': canShow,
+        'bannerIsLoaded': isLoaded,
+        'sdkReady': _sdkReady,
+      };
+    } catch (_) {
+      return null;
+    }
   }
 
   static void showBeforeWatch(BuildContext context, Function onReady) {

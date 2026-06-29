@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:stack_appodeal_flutter/appodeal.dart';
 import 'package:phimhay_app/services/applovin_ad_service.dart';
 
 class AppLovinBannerWidget extends StatefulWidget {
@@ -17,6 +18,7 @@ class _AppLovinBannerWidgetState extends State<AppLovinBannerWidget> {
   Timer? _retryTimer;
   int _retryCount = 0;
   static const int _maxRetries = 8;
+  bool _bannerLoaded = false;
 
   @override
   void initState() {
@@ -30,18 +32,19 @@ class _AppLovinBannerWidgetState extends State<AppLovinBannerWidget> {
     setState(() { _status = 'loading'; _error = null; });
 
     AppLovinAdService.loadBanner();
-    
-    // Check debug info after delay
+
+    // Check if banner is ready after delay
     Future.delayed(const Duration(seconds: 5), () async {
       if (!mounted) return;
       try {
         final debugInfo = await AppLovinAdService.getDebugInfo();
         print('[AppodealBanner] Debug: $debugInfo');
       } catch (_) {}
-      final ready = await AppLovinAdService.showBanner();
-      if (ready) {
-        print('[AppodealBanner] Banner shown successfully on iOS');
-        if (mounted) setState(() { _status = 'loaded'; });
+
+      final loaded = await AppLovinAdService.isBannerLoaded();
+      if (loaded) {
+        print('[AppodealBanner] Banner loaded successfully on iOS');
+        if (mounted) setState(() { _status = 'loaded'; _bannerLoaded = true; });
       } else {
         _retryCount++;
         if (_retryCount < _maxRetries) {
