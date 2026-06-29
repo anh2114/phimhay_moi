@@ -20,7 +20,7 @@ class CollectionService {
     }
   }
 
-  List<Collection> _getDefaultCollections() {
+  List<Collection> getDefaultCollections() {
     return const [
       Collection(id: 1, name: 'Châu Tinh Trì', slug: 'chau-tinh-tri', count: 42, gradient: ['#8B5CF6', '#EC4899']),
       Collection(id: 2, name: 'Marvel', slug: 'marvel', count: 35, gradient: ['#DC2626', '#F97316']),

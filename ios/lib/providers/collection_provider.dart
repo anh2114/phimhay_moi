@@ -18,7 +18,7 @@ class CollectionProvider extends ChangeNotifier {
     try {
       _collections = await _service.fetchCollections();
     } catch (e) {
-      _collections = _service._getDefaultCollections();
+      _collections = _service.getDefaultCollections();
     } finally {
       _isLoading = false;
       notifyListeners();
