@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:stack_appodeal_flutter/appodeal.dart';
+import 'package:stack_appodeal_flutter/stack_appodeal_flutter.dart';
 import 'package:phimhay_app/services/ad_frequency_service.dart';
 
 class AppLovinAdService {

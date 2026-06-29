@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:stack_appodeal_flutter/appodeal.dart';
+import 'package:stack_appodeal_flutter/stack_appodeal_flutter.dart';
 
 class AppodealDebugScreen extends StatefulWidget {
   const AppodealDebugScreen({super.key});
