@@ -31,7 +31,7 @@ set "NEW_VER=!VERSION!+!NEWBUILD!"
 
 REM Update pubspec.yaml
 echo Updating pubspec.yaml: !NEW_VER!
-powershell -Command "(Get-Content pubspec.yaml -Raw) -replace 'version: [^\r\n]+', 'version: !NEW_VER!' | Set-Content pubspec.yaml -NoNewline"
+powershell -Command "((Get-Content pubspec.yaml) -replace '^version:.*$', 'version: !NEW_VER!') | Set-Content pubspec.yaml"
 echo Done
 echo.
 
