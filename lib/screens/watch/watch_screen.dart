@@ -1747,13 +1747,16 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     return Stack(
         fit: StackFit.expand,
         children: [
-          // ── HLS native player (media_kit) — dùng NoVideoControls, custom controls bên dưới ──
+          // ── HLS native player ──
           if (_playerMode == _PlayerMode.hls && _videoController != null && _playerReady)
-            SizedBox.expand(
-              child: _aspectRatios[_aspectRatioIndex] != null
-                  ? AspectRatio(aspectRatio: _aspectRatios[_aspectRatioIndex]!, child: Video(controller: _videoController!, controls: NoVideoControls))
-                  : Video(controller: _videoController!, controls: NoVideoControls),
-            ),
+            _aspectRatios[_aspectRatioIndex] != null
+                ? Center(
+                    child: AspectRatio(
+                      aspectRatio: _aspectRatios[_aspectRatioIndex]!,
+                      child: Video(controller: _videoController!, controls: NoVideoControls),
+                    ),
+                  )
+                : Video(controller: _videoController!, controls: NoVideoControls),
 
           // ── Black overlay khi PiP active — CHỈ iOS (Android dùng Flutter surface → video tự hiện) ──
           if (_pipActive && Platform.isIOS)
@@ -1818,7 +1821,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
           // ── Gesture zones: tap = show/hide controls, double-tap = seek, long-press = 2x ──
           // Only active when controls are HIDDEN — when controls visible, taps go to buttons
-          if (_playerMode == _PlayerMode.hls && _playerReady && !_isScreenLocked && !_showControls)
+          if (_playerMode == _PlayerMode.hls && _playerReady && !_showControls)
             Stack(
               children: [
                 Row(
@@ -1935,54 +1938,22 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               ],
             ),
 
-          // ── Tap zone to hide controls when visible (landscape only) ──
-          if (_showControls && _isLandscape && _playerMode == _PlayerMode.hls && !_isScreenLocked)
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onTap: () {
-                  setState(() => _showControls = false);
-                  _autoHideControlsTimer?.cancel();
-                },
-                child: const SizedBox.expand(),
-              ),
-            ),
-
           // ── Custom overlay controls — chỉ hiện khi landscape + HLS ──
           if (_isLandscape && _playerMode == _PlayerMode.hls && _playerReady) ...[
-            // Locked state: only show lock icon, no other controls
-            if (_isScreenLocked)
-              Positioned(
-                top: 14, left: 0, right: 0,
-                child: Center(
-                  child: GestureDetector(
-                    onTap: () {
-                      setState(() => _isScreenLocked = false);
-                      _restoreOrientations();
-                      _showControlsWithAutoHide();
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.black45,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.lock, color: Colors.white, size: 28),
-                    ),
-                  ),
-                ),
-              ),
-            // Unlocked state: show full controls
-            if (!_isScreenLocked && _showControls) ...[
-              Positioned(top: 0, left: 0, right: 0, child: _buildTopBar()),
+            // Center controls render FIRST (behind everything)
+            if (!_isScreenLocked && _showControls)
               Positioned(
                 top: 0, bottom: 0, left: 0, right: 0,
                 child: _buildCenterControls(),
               ),
+            // Bottom bar before top bar (top bar is topmost)
+            if (!_isScreenLocked && _showControls)
               Positioned(bottom: 0, left: 0, right: 0, child: _buildBottomBar()),
-              if (_showSkipIntro)
-                Positioned(bottom: 80, right: 12, child: _skipIntroButton()),
-            ],
+            if (_showSkipIntro && !_isScreenLocked && _showControls)
+              Positioned(bottom: 80, right: 12, child: _skipIntroButton()),
+            // Top bar LAST = renders on top = receives taps first
+            if (_showControls)
+              Positioned(top: 0, left: 0, right: 0, child: _buildTopBar()),
           ],
           // ── Portrait mini controls — chỉ hiện khi portrait + HLS ──
           if (_showControls && !_isLandscape && _playerMode == _PlayerMode.hls && _playerReady)
@@ -2563,20 +2534,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             GestureDetector(
               onTap: () {
                 setState(() => _isScreenLocked = !_isScreenLocked);
-                if (_isScreenLocked) {
-                  // Lock: freeze orientation + hide controls after short delay
-                  SystemChrome.setPreferredOrientations([
-                    DeviceOrientation.landscapeLeft,
-                    DeviceOrientation.landscapeRight,
-                  ]);
-                  Future.delayed(const Duration(milliseconds: 500), () {
-                    if (mounted && _isScreenLocked) setState(() => _showControls = false);
-                  });
-                } else {
-                  // Unlock: restore orientation + show controls
-                  _restoreOrientations();
-                  _showControlsWithAutoHide();
-                }
               },
               child: Icon(
                 _isScreenLocked ? Icons.lock : Icons.lock_outline,
@@ -2595,21 +2552,15 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 ),
               ),
             ),
-            // Right: PiP (toggle controls) + AirPlay + Episodes list
-            GestureDetector(
-              onTap: () {
-                if (_showControls) {
-                  setState(() => _showControls = false);
-                  _autoHideControlsTimer?.cancel();
-                } else {
-                  _showControlsWithAutoHide();
-                }
-              },
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8),
-                child: AppSvgIcon('picture-in-picture-2.svg', size: 22, color: Colors.white),
+            // Right: PiP + AirPlay + Episodes list
+            if (_pipAvailable)
+              GestureDetector(
+                onTap: _startPip,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8),
+                  child: AppSvgIcon('picture-in-picture-2.svg', size: 22, color: Colors.white),
+                ),
               ),
-            ),
             if (Platform.isIOS)
               GestureDetector(
                 onTap: _showAirPlayPicker,
@@ -2846,7 +2797,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               _buildToolbarItem(Icons.aspect_ratio_rounded, _aspectRatioLabels[_aspectRatioIndex], _cycleAspectRatio),
               const SizedBox(width: 40),
               // Server (mic icon → server popup)
-              _buildToolbarItem(Icons.mic_none_rounded, 'Server', _showServerPopup),
+              _buildToolbarItem(Icons.mic_none_rounded, _servers.isNotEmpty ? (_servers[_selectedServer]['server_name']?.toString() ?? 'Server') : 'Server', _showServerPopup),
               const SizedBox(width: 40),
               // Phụ đề
               _buildToolbarItem(Icons.subtitles_rounded, 'Phụ đề', _showSettingsPopup),
