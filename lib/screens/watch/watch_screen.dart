@@ -1103,6 +1103,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   static const List<String> _aspectRatioLabels = ['Tự động', '16:9', '4:3', '1:1'];
   int _aspectRatioIndex = 0;
 
+  // ── Screen lock ──
+  bool _isScreenLocked = false;
+
   void _cycleAspectRatio() {
     _aspectRatioIndex = (_aspectRatioIndex + 1) % _aspectRatios.length;
     setState(() {});
@@ -1814,7 +1817,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             ),
 
           // ── Gesture zones: tap = show/hide controls, double-tap = seek, long-press = 2x ──
-          if (_playerMode == _PlayerMode.hls && _playerReady)
+          if (_playerMode == _PlayerMode.hls && _playerReady && !_isScreenLocked)
             Stack(
               children: [
                 Row(
@@ -1953,19 +1956,40 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             ),
 
           // ── Custom overlay controls — chỉ hiện khi landscape + HLS ──
-          if (_showControls && _isLandscape && _playerMode == _PlayerMode.hls && _playerReady) ...[
-            // Top bar: back+lock | title | pip+airplay+episodes
-            Positioned(top: 0, left: 0, right: 0, child: _buildTopBar()),
-            // Center: prev|rewind10|play|forward10|next
-            Positioned(
-              top: 0, bottom: 0, left: 0, right: 0,
-              child: _buildCenterControls(),
-            ),
-            // Bottom: timeline + toolbar
-            Positioned(bottom: 0, left: 0, right: 0, child: _buildBottomBar()),
-            // Skip Intro
-            if (_showSkipIntro)
-              Positioned(bottom: 80, right: 12, child: _skipIntroButton()),
+          if (_isLandscape && _playerMode == _PlayerMode.hls && _playerReady) ...[
+            // Locked state: only show lock icon, no other controls
+            if (_isScreenLocked)
+              Positioned(
+                top: 14, left: 0, right: 0,
+                child: Center(
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() => _isScreenLocked = false);
+                      _restoreOrientations();
+                      _showControlsWithAutoHide();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.black45,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.lock, color: Colors.white, size: 28),
+                    ),
+                  ),
+                ),
+              ),
+            // Unlocked state: show full controls
+            if (!_isScreenLocked && _showControls) ...[
+              Positioned(top: 0, left: 0, right: 0, child: _buildTopBar()),
+              Positioned(
+                top: 0, bottom: 0, left: 0, right: 0,
+                child: _buildCenterControls(),
+              ),
+              Positioned(bottom: 0, left: 0, right: 0, child: _buildBottomBar()),
+              if (_showSkipIntro)
+                Positioned(bottom: 80, right: 12, child: _skipIntroButton()),
+            ],
           ],
           // ── Portrait mini controls — chỉ hiện khi portrait + HLS ──
           if (_showControls && !_isLandscape && _playerMode == _PlayerMode.hls && _playerReady)
@@ -2542,12 +2566,30 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 24),
             ),
             const SizedBox(width: 16),
-            // Lock
+            // Lock toggle
             GestureDetector(
               onTap: () {
-                // TODO: implement lock toggle
+                setState(() => _isScreenLocked = !_isScreenLocked);
+                if (_isScreenLocked) {
+                  // Lock: freeze orientation + hide controls after short delay
+                  SystemChrome.setPreferredOrientations([
+                    DeviceOrientation.landscapeLeft,
+                    DeviceOrientation.landscapeRight,
+                  ]);
+                  Future.delayed(const Duration(milliseconds: 500), () {
+                    if (mounted && _isScreenLocked) setState(() => _showControls = false);
+                  });
+                } else {
+                  // Unlock: restore orientation + show controls
+                  _restoreOrientations();
+                  _showControlsWithAutoHide();
+                }
               },
-              child: Icon(Icons.lock_outline, color: Colors.white.withValues(alpha: 0.8), size: 21),
+              child: Icon(
+                _isScreenLocked ? Icons.lock : Icons.lock_outline,
+                color: Colors.white,
+                size: 22,
+              ),
             ),
             // Center: Title + Episode
             Expanded(
@@ -2583,6 +2625,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   child: AppSvgIcon('airplay.svg', size: 22, color: Colors.white),
                 ),
               ),
+            // Episode list → open episode sheet
             if (_servers.isNotEmpty)
               GestureDetector(
                 onTap: _showEpisodeSheet,
