@@ -823,6 +823,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     } else if (state == AppLifecycleState.resumed) {
       // Re-enable wakelock khi quay lại app
       WakelockPlus.enable();
+      // Re-lock brightness (OS có thể reset về auto khi app background)
+      _lockBrightness();
 
       // Quay lại app → restore audio session + volume
       if (_hlsPlayer != null) {
@@ -886,6 +888,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _adCountdownTimer?.cancel();
     _adUnmuteTimer?.cancel();
     _doubleTapTimer?.cancel();
+    _brightnessTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _saveProgressOnExit();
     ActivityService.stopWatching();
@@ -896,16 +899,26 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   // ── Brightness lock ─────────────────────────────────
+  Timer? _brightnessTimer;
+
   Future<void> _lockBrightness() async {
     try {
       _originalBrightness = await ScreenBrightness().current;
       await ScreenBrightness().setScreenBrightness(1.0);
       _brightnessLocked = true;
+      _brightnessTimer?.cancel();
+      _brightnessTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+        if (_brightnessLocked && mounted) {
+          try { await ScreenBrightness().setScreenBrightness(1.0); } catch (_) {}
+        }
+      });
     } catch (_) {}
   }
 
   Future<void> _unlockBrightness() async {
     if (!_brightnessLocked) return;
+    _brightnessTimer?.cancel();
+    _brightnessTimer = null;
     try {
       await ScreenBrightness().setScreenBrightness(_originalBrightness);
       _brightnessLocked = false;
