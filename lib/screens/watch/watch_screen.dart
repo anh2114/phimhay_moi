@@ -1817,7 +1817,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             ),
 
           // ── Gesture zones: tap = show/hide controls, double-tap = seek, long-press = 2x ──
-          if (_playerMode == _PlayerMode.hls && _playerReady && !_isScreenLocked)
+          // Only active when controls are HIDDEN — when controls visible, taps go to buttons
+          if (_playerMode == _PlayerMode.hls && _playerReady && !_isScreenLocked && !_showControls)
             Stack(
               children: [
                 Row(
@@ -1826,14 +1827,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                     Expanded(
                       child: GestureDetector(
                         behavior: HitTestBehavior.translucent,
-                        onTap: () {
-                          if (_showControls) {
-                            setState(() => _showControls = false);
-                            _autoHideControlsTimer?.cancel();
-                          } else {
-                            _showControlsWithAutoHide();
-                          }
-                        },
+                        onTap: _showControlsWithAutoHide,
                         onDoubleTap: () {
                           final pos = _hlsPlayer?.state.position ?? Duration.zero;
                           final target = max(0, pos.inSeconds - 10);
@@ -1853,14 +1847,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                     Expanded(
                       child: GestureDetector(
                         behavior: HitTestBehavior.translucent,
-                        onTap: () {
-                          if (_showControls) {
-                            setState(() => _showControls = false);
-                            _autoHideControlsTimer?.cancel();
-                          } else {
-                            _showControlsWithAutoHide();
-                          }
-                        },
+                        onTap: _showControlsWithAutoHide,
                         child: const SizedBox.expand(),
                       ),
                     ),
@@ -1868,14 +1855,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                     Expanded(
                       child: GestureDetector(
                         behavior: HitTestBehavior.translucent,
-                        onTap: () {
-                          if (_showControls) {
-                            setState(() => _showControls = false);
-                            _autoHideControlsTimer?.cancel();
-                          } else {
-                            _showControlsWithAutoHide();
-                          }
-                        },
+                        onTap: _showControlsWithAutoHide,
                         onDoubleTap: () {
                           final pos = _hlsPlayer?.state.position ?? Duration.zero;
                           final target = pos.inSeconds + 10;
@@ -1953,6 +1933,19 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                     ),
                   ),
               ],
+            ),
+
+          // ── Tap zone to hide controls when visible (landscape only) ──
+          if (_showControls && _isLandscape && _playerMode == _PlayerMode.hls && !_isScreenLocked)
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: () {
+                  setState(() => _showControls = false);
+                  _autoHideControlsTimer?.cancel();
+                },
+                child: const SizedBox.expand(),
+              ),
             ),
 
           // ── Custom overlay controls — chỉ hiện khi landscape + HLS ──
