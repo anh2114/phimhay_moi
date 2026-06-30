@@ -4,6 +4,7 @@ import 'dart:math';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:dio/dio.dart';
@@ -87,6 +88,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   InAppWebViewController? _webController;
   Player? _hlsPlayer;
   VideoController? _videoController;
+  // Prefetch player — preloads next episode in background
+  Player? _prefetchPlayer;
+  String _prefetchUrl = '';
+  dynamic _prefetchEpId;
   static const _pipChannel = MethodChannel('phimhay/pip');
   static const _airplayChannel = MethodChannel('phimhay/airplay');
   bool _pipAvailable = false;
@@ -113,6 +118,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   // Custom player controls (giống watch room host controls)
   bool _isPlaying = false;
+  bool _playPressed = false;
   double _playbackSpeed = 1.0;
   static const List<double> _speeds = [0.5, 1.0, 1.5, 2.0, 3.0];
   String _settingsPanel = 'main'; // 'main', 'quality', 'subtitles', 'speed'
@@ -893,6 +899,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _saveProgressOnExit();
     ActivityService.stopWatching();
     _restoreOrientations();
+    _cancelPrefetch();
     _hlsPlayer?.dispose();
     _webController?.dispose();
     super.dispose();
@@ -1121,86 +1128,60 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     setState(() {});
   }
 
-  void _initHlsPlayer(String url) {
-    _hlsPlayer ??= Player();
-    _videoController ??= VideoController(_hlsPlayer!);
-    _healthCheckTimer?.cancel();
+  void _setupPlayerSubscriptions() {
     _positionSub?.cancel();
     _playingSub?.cancel();
     _durationSub?.cancel();
-    _playerReady = false;
-    _seekCompleted = _currentPosition <= 15; // Nếu không cần seek → true ngay
 
-    // Lắng nghe position để hiện/ẩn skip intro + detect seek + update custom controls
     _positionSub = _hlsPlayer!.stream.position.distinct().listen((pos) {
       final sec = pos.inSeconds;
       final showSkip = sec >= 10 && sec <= 120;
-      if (showSkip != _showSkipIntro && mounted) {
-        setState(() => _showSkipIntro = showSkip);
-      }
-
-      // Auto-skip ad zone
+      if (showSkip != _showSkipIntro && mounted) _showSkipIntro = showSkip;
       _checkAdZone(sec);
-
-      // Update custom controls position (throttle UI update mỗi 500ms)
       if (mounted && !_isDragging) {
-        // ★ FIX: Bỏ qua position updates gần seek target — chờ player arrive
         final posSec = pos.inSeconds;
         if (_seekTargetTime > 0) {
-          if ((posSec - _seekTargetTime).abs() <= 5) {
-            // Player đã gần target → xác nhận seek thành công
-            _seekTargetTime = 0;
-          } else if (posSec.abs() < _seekTargetTime - 5 || posSec > _seekTargetTime + 15) {
-            // Position chưa đến target hoặc sai quá → KHÔNG update UI
-            // (tránh slider nhảy lung tung)
-            return;
-          }
+          if ((posSec - _seekTargetTime).abs() <= 5) _seekTargetTime = 0;
+          else if (posSec.abs() < _seekTargetTime - 5 || posSec > _seekTargetTime + 15) return;
         }
-
         final now = DateTime.now().millisecondsSinceEpoch;
-        if (now - _lastPositionUpdate > 500) {
+        if (now - _lastPositionUpdate > 200) {
           _lastPositionUpdate = now;
           _currentPos = pos;
           setState(() {});
         }
       }
-
-      // Detect seek: nếu position nhảy > 5s so với lần lưu trước → lưu ngay
       final diff = (pos.inSeconds - _lastSavedPosition).abs();
       if (diff > 5 && pos.inSeconds > 0) {
         _lastSavedPosition = pos.inSeconds;
         _saveCurrentProgress();
       }
+      if (_currentDur.inSeconds > 0 && pos.inSeconds >= _currentDur.inSeconds - 30) {
+        _startPrefetch();
+      }
     });
 
-    // Lắng nghe playing state → hiện Video khi bắt đầu phát + update custom controls
-    // CHẶN auto-play nếu chưa seek xong
     _playingSub = _hlsPlayer!.stream.playing.listen((playing) {
-      if (playing && !_playerReady && mounted) {
-        setState(() => _playerReady = true);
-      }
-      // Nếu đang play nhưng chưa seek xong → pause lại
-      if (playing && !_seekCompleted && mounted) {
-        _hlsPlayer!.pause();
-      }
-      // Update custom controls
-      if (mounted) {
-        setState(() => _isPlaying = playing);
-      }
+      if (playing && !_playerReady && mounted) setState(() => _playerReady = true);
+      if (playing && !_seekCompleted && mounted) _hlsPlayer!.pause();
+      if (mounted) setState(() => _isPlaying = playing);
     });
 
-    // Lắng nghe duration → media đã load xong → seek ngay + update custom controls
     _durationSub = _hlsPlayer!.stream.duration.distinct().listen((dur) {
-      if (dur.inSeconds > 0 && !_seekCompleted && _currentPosition > 15 && mounted) {
-        _seekToPosition();
-      }
-      // Update custom controls duration
-      if (mounted) {
-        setState(() => _currentDur = dur);
-      }
+      if (dur.inSeconds > 0 && !_seekCompleted && _currentPosition > 15 && mounted) _seekToPosition();
+      if (mounted) setState(() => _currentDur = dur);
     });
+  }
 
-    // Buffering listener - chỉ play khi seek đã hoàn thành
+  void _initHlsPlayer(String url) {
+    _hlsPlayer ??= Player();
+    _videoController ??= VideoController(_hlsPlayer!);
+    _healthCheckTimer?.cancel();
+    _playerReady = false;
+    _seekCompleted = _currentPosition <= 15;
+    _setupPlayerSubscriptions();
+
+    // Buffering listener
     _hlsPlayer!.stream.buffering.listen((buffering) {
       if (!buffering && mounted && !_hlsPlayer!.state.playing && _seekCompleted) {
         _hlsPlayer!.play();
@@ -1261,22 +1242,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   /// Seek đến _currentPosition - gọi khi duration đã available
   Future<void> _seekToPosition() async {
     if (_seekCompleted || _currentPosition <= 15) return;
-
-    // Pause để chặn auto-play
-    _hlsPlayer!.pause();
-    await Future.delayed(const Duration(milliseconds: 200));
-
     _seekTargetTime = _currentPosition;
-
-    // Seek
-    await _hlsPlayer!.seek(Duration(seconds: _currentPosition));
-    await Future.delayed(const Duration(milliseconds: 300));
-
-    // Seek xong → cho phép save + play
     _seekCompleted = true;
-    if (mounted) {
-      _hlsPlayer!.play();
-    }
+    _hlsPlayer!.seek(Duration(seconds: _currentPosition)).then((_) {
+      if (mounted) _hlsPlayer!.play();
+    });
   }
 
   /// HLS fail → thử server khác (logged in) hoặc embed (logged out)
@@ -1422,16 +1392,15 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   void _doSwitchEpisode(Map<String, dynamic> ep, {bool keepPosition = false}) {
-    _hasSwitchedEp = true; // Danh dau da chuyen tap
-    // Luu progress tap hien tai truoc khi chuyen
+    _hasSwitchedEp = true;
     if (!keepPosition) _saveCurrentProgress();
+    if (_prefetchEpId != ep['id']) _cancelPrefetch();
 
     final epId = ep['id'];
     final m3u8 = (ep['link_m3u8'] ?? '').toString().trim();
     final embed = (ep['link_embed'] ?? '').toString().trim();
-    _currentEmbedUrl = embed; // lưu để fallback
+    _currentEmbedUrl = embed;
 
-    // Ưu tiên HLS cho tất cả (mobile chạy được hết)
     final bool useHls = m3u8.isNotEmpty;
     final String url = m3u8.isNotEmpty ? m3u8 : embed;
 
@@ -1452,31 +1421,72 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         _lastSavedPosition = 0;
         _seekTargetTime = 0;
         _seekCompleted = false;
-        _lastPositionForJump = -1; // Reset ad tracking
+        _lastPositionForJump = -1;
         _adMarkers = [];
         _m3u8Result = null;
         _adMuted = false;
         _adSkipping = false;
-        _subtitles = []; // Reset subtitles for new episode
+        _subtitles = [];
       }
     });
 
-    // Load subtitles for new episode
     _loadSubtitles(ep);
 
     if (useHls) {
-      _hlsPlayer?.stop(); // Dừng player cũ
       _adMarkers = [];
-      _initHlsPlayer(url);
+      if (!_tryUsePrefetched(ep)) {
+        _initHlsPlayer(url);
+      }
       _fetchAdMarkers(url, _currentServerName);
-      // Update PiP URL cho iOS (chuyển tập → PiP cũng phải update)
       _updatePipUrl();
     }
 
-    // Tắt loading sau một khoảng thời gian ngắn hoặc khi player sẵn sàng
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted) setState(() => _isLoading = false);
+    // Hide loading when player becomes ready (via _playerReady listener)
+    // Fallback: hide after 3s max
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted && _isLoading) setState(() => _isLoading = false);
     });
+  }
+
+  // ── Prefetch: pre-load next episode in background ──
+  void _startPrefetch() {
+    final next = _getNextEpisode();
+    if (next == null) return;
+    final m3u8 = (next['link_m3u8'] ?? '').toString().trim();
+    if (m3u8.isEmpty) return;
+    if (m3u8 == _prefetchUrl && _prefetchPlayer != null) return;
+    _cancelPrefetch();
+    _prefetchUrl = m3u8;
+    _prefetchEpId = next['id'];
+    _prefetchPlayer = Player();
+    _prefetchPlayer!.open(
+      Media(m3u8, httpHeaders: {
+        'Referer': AppConfig.baseUrl,
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)',
+      }),
+    );
+  }
+
+  void _cancelPrefetch() {
+    _prefetchPlayer?.dispose();
+    _prefetchPlayer = null;
+    _prefetchUrl = '';
+    _prefetchEpId = null;
+  }
+
+  bool _tryUsePrefetched(Map<String, dynamic> ep) {
+    if (_prefetchPlayer == null || _prefetchEpId != ep['id']) return false;
+    _hlsPlayer?.dispose();
+    _hlsPlayer = _prefetchPlayer;
+    _videoController = VideoController(_hlsPlayer!);
+    _prefetchPlayer = null;
+    _prefetchUrl = '';
+    _prefetchEpId = null;
+    _playerReady = false;
+    _seekCompleted = _currentPosition <= 15;
+    _setupPlayerSubscriptions();
+    _hlsPlayer!.play();
+    return true;
   }
 
   void _toggleControls() {
@@ -1753,12 +1763,16 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     return Stack(
         fit: StackFit.expand,
         children: [
-          // ── HLS native player (media_kit) — dùng NoVideoControls, custom controls bên dưới ──
-          if (_playerMode == _PlayerMode.hls && _videoController != null && _playerReady)
-            SizedBox.expand(
-              child: _aspectRatios[_aspectRatioIndex] != null
-                  ? AspectRatio(aspectRatio: _aspectRatios[_aspectRatioIndex]!, child: Video(controller: _videoController!, controls: NoVideoControls))
-                  : Video(controller: _videoController!, controls: NoVideoControls),
+          // ── HLS native player ──
+          if (_playerMode == _PlayerMode.hls && _videoController != null)
+            AnimatedOpacity(
+              opacity: _playerReady ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 300),
+              child: SizedBox.expand(
+                child: _aspectRatios[_aspectRatioIndex] != null
+                    ? AspectRatio(aspectRatio: _aspectRatios[_aspectRatioIndex]!, child: Video(controller: _videoController!, controls: NoVideoControls))
+                    : Video(controller: _videoController!, controls: NoVideoControls),
+              ),
             ),
 
           // ── Black overlay khi PiP active — CHỈ iOS (Android dùng Flutter surface → video tự hiện) ──
@@ -1974,10 +1988,15 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           if (_showControls && !_isLandscape && _playerMode == _PlayerMode.hls && _playerReady)
             Positioned(bottom: 0, left: 0, right: 0, child: _buildPortraitMiniControls()),
 
-          // ── Loading ──
+          // ── Loading — subtle bottom bar ──
           if (_isLoading)
-            const Center(
-              child: CircularProgressIndicator(color: AppTheme.accent, strokeWidth: 3),
+            Positioned(
+              bottom: 0, left: 0, right: 0,
+              child: LinearProgressIndicator(
+                color: AppTheme.accent,
+                backgroundColor: Colors.white12,
+                minHeight: 3,
+              ),
             ),
 
           // ── Error ──
@@ -2659,19 +2678,26 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 ),
               ),
               GestureDetector(
+                onTapDown: (_) => setState(() => _playPressed = true),
+                onTapUp: (_) => setState(() => _playPressed = false),
+                onTapCancel: () => setState(() => _playPressed = false),
                 onTap: () {
                   if (_isPlaying) { _hlsPlayer?.pause(); } else { _hlsPlayer?.play(); }
                 },
-                child: Container(
-                  width: 64, height: 64,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.95),
-                    shape: BoxShape.circle,
-                    boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 12)],
-                  ),
-                  child: Icon(
-                    _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                    color: Colors.black, size: 36,
+                child: AnimatedScale(
+                  scale: _playPressed ? 0.88 : 1.0,
+                  duration: const Duration(milliseconds: 100),
+                  child: Container(
+                    width: 64, height: 64,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.95),
+                      shape: BoxShape.circle,
+                      boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 12)],
+                    ),
+                    child: Icon(
+                      _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                      color: Colors.black, size: 36,
+                    ),
                   ),
                 ),
               ),
