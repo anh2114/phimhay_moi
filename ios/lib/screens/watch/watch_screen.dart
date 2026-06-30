@@ -1967,34 +1967,24 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               ],
             ),
 
-          // ── Custom overlay controls — ẩn khi đang play ad ──
-          if (_showControls && _playerMode == _PlayerMode.hls && _playerReady) ...[
-            // Bottom bar: timeline + controls row
+          // ── Custom overlay controls — chỉ hiện khi landscape + HLS ──
+          if (_showControls && _isLandscape && _playerMode == _PlayerMode.hls && _playerReady) ...[
+            // Top bar: back+lock | title | pip+airplay+episodes
+            Positioned(top: 0, left: 0, right: 0, child: _buildTopBar()),
+            // Center: prev|rewind10|play|forward10|next
             Positioned(
-              bottom: 0, left: 0, right: 0,
-              child: _buildBottomBar(),
+              top: 0, bottom: 0, left: 0, right: 0,
+              child: _buildCenterControls(),
             ),
-            // Nút Skip Intro (góc phải dưới, trên bottom bar)
+            // Bottom: timeline + toolbar
+            Positioned(bottom: 0, left: 0, right: 0, child: _buildBottomBar()),
+            // Skip Intro
             if (_showSkipIntro)
-              Positioned(
-                bottom: 60, right: 12,
-                child: _skipIntroButton(),
-              ),
+              Positioned(bottom: 80, right: 12, child: _skipIntroButton()),
           ],
-
-          // ── Tên phim + tập góc trái trên — chỉ hiện khi fullscreen + controls visible ──
-          if (_isLandscape && _showControls)
-            Positioned(
-              top: 8, left: 56,
-              child: _buildMovieInfoOverlay(),
-            ),
-
-          // ── Đồng hồ VN góc phải trên — chỉ hiện khi fullscreen + controls visible ──
-          if (_isLandscape && _showControls)
-            Positioned(
-              top: 8, right: 8,
-              child: _buildClockWidget(),
-            ),
+          // ── Portrait mini controls — chỉ hiện khi portrait + HLS ──
+          if (_showControls && !_isLandscape && _playerMode == _PlayerMode.hls && _playerReady)
+            Positioned(bottom: 0, left: 0, right: 0, child: _buildPortraitMiniControls()),
 
           // ── Loading ──
           if (_isLoading)
@@ -2536,6 +2526,200 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     );
   }
 
+  // ── Top Bar (landscape fullscreen) ─────────────────
+  Widget _buildTopBar() {
+    return Container(
+      padding: const EdgeInsets.only(left: 12, right: 12, top: 10, bottom: 8),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.black.withValues(alpha: 0.6), Colors.transparent],
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Row(
+          children: [
+            GestureDetector(
+              onTap: () {
+                _restoreOrientations();
+                Future.delayed(const Duration(milliseconds: 300), () => _restoreOrientations());
+              },
+              child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
+            ),
+            const SizedBox(width: 16),
+            GestureDetector(
+              onTap: () {},
+              child: Icon(Icons.lock_outline, color: Colors.white.withValues(alpha: 0.7), size: 20),
+            ),
+            Expanded(
+              child: Center(
+                child: Text(
+                  widget.movieTitle ?? '',
+                  style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+            if (_pipAvailable)
+              GestureDetector(
+                onTap: _startPip,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8),
+                  child: AppSvgIcon('picture-in-picture-2.svg', size: 22, color: Colors.white),
+                ),
+              ),
+            if (Platform.isIOS)
+              GestureDetector(
+                onTap: _showAirPlayPicker,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8),
+                  child: AppSvgIcon('airplay.svg', size: 22, color: Colors.white),
+                ),
+              ),
+            if (_servers.isNotEmpty)
+              GestureDetector(
+                onTap: _showEpisodeSheet,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8),
+                  child: AppSvgIcon('list-video.svg', size: 22, color: Colors.white),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Center Controls (landscape fullscreen) ──────────
+  Widget _buildCenterControls() {
+    return Row(
+      children: [
+        Expanded(
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: () {
+              if (_showControls) {
+                setState(() => _showControls = false);
+                _autoHideControlsTimer?.cancel();
+              } else {
+                _showControlsWithAutoHide();
+              }
+            },
+            onDoubleTap: () {
+              final pos = _hlsPlayer?.state.position ?? Duration.zero;
+              final target = max(0, pos.inSeconds - 10);
+              _seekTargetTime = target;
+              _lastSeekByUser = DateTime.now().millisecondsSinceEpoch;
+              if (mounted) setState(() => _currentPos = Duration(seconds: target));
+              _hlsPlayer?.seek(Duration(seconds: target));
+              _showDoubleTapFeedback(false);
+            },
+            onLongPressStart: (_) => _onLongPressStart(),
+            onLongPressEnd: (_) => _onLongPressEnd(),
+            onLongPressCancel: () => _onLongPressEnd(),
+            child: const SizedBox.expand(),
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                onTap: () {
+                  final eps = _currentServerEps;
+                  for (int i = 0; i < eps.length; i++) {
+                    if (eps[i]['id'] == _currentEpId && i > 0) {
+                      _switchEpisode(eps[i - 1]);
+                      break;
+                    }
+                  }
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Icon(Icons.skip_previous_rounded, color: Colors.white.withValues(alpha: 0.5), size: 28),
+                ),
+              ),
+              GestureDetector(
+                onTap: () {
+                  final pos = _hlsPlayer?.state.position ?? Duration.zero;
+                  final target = max(0, pos.inSeconds - 10);
+                  _seekTargetTime = target;
+                  if (mounted) setState(() => _currentPos = Duration(seconds: target));
+                  _hlsPlayer?.seek(Duration(seconds: target));
+                },
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12),
+                  child: AppSvgIcon('rewind.svg', size: 30, color: Colors.white),
+                ),
+              ),
+              GestureDetector(
+                onTap: () {
+                  if (_isPlaying) { _hlsPlayer?.pause(); } else { _hlsPlayer?.play(); }
+                },
+                child: Container(
+                  width: 64, height: 64,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.95),
+                    shape: BoxShape.circle,
+                    boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 12)],
+                  ),
+                  child: Icon(
+                    _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                    color: Colors.black, size: 36,
+                  ),
+                ),
+              ),
+              GestureDetector(
+                onTap: () {
+                  final pos = _hlsPlayer?.state.position ?? Duration.zero;
+                  final target = pos.inSeconds + 10;
+                  _seekTargetTime = target;
+                  if (mounted) setState(() => _currentPos = Duration(seconds: target));
+                  _hlsPlayer?.seek(Duration(seconds: target));
+                },
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12),
+                  child: AppSvgIcon('fast-forward.svg', size: 30, color: Colors.white),
+                ),
+              ),
+              _nextEpisodeButton(),
+            ],
+          ),
+        ),
+        Expanded(
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: () {
+              if (_showControls) {
+                setState(() => _showControls = false);
+                _autoHideControlsTimer?.cancel();
+              } else {
+                _showControlsWithAutoHide();
+              }
+            },
+            onDoubleTap: () {
+              final pos = _hlsPlayer?.state.position ?? Duration.zero;
+              final target = pos.inSeconds + 10;
+              _seekTargetTime = target;
+              _lastSeekByUser = DateTime.now().millisecondsSinceEpoch;
+              if (mounted) setState(() => _currentPos = Duration(seconds: target));
+              _hlsPlayer?.seek(Duration(seconds: target));
+              _showDoubleTapFeedback(true);
+            },
+            onLongPressStart: (_) => _onLongPressStart(),
+            onLongPressEnd: (_) => _onLongPressEnd(),
+            onLongPressCancel: () => _onLongPressEnd(),
+            child: const SizedBox.expand(),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildBottomBar() {
     final progress = _currentDur.inSeconds > 0
         ? _currentPos.inSeconds / _currentDur.inSeconds
@@ -2546,153 +2730,178 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         : _currentPos;
 
     return Container(
-      padding: const EdgeInsets.only(left: 8, right: 8, bottom: 4, top: 20),
+      padding: const EdgeInsets.only(left: 14, right: 14, bottom: 12, top: 16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Colors.transparent, Colors.black.withValues(alpha: 0.9)],
+          colors: [Colors.transparent, Colors.black.withValues(alpha: 0.8)],
         ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Time + Timeline: [00:04 ———— slider ———— 52:42]
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Row(
-              children: [
-                // Current time
-                Text(
-                  _formatDuration(currentTime),
-                  style: const TextStyle(color: Colors.white, fontSize: 11, fontFamily: 'monospace', fontWeight: FontWeight.w600),
+          Row(
+            children: [
+              Text(
+                _formatDuration(currentTime),
+                style: const TextStyle(color: Colors.white, fontSize: 12, fontFamily: 'monospace', fontWeight: FontWeight.w500),
+              ),
+              Expanded(
+                child: SliderTheme(
+                  data: SliderThemeData(
+                    trackHeight: 3,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                    activeTrackColor: Colors.white,
+                    inactiveTrackColor: Colors.white.withValues(alpha: 0.2),
+                    thumbColor: Colors.white,
+                    overlayColor: Colors.white.withValues(alpha: 0.15),
+                  ),
+                  child: Slider(
+                    value: displayValue.clamp(0.0, 1.0),
+                    onChangeStart: (value) {
+                      _isDragging = true;
+                      _dragValue = value;
+                      _autoHideControlsTimer?.cancel();
+                    },
+                    onChanged: (value) {
+                      _dragValue = value;
+                      setState(() {});
+                    },
+                    onChangeEnd: (value) {
+                      _isDragging = false;
+                      _showControlsWithAutoHide();
+                      final targetSec = (value * _currentDur.inSeconds).toInt();
+                      _seekTargetTime = targetSec;
+                      _lastSeekByUser = DateTime.now().millisecondsSinceEpoch;
+                      if (mounted) setState(() => _currentPos = Duration(seconds: targetSec));
+                      _hlsPlayer?.seek(Duration(seconds: targetSec));
+                    },
+                  ),
                 ),
-                // Slider
+              ),
+              Text(
+                _formatDuration(_currentDur),
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 12, fontFamily: 'monospace', fontWeight: FontWeight.w500),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildToolbarItem(Icons.aspect_ratio_rounded, 'Tỷ lệ', () {}),
+              const SizedBox(width: 40),
+              _buildToolbarItem(Icons.mic_none_rounded, 'Server', _showServerPopup),
+              const SizedBox(width: 40),
+              _buildToolbarItem(Icons.subtitles_rounded, 'Phụ đề', _showSettingsPopup),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildToolbarItem(IconData icon, String label, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white.withValues(alpha: 0.8), size: 18),
+          const SizedBox(width: 5),
+          Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 13)),
+        ],
+      ),
+    );
+  }
+
+  // ── Portrait mini controls ──────────────────────────
+  Widget _buildPortraitMiniControls() {
+    return Container(
+      padding: const EdgeInsets.only(left: 12, right: 12, bottom: 8),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.transparent, Colors.black.withValues(alpha: 0.7)],
+        ),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Text(_formatDuration(_currentPos), style: const TextStyle(color: Colors.white70, fontSize: 10, fontFamily: 'monospace')),
                 Expanded(
                   child: SliderTheme(
                     data: SliderThemeData(
-                      trackHeight: 4,
-                      thumbShape: RoundSliderThumbShape(enabledThumbRadius: 7),
-                      overlayShape: RoundSliderOverlayShape(overlayRadius: 14),
+                      trackHeight: 2,
+                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
                       activeTrackColor: AppTheme.accent,
                       inactiveTrackColor: Colors.white.withValues(alpha: 0.15),
                       thumbColor: AppTheme.accent,
-                      overlayColor: AppTheme.accent.withValues(alpha: 0.15),
                     ),
                     child: Slider(
-                      value: displayValue.clamp(0.0, 1.0),
-                      onChangeStart: (value) {
-                        _isDragging = true;
-                        _dragValue = value;
-                        _autoHideControlsTimer?.cancel();
-                      },
-                      onChanged: (value) {
-                        _dragValue = value;
-                        setState(() {});
-                      },
-                      onChangeEnd: (value) {
-                        _isDragging = false;
-                        _showControlsWithAutoHide();
-                        final targetSec = (value * _currentDur.inSeconds).toInt();
-                        _seekTargetTime = targetSec;
-                        _lastSeekByUser = DateTime.now().millisecondsSinceEpoch;
-                        // Optimistic update: hiển thị ngay vị trí seek
-                        if (mounted) {
-                          setState(() {
-                            _currentPos = Duration(seconds: targetSec);
-                          });
-                        }
-                        _hlsPlayer?.seek(Duration(seconds: targetSec));
+                      value: (_currentDur.inSeconds > 0 ? _currentPos.inSeconds / _currentDur.inSeconds : 0.0).clamp(0.0, 1.0),
+                      onChanged: (v) {
+                        final t = (v * _currentDur.inSeconds).toInt();
+                        _hlsPlayer?.seek(Duration(seconds: t));
+                        if (mounted) setState(() => _currentPos = Duration(seconds: t));
                       },
                     ),
                   ),
                 ),
-                // Total duration
-                Text(
-                  _formatDuration(_currentDur),
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11, fontFamily: 'monospace', fontWeight: FontWeight.w500),
+                Text(_formatDuration(_currentDur), style: TextStyle(color: Colors.white38, fontSize: 10, fontFamily: 'monospace')),
+              ],
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                GestureDetector(
+                  onTap: () {
+                    if (_isPlaying) { _hlsPlayer?.pause(); } else { _hlsPlayer?.play(); }
+                  },
+                  child: Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 28),
+                ),
+                GestureDetector(
+                  onTap: () {
+                    final pos = _hlsPlayer?.state.position ?? Duration.zero;
+                    final target = max(0, pos.inSeconds - 10);
+                    _hlsPlayer?.seek(Duration(seconds: target));
+                  },
+                  child: const AppSvgIcon('rewind.svg', size: 22, color: Colors.white),
+                ),
+                GestureDetector(
+                  onTap: () {
+                    final pos = _hlsPlayer?.state.position ?? Duration.zero;
+                    final target = pos.inSeconds + 10;
+                    _hlsPlayer?.seek(Duration(seconds: target));
+                  },
+                  child: const AppSvgIcon('fast-forward.svg', size: 22, color: Colors.white),
+                ),
+                if (_subtitles.isNotEmpty)
+                  GestureDetector(
+                    onTap: () => setState(() => _subtitleEnabled = !_subtitleEnabled),
+                    child: Icon(Icons.subtitles_rounded, size: 20, color: _subtitleEnabled ? AppTheme.accent : Colors.white70),
+                  ),
+                GestureDetector(
+                  onTap: _toggleFullscreen,
+                  child: const AppSvgIcon('maximize.svg', size: 20, color: Colors.white),
                 ),
               ],
             ),
-          ),
-          // Controls row: [Play/Pause] [Rewind] [Forward] [Volume] [Spacer] [PiP] [Mic] [Speed] [Fullscreen]
-          Row(
-            children: [
-              // Play / Pause
-              GestureDetector(
-                onTap: () {
-                  if (_isPlaying) {
-                    _hlsPlayer?.pause();
-                  } else {
-                    _hlsPlayer?.play();
-                  }
-                },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  child: AppSvgIcon(
-                    _isPlaying ? 'square.svg' : 'play.svg',
-                    size: 22,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-              // Rewind 10s
-              GestureDetector(
-                onTap: () {
-                  final pos = _hlsPlayer?.state.position ?? Duration.zero;
-                  final target = max(0, pos.inSeconds - 10);
-                  _seekTargetTime = target;
-                  if (mounted) setState(() => _currentPos = Duration(seconds: target));
-                  _hlsPlayer?.seek(Duration(seconds: target));
-                },
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 6),
-                  child: AppSvgIcon('rewind.svg', size: 22, color: Colors.white),
-                ),
-              ),
-              // Forward 10s
-              GestureDetector(
-                onTap: () {
-                  final pos = _hlsPlayer?.state.position ?? Duration.zero;
-                  final target = pos.inSeconds + 10;
-                  _seekTargetTime = target;
-                  if (mounted) setState(() => _currentPos = Duration(seconds: target));
-                  _hlsPlayer?.seek(Duration(seconds: target));
-                },
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 6),
-                  child: AppSvgIcon('fast-forward.svg', size: 22, color: Colors.white),
-                ),
-              ),
-              // Volume
-              GestureDetector(
-                onLongPress: _toggleMute,
-                onTap: () => setState(() => _showVolumeInline = !_showVolumeInline),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: AppSvgIcon(
-                        _isMuted || _volume == 0
-                            ? 'volume-x.svg'
-                            : _volume < 50
-                                ? 'volume-1.svg'
-                                : 'volume-2.svg',
-                        size: 20,
-                        color: _isMuted || _volume == 0 ? Colors.redAccent : Colors.white,
-                      ),
-                    ),
-                    if (_showVolumeInline)
-                      SizedBox(
-                        width: 80,
-                        child: SliderTheme(
-                          data: SliderThemeData(
-                            trackHeight: 3,
-                            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-                            overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
-                            activeTrackColor: AppTheme.accent,
-                            inactiveTrackColor: Colors.white.withValues(alpha: 0.15),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _cycleSpeed() {
+    final idx = _speeds.indexOf(_playbackSpeed);
                             thumbColor: AppTheme.accent,
                             overlayColor: AppTheme.accent.withValues(alpha: 0.1),
                           ),
