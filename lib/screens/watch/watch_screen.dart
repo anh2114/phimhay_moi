@@ -29,6 +29,7 @@ import 'package:phimhay_app/screens/watch_room/watch_room_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:screen_brightness/screen_brightness.dart';
+import 'package:screen_brightness/screen_brightness.dart';
 import 'package:phimhay_app/services/startapp_ad_service.dart';
 import 'package:phimhay_app/widgets/startapp_banner_widget.dart';
 import 'package:phimhay_app/services/m3u8_ad_parser.dart';
@@ -1097,6 +1098,16 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   bool _isLongPressSpeedUp = false;
   double _speedBeforeLongPress = 1.0;
 
+  // ── Aspect ratio ──
+  static const List<double?> _aspectRatios = [null, 16/9, 4/3, 1/1];
+  static const List<String> _aspectRatioLabels = ['Tự động', '16:9', '4:3', '1:1'];
+  int _aspectRatioIndex = 0;
+
+  void _cycleAspectRatio() {
+    _aspectRatioIndex = (_aspectRatioIndex + 1) % _aspectRatios.length;
+    setState(() {});
+  }
+
   void _initHlsPlayer(String url) {
     _hlsPlayer ??= Player();
     _videoController ??= VideoController(_hlsPlayer!);
@@ -1503,41 +1514,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         child: isLandscape
             ? Stack(children: [
                 Positioned.fill(child: _buildPlayer()),
-                if (_showControls)
-                  Positioned(
-                    top: 8, left: 8,
-                    child: GestureDetector(
-                      onTap: () {
-                        _restoreOrientations();
-                        Future.delayed(const Duration(milliseconds: 300), () {
-                          _restoreOrientations();
-                        });
-                      },
-                      child: Container(
-                        width: 40, height: 40,
-                        decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(20)),
-                        child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
-                      ),
-                    ),
-                  ),
-                // Episode selector button (bên phải giữa màn hình)
-                if (_showControls && _servers.isNotEmpty)
-                  Positioned(
-                    top: 0, bottom: 0, right: 12,
-                    child: Center(
-                      child: GestureDetector(
-                        onTap: _showEpisodeSheet,
-                        child: Container(
-                          width: 44, height: 44,
-                          decoration: BoxDecoration(
-                            color: Colors.black54,
-                            borderRadius: BorderRadius.circular(22),
-                          ),
-                          child: const AppSvgIcon('list-video.svg', size: 24, color: Colors.white),
-                        ),
-                      ),
-                    ),
-                  ),
               ])
             : Column(children: [
                 // Header
@@ -1771,7 +1747,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           // ── HLS native player (media_kit) — dùng NoVideoControls, custom controls bên dưới ──
           if (_playerMode == _PlayerMode.hls && _videoController != null && _playerReady)
             SizedBox.expand(
-              child: Video(controller: _videoController!, controls: NoVideoControls),
+              child: _aspectRatios[_aspectRatioIndex] != null
+                  ? AspectRatio(aspectRatio: _aspectRatios[_aspectRatioIndex]!, child: Video(controller: _videoController!, controls: NoVideoControls))
+                  : Video(controller: _videoController!, controls: NoVideoControls),
             ),
 
           // ── Black overlay khi PiP active — CHỈ iOS (Android dùng Flutter surface → video tự hiện) ──
@@ -2535,6 +2513,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   // ── Top Bar (landscape fullscreen) ─────────────────
   Widget _buildTopBar() {
+    // Format title: "Movie Name | Tập X" (avoid duplicate "Tập" prefix)
+    String displayTitle = widget.movieTitle ?? '';
+    final epClean = _currentEpName.replaceAll(RegExp(r'^[Tt]ậ?p?\s*', caseSensitive: false), '').trim();
+    if (epClean.isNotEmpty && epClean.toLowerCase() != 'full') {
+      displayTitle = '$displayTitle | Tập $epClean';
+    }
+
     return Container(
       padding: const EdgeInsets.only(left: 12, right: 12, top: 10, bottom: 8),
       decoration: BoxDecoration(
@@ -2548,41 +2533,48 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         bottom: false,
         child: Row(
           children: [
-            // Left: Back + Lock
+            // Left: Back (bright white)
             GestureDetector(
               onTap: () {
                 _restoreOrientations();
                 Future.delayed(const Duration(milliseconds: 300), () => _restoreOrientations());
               },
-              child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
+              child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 24),
             ),
             const SizedBox(width: 16),
+            // Lock
             GestureDetector(
               onTap: () {
-                // Lock rotation — TODO: implement lock toggle
+                // TODO: implement lock toggle
               },
-              child: Icon(Icons.lock_outline, color: Colors.white.withValues(alpha: 0.7), size: 20),
+              child: Icon(Icons.lock_outline, color: Colors.white.withValues(alpha: 0.8), size: 21),
             ),
-            // Center: Title
+            // Center: Title + Episode
             Expanded(
               child: Center(
                 child: Text(
-                  widget.movieTitle ?? '',
+                  displayTitle,
                   style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
             ),
-            // Right: PiP + AirPlay + Episodes
-            if (_pipAvailable)
-              GestureDetector(
-                onTap: _startPip,
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 8),
-                  child: AppSvgIcon('picture-in-picture-2.svg', size: 22, color: Colors.white),
-                ),
+            // Right: PiP (toggle controls) + AirPlay + Episodes list
+            GestureDetector(
+              onTap: () {
+                if (_showControls) {
+                  setState(() => _showControls = false);
+                  _autoHideControlsTimer?.cancel();
+                } else {
+                  _showControlsWithAutoHide();
+                }
+              },
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: AppSvgIcon('picture-in-picture-2.svg', size: 22, color: Colors.white),
               ),
+            ),
             if (Platform.isIOS)
               GestureDetector(
                 onTap: _showAirPlayPicker,
@@ -2814,8 +2806,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Tỷ lệ (placeholder — giữ nguyên layout)
-              _buildToolbarItem(Icons.aspect_ratio_rounded, 'Tỷ lệ', () {}),
+              // Tỷ lệ (aspect ratio)
+              _buildToolbarItem(Icons.aspect_ratio_rounded, _aspectRatioLabels[_aspectRatioIndex], _cycleAspectRatio),
               const SizedBox(width: 40),
               // Server (mic icon → server popup)
               _buildToolbarItem(Icons.mic_none_rounded, 'Server', _showServerPopup),
