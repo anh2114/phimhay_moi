@@ -14,9 +14,9 @@ class CollectionService {
               .toList();
         }
       }
-      return _getDefaultCollections();
+      return getDefaultCollections();
     } catch (e) {
-      return _getDefaultCollections();
+      return getDefaultCollections();
     }
   }
 

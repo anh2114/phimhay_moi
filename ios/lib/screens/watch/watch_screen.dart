@@ -31,6 +31,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:phimhay_app/services/smartlink_service.dart';
 import 'package:phimhay_app/widgets/smartlink_banner_widget.dart';
 import 'package:phimhay_app/services/m3u8_ad_parser.dart';
+import 'package:phimhay_app/services/srt_parser.dart';
 
 /// Loại player hiện tại
 enum _PlayerMode { hls, embed }
@@ -239,6 +240,49 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     } catch (e) {
       debugPrint('M3U8 parse error: $e');
     }
+  }
+
+  // ── Load subtitles for current episode ──────────────────
+  Future<void> _loadSubtitles(Map<String, dynamic> episode) async {
+    // Try API field first
+    final subUrl = (episode['link_sub'] ?? episode['subtitle_url'] ?? '').toString().trim();
+    final urlsToTry = <String>[];
+    if (subUrl.isNotEmpty) urlsToTry.add(subUrl);
+
+    // Convention URL: /art/{slug}/{slug}_vi.srt
+    final slug = widget.movieSlug ?? '';
+    if (slug.isNotEmpty) {
+      urlsToTry.add('${AppConfig.baseUrl}/art/$slug/${slug}_vi.srt');
+    }
+
+    if (urlsToTry.isEmpty) {
+      setState(() { _subtitles = []; _subtitleEnabled = false; });
+      return;
+    }
+
+    for (final url in urlsToTry) {
+      try {
+        final subs = await _srtParser.fetchAndParse(url);
+        if (mounted && subs.isNotEmpty) {
+          _currentSubtitleUrl = url;
+          setState(() { _subtitles = subs; _subtitleEnabled = true; });
+          return;
+        }
+      } catch (_) {}
+    }
+    // No subtitles found
+    setState(() { _subtitles = []; _subtitleEnabled = false; });
+  }
+
+  /// Get subtitle text for current position
+  String? _getSubtitleForPosition(Duration position) {
+    if (!_subtitleEnabled || _subtitles.isEmpty) return null;
+    for (final sub in _subtitles) {
+      if (position >= sub.start && position <= sub.end) {
+        return sub.text;
+      }
+    }
+    return null;
   }
 
   // ── Check và skip ad zone ────────────────────────
@@ -928,8 +972,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       final m3u8 = (currentEp['link_m3u8'] ?? '').toString().trim();
       final embed = (currentEp['link_embed'] ?? '').toString().trim();
       _currentEmbedUrl = embed; // lưu để fallback khi HLS fail
-
-      // Ưu tiên HLS cho tất cả (mobile chạy được hết)
+      _loadSubtitles(currentEp);
       if (m3u8.isNotEmpty) {
         _currentUrl = m3u8;
         _adMarkers = []; // Reset ad markers cho tap moi
@@ -977,6 +1020,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   int _lastSeekByUser = 0;
   String _currentServerName = '';
+
+  // ── Subtitles ──
+  final SrtParser _srtParser = SrtParser();
+  List<SubtitleEntry> _subtitles = [];
+  bool _subtitleEnabled = false;
+  String? _currentSubtitleUrl;
 
   void _initHlsPlayer(String url) {
     _hlsPlayer ??= Player();
@@ -1314,8 +1363,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         _m3u8Result = null;
         _adMuted = false;
         _adSkipping = false;
+        _subtitles = []; // Reset subtitles for new episode
       }
     });
+
+    // Load subtitles for new episode
+    _loadSubtitles(ep);
 
     if (useHls) {
       _hlsPlayer?.stop(); // Dừng player cũ
@@ -1615,7 +1668,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         ),
         // Server selector — hiện cho mọi user
         if (_servers.length > 1) _buildServerSelector(),
-        // Real banner ad (StartApp)
+        // Real banner ad (SmartLink)
         SmartLinkBannerWidget(),
         const Divider(color: Color(0x22FFFFFF), height: 1),
         // Episode list header
@@ -1826,6 +1879,34 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   label: const Text('Thử lại', style: TextStyle(color: AppTheme.accent)),
                 ),
               ]),
+            ),
+
+          // ── Subtitle overlay ──
+          if (_subtitleEnabled && _subtitles.isNotEmpty && _playerMode == _PlayerMode.hls)
+            Positioned(
+              bottom: _showControls ? 70 : 20,
+              left: 20,
+              right: 20,
+              child: Builder(
+                builder: (context) {
+                  final text = _getSubtitleForPosition(_currentPos);
+                  if (text == null) return const SizedBox.shrink();
+                  final colorHex = int.parse('0xFF${_selectedSubtitleColor.substring(1)}');
+                  return Text(
+                    text,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(colorHex),
+                      fontSize: _selectedSubtitleSize,
+                      fontWeight: FontWeight.w600,
+                      shadows: [
+                        const Shadow(blurRadius: 4, color: Colors.black87, offset: Offset(1, 1)),
+                        const Shadow(blurRadius: 8, color: Colors.black54, offset: Offset(-1, -1)),
+                      ],
+                    ),
+                  );
+                },
+              ),
             ),
 
           // ── Ad overlay simulation ──
@@ -2497,6 +2578,19 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 ),
               ),
               const Spacer(),
+              // Subtitle toggle
+              if (_subtitles.isNotEmpty)
+                GestureDetector(
+                  onTap: () => setState(() => _subtitleEnabled = !_subtitleEnabled),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Icon(
+                      Icons.subtitles_rounded,
+                      size: 20,
+                      color: _subtitleEnabled ? AppTheme.accent : Colors.white,
+                    ),
+                  ),
+                ),
               // Next episode button
               _nextEpisodeButton(),
               // PiP button
@@ -2676,6 +2770,20 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       {'label': '20px', 'value': 20.0},
     ];
     return [
+      // Toggle on/off
+      ListTile(
+        title: const Text('Hiện phụ đề', style: TextStyle(color: Colors.white, fontSize: 16)),
+        trailing: Switch(
+          value: _subtitleEnabled,
+          activeColor: AppTheme.accent,
+          onChanged: (val) => setModalState(() => _subtitleEnabled = val),
+        ),
+      ),
+      if (_subtitles.isEmpty)
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Text('Phim này chưa có phụ đề SRT', style: TextStyle(color: Colors.white38, fontSize: 13)),
+        ),
       const Padding(
         padding: EdgeInsets.all(16),
         child: Text('Màu chữ', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),

@@ -611,6 +611,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                   child: Container(padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                     decoration: BoxDecoration(color: AppTheme.accent, borderRadius: BorderRadius.circular(4)),
                     child: Text(quality, style: const TextStyle(color: Color(0xFF1A1100), fontSize: 9, fontWeight: FontWeight.w700)))),
+                // Badge tập đang xem
                 if (epName.isNotEmpty) Positioned(bottom: 4, left: 4, right: 4,
                   child: Container(padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                     decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(4)),
