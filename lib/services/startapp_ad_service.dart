@@ -25,16 +25,17 @@ class StartAppAdService {
     await AdFrequencyService.init();
 
     try {
-      // Production mode - real ads
-      await _sdk.setTestAdsEnabled(false);
-      print('[StartApp] Test ads disabled (production mode) on $platform');
+      // Enable test ads first to verify integration
+      await _sdk.setTestAdsEnabled(true);
+      print('[StartApp] Test ads ENABLED for verification on $platform');
       print('[StartApp] SDK initialized OK on $platform');
     } catch (e) {
       print('[StartApp] ERROR init on $platform: $e');
     }
 
     // Delay loading ads to ensure SDK is ready
-    await Future.delayed(const Duration(milliseconds: 500));
+    await Future.delayed(const Duration(milliseconds: 1000));
+    print('[StartApp] App ID configured: ${Platform.isIOS ? "206259683 (iOS)" : "Android"}');
     _preloadInterstitial();
     _preloadRewardedVideo();
   }
