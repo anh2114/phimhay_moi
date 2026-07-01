@@ -76,6 +76,11 @@ class ApiClient {
   // TOKEN MANAGEMENT
   // ============================================================
 
+  /// Load tokens từ SharedPreferences — gọi TRƯỚC init() nếu cần
+  static Future<void> loadTokens() async {
+    await _loadTokens();
+  }
+
   static Future<void> _loadTokens() async {
     final prefs = await SharedPreferences.getInstance();
     _accessToken = prefs.getString(_tokenKey);

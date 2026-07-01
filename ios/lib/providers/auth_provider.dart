@@ -22,13 +22,12 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> _init() async {
+    // Load tokens trước
+    await ApiClient.loadTokens();
     await _loadFromStorage();
+
     // Nếu có token → check status với server
-    if (_user != null && ApiClient.isAuthenticated) {
-      await _checkAuthStatus();
-    } else if (_user != null) {
-      // Có user data nhưng không có token → có thể bị clear
-      // Thử check status
+    if (ApiClient.isAuthenticated) {
       await _checkAuthStatus();
     }
   }
@@ -46,15 +45,16 @@ class AuthProvider extends ChangeNotifier {
 
   /// Kiểm tra trạng thái login từ server (dùng JWT token)
   Future<void> _checkAuthStatus() async {
+    if (!ApiClient.isAuthenticated) return;
+
     try {
-      final res = await ApiClient.get('/mobile_auth.php', params: {'action': 'status'});
-      // mobile_auth.php expects POST
-      final res2 = await ApiClient.post('/mobile_auth.php', data: {'action': 'status'});
-      final data = res2.data;
+      final res = await ApiClient.post('/mobile_auth.php', data: {'action': 'status'});
+      final data = res.data;
       if (data is Map<String, dynamic> && data['logged_in'] == true) {
         _user = data;
         await _saveToStorage();
       } else {
+        // Token hết hạn hoặc không hợp lệ
         _user = null;
         await _clearStorage();
         await ApiClient.clearTokens();
