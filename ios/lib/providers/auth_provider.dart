@@ -20,6 +20,17 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> _init() async {
+    // Xóa token cũ nếu domain thay đổi
+    final prefs = await SharedPreferences.getInstance();
+    final savedDomain = prefs.getString('auth_domain');
+    if (savedDomain != null && savedDomain != 'xiaofilm.online') {
+      print('[Auth] Domain changed, clearing old tokens');
+      await ApiClient.clearTokens();
+      await _clearStorage();
+      await prefs.remove('auth_domain');
+    }
+    await prefs.setString('auth_domain', 'xiaofilm.online');
+
     await ApiClient.loadTokens();
     await _loadFromStorage();
     if (ApiClient.isAuthenticated && _user != null) {
