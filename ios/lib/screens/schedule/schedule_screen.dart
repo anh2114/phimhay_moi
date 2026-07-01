@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:dio/dio.dart';
+import 'package:phimhay_app/services/api_client.dart';
 import '../../config/app_config.dart';
 import '../../config/theme.dart';
 import '../movie_detail/movie_detail_screen.dart';
@@ -14,7 +14,7 @@ class ScheduleScreen extends StatefulWidget {
 }
 
 class _ScheduleScreenState extends State<ScheduleScreen> with AutomaticKeepAliveClientMixin {
-  final Dio _dio = Dio();
+  final Dio _dio = ApiClient.dio;
   List<Map<String, dynamic>> _schedules = [];
   bool _isLoading = false;
   String? _error;

@@ -22,7 +22,6 @@ import '../profile/profile_screen.dart';
 import '../watch_party/watch_party_screen.dart';
 import '../notification/notification_screen.dart';
 import '../actors/actors_list_screen.dart';
-
 import '../../widgets/collection_carousel.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -46,7 +45,6 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<HomeProvider>().fetchHome();
     });
-
   }
 
   /// Convert chip name → API filter param
@@ -180,7 +178,6 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             ),
           ),
-
         ],
       ),
     );

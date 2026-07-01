@@ -31,6 +31,8 @@ class _MovieRailState extends State<MovieRail> {
   Widget build(BuildContext context) {
     if (widget.movies.isEmpty) return const SizedBox.shrink();
 
+    final totalItems = widget.movies.length;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -72,7 +74,7 @@ class _MovieRailState extends State<MovieRail> {
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
             physics: const BouncingScrollPhysics(),
-            itemCount: widget.movies.length,
+            itemCount: totalItems,
             separatorBuilder: (_, __) => const SizedBox(width: 12),
             itemBuilder: (context, index) {
               final movie = widget.movies[index];

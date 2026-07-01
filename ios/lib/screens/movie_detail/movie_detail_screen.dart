@@ -29,7 +29,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:phimhay_app/screens/home/home_screen.dart';
 import 'package:phimhay_app/screens/watch_party/watch_party_screen.dart';
 import 'package:phimhay_app/screens/actors/actors_list_screen.dart';
-
+import 'package:phimhay_app/services/smartlink_service.dart';
 
 class MovieDetailScreen extends StatefulWidget {
   final int movieId;
@@ -188,19 +188,21 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       return;
     }
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => WatchScreen(
-          movieId: movieId,
-          episodeId: 1,
-          serverIdx: 0,
-          streamUrl: trailerUrl,
-          movieSlug: slug,
-          movieTitle: title,
+    SmartlinkService.showSmartlinkBeforeAction(context, onDone: () {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => WatchScreen(
+            movieId: movieId,
+            episodeId: 1,
+            serverIdx: 0,
+            streamUrl: trailerUrl,
+            movieSlug: slug,
+            movieTitle: title,
+          ),
         ),
-      ),
-    );
+      );
+    });
   }
 
   @override
@@ -610,7 +612,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       );
     }
 
-    _navigateToWatch();
+    SmartlinkService.showSmartlinkBeforeAction(context, onDone: _navigateToWatch);
   }
 
   @override
@@ -682,7 +684,6 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
               },
             ),
           ),
-
         ],
       ),
     );
@@ -2366,19 +2367,21 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         ? widget.movieId
         : (widget.movie?.id ?? (_movieData?['id'] as int? ?? 0));
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => WatchScreen(
-          movieId:    movieId,
-          episodeId:  epId,
-          serverIdx:  _selectedServer,
-          streamUrl:  url,
-          movieSlug:  slug,
-          movieTitle: title,
+    SmartlinkService.showSmartlinkBeforeAction(context, onDone: () {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => WatchScreen(
+            movieId:    movieId,
+            episodeId:  epId,
+            serverIdx:  _selectedServer,
+            streamUrl:  url,
+            movieSlug:  slug,
+            movieTitle: title,
+          ),
         ),
-      ),
-    );
+      );
+    });
   }
 
   /// Fetch comments from server

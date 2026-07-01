@@ -19,24 +19,25 @@ import 'screens/home/home_screen.dart';
 import 'screens/splash/splash_screen.dart';
 import 'services/push_service.dart';
 
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Tablet cho phep xoay tu do, mobile chi portrait
   final size = WidgetsBinding.instance.window.physicalSize;
   final shortestSide = size.shortestSide / WidgetsBinding.instance.window.devicePixelRatio;
+  final isLargeIpad = shortestSide > 750;
   final isTablet = shortestSide >= 600;
 
   await SystemChrome.setPreferredOrientations(
-    isTablet
+    isLargeIpad
         ? [
             DeviceOrientation.portraitUp,
-            DeviceOrientation.portraitDown,
             DeviceOrientation.landscapeLeft,
             DeviceOrientation.landscapeRight,
           ]
-        : [DeviceOrientation.portraitUp],
+        : isTablet
+            ? [DeviceOrientation.portraitUp]
+            : [DeviceOrientation.portraitUp],
   );
 
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
@@ -91,6 +92,9 @@ class XiaoPhimApp extends StatelessWidget {
       theme: AppTheme.darkTheme,
       debugShowCheckedModeBanner: false,
       home: SplashScreen(child: const HomeScreen()),
+      routes: {
+        '/debug/ads': (_) => const Scaffold(body: Center(child: Text('Ad debug removed'))),
+      },
     );
   }
 }

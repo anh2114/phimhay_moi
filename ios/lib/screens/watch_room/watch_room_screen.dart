@@ -159,6 +159,15 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
   double _volume = 100.0;
   bool _isMuted = false;
 
+  // ★ AD SKIP FIX: media_kit/libmpv tự skip ad segments trong HLS stream
+  // Mobile: position nhảy 900→930 (skip 30s ad) → mobile bị lệch +30s so với web
+  // Solution: subtract 30s từ mobile position khi past ad zone
+  double _lastKnownPosition = 0;
+  int _adSkipRecoverCount = 0;
+  static const int _adSkipMaxRecover = 5;
+  static const int _adPosition = 900; // vị trí ad bắt đầu (15:00)
+  static const int _adDuration = 30;  // ad dài 30s
+
   // Host vắng mặt
   bool _waitingHostShown = false;
 
@@ -249,6 +258,23 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
 
       final posSec = pos.inSeconds.toDouble();
 
+      // ★ AD SKIP FIX: media_kit nhảy về 0 khi skip ad
+      // Khôi phục: seek về vị trí trước ad (để player load lại từ đó)
+      if (posSec < 10 && _lastKnownPosition > 300 && _adSkipRecoverCount < _adSkipMaxRecover) {
+        final recoverTo = _lastKnownPosition;
+        debugPrint('★ AD SKIP FIX: pos jumped ${_lastKnownPosition.toInt()}→${posSec.toInt()}, seek to ${recoverTo.toInt()}');
+        _adSkipRecoverCount++;
+        _setLocalAction();
+        _player!.seek(Duration(seconds: recoverTo.toInt()));
+        return;
+      }
+
+      // Reset recover count
+      if (posSec > 100) _adSkipRecoverCount = 0;
+
+      // Lưu vị trí known
+      if (posSec > _lastKnownPosition) _lastKnownPosition = posSec;
+
       // ★ REALTIME HOST SYNC: gửi position mỗi 1s khi đang play
       if (_isHost && _isPlaying) {
         final nowMs = DateTime.now().millisecondsSinceEpoch;
@@ -335,6 +361,12 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
       final actualPlaying = _player!.state.playing;
       if (_isPlaying != actualPlaying && mounted) {
         setState(() => _isPlaying = actualPlaying);
+      }
+      if (actualPlaying && !_isDragging) {
+        final actualPos = _player!.state.position;
+        if (actualPos.inSeconds > 0) {
+          _lastKnownPosition = actualPos.inSeconds.toDouble();
+        }
       }
     });
   }
@@ -444,11 +476,39 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
 
   // ── Video Sync ─────────────────────────────────────────
 
+  /// ★ AD: KHÔNG can thiệp player — cùng HLS stream với web,
+  /// player play xuyên ad, sync position bình thường.
+
+  /// Mobile position → web position
+  /// Mobile skip 30s ad → mobile position bị lệch +30s so với web
+  /// Mobile 930s = Web 960s (mobile đã chạy 30s post-ad, web mới bắt đầu)
+  /// → CỘNG 30s để convert sang web timeline
+  double _mobileToWebTimeline(double localSeconds) {
+    if (localSeconds > _adPosition + _adDuration) {
+      return localSeconds + _adDuration; // 930 → 960, 960 → 990
+    }
+    return localSeconds;
+  }
+
+  /// Web position → mobile position (guest mobile only)
+  /// Web 960s = Mobile 930s
+  /// → Subtract 30s để convert sang mobile timeline
+  double _webToMobileTimeline(double webSeconds) {
+    if (webSeconds > _adPosition + _adDuration) {
+      return webSeconds - _adDuration; // 960 → 930, 990 → 960
+    }
+    return webSeconds;
+  }
+
+  bool get _isAdSyncPaused => false; // Luôn sync — play xuyên ad
+
   Future<void> _updateHostState(String state, {double? position}) async {
     if (!_isHost) return;
+    if (_isAdSyncPaused) return;
     _videoState = state;
-    _videoTime =
+    final localTime =
         position ?? (_player?.state.position.inSeconds.toDouble() ?? 0);
+    _videoTime = _mobileToWebTimeline(localTime);
     final videoDuration = _player?.state.duration.inSeconds.toDouble() ?? 0;
     await _service.updateState(
       roomCode: widget.roomCode,
@@ -494,9 +554,12 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
       );
     }
 
+    // Convert web timeline → mobile timeline
+    final mobileTime = _webToMobileTimeline(newTime);
+
     setState(() {
       _videoState = newState;
-      _videoTime = newTime;
+      _videoTime = newTime; // giữ web time để display
     });
 
     if (_player == null) return;
@@ -504,15 +567,15 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
     // ── Initial sync: seek đến vị trí host lần đầu ──
     if (!_initialSyncDone && newTime > 3) {
       _initialSyncDone = true;
-      _seekWhenReady(newTime);
+      _seekWhenReady(mobileTime);
       return;
     }
 
     // ── Playing ──
     if (newState == 'playing') {
-      final diff = (_player!.state.position.inSeconds - newTime).abs();
+      final diff = (_player!.state.position.inSeconds - mobileTime).abs();
       if (diff > 4) {
-        _seekWhenReady(newTime);
+        _seekWhenReady(mobileTime);
       } else if (!_player!.state.playing) {
         _setLocalAction();
         _player!.play();
@@ -523,10 +586,10 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
         _setLocalAction();
         _player!.pause();
       }
-      final diff = (_player!.state.position.inSeconds - newTime).abs();
+      final diff = (_player!.state.position.inSeconds - mobileTime).abs();
       if (diff > 1) {
         _setLocalAction();
-        _player!.seek(Duration(seconds: newTime.toInt()));
+        _player!.seek(Duration(seconds: mobileTime.toInt()));
       }
     }
   }

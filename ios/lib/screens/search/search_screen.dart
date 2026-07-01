@@ -104,14 +104,14 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
   }
 
   Future<void> _performSearch({bool loadMore = false}) async {
+    // Cancel request trước đó
     _pendingCancel?.cancel();
     _pendingCancel = CancelToken();
-    if (_isLoading) return;
 
     final q = _searchCtrl.text.trim();
     final key = _cacheKey(q);
 
-    // Check cache for page 1
+    // Check cache cho page 1
     if (!loadMore && _cache.containsKey(key)) {
       setState(() {
         _results = _cache[key]!;
@@ -119,6 +119,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
         _hasSearched = true;
         _isLoading = false;
         _isSearching = false;
+        _errorMessage = null;
       });
       return;
     }
@@ -130,7 +131,6 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
         'page': loadMore ? _currentPage + 1 : 1,
         'per_page': 24,
       };
-      final q = _searchCtrl.text.trim();
       if (q.isNotEmpty) params['q'] = q;
       if (_country.isNotEmpty) params['country'] = _country;
       if (_genre.isNotEmpty) params['genre'] = _genre;
@@ -159,12 +159,13 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
           _hasMore = _results.length < total;
           _isLoading = false;
           _isSearching = false;
+          _errorMessage = null;
         });
-        // Store in cache (page 1 only)
+        // Cache page 1
         if (!loadMore) {
-          final key = _cacheKey(q);
-          _cache[key] = newResults;
-          _cacheTotal[key] = total;
+          final cacheK = _cacheKey(q);
+          _cache[cacheK] = newResults;
+          _cacheTotal[cacheK] = total;
           if (_cache.length > _cacheMaxSize) {
             _cache.remove(_cache.keys.first);
             _cacheTotal.remove(_cacheTotal.keys.first);
@@ -172,12 +173,13 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
         }
       }
     } on DioException catch (e) {
+      // Nếu bị cancel thì bỏ qua (search mới sẽ thay thế)
       if (e.type == DioExceptionType.cancel) return;
       if (!mounted) return;
       setState(() {
         _isLoading = false;
         _isSearching = false;
-        _errorMessage = 'Loi ket noi. Kiem tra mang va thu lai.';
+        _errorMessage = 'Không thể kết nối. Kiểm tra mạng và thử lại.';
         if (!loadMore) { _results = []; _hasSearched = true; }
       });
     } catch (_) {
@@ -185,7 +187,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
       setState(() {
         _isLoading = false;
         _isSearching = false;
-        _errorMessage = 'Co loi xay ra. Thu lai sau.';
+        _errorMessage = 'Có lỗi xảy ra. Thử lại sau.';
         if (!loadMore) { _results = []; _hasSearched = true; }
       });
     }
@@ -252,14 +254,25 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
               controller: _searchCtrl,
               focusNode: _searchFocus,
               onChanged: _onSearchChanged,
-              onSubmitted: (_) => _performSearch(),
+              onSubmitted: (_) {
+                _debounce?.cancel();
+                _currentPage = 1;
+                _hasMore = true;
+                _performSearch();
+              },
               style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16),
               decoration: InputDecoration(
                 hintText: 'Tim kiem phim yeu thich...',
                 hintStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 16),
                 prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.textMuted, size: 22),
                 suffixIcon: _searchCtrl.text.isNotEmpty
-                    ? IconButton(icon: const Icon(Icons.clear_rounded, color: AppTheme.textMuted, size: 20), onPressed: () { _searchCtrl.clear(); _onSearchChanged(''); _searchFocus.requestFocus(); })
+                    ? IconButton(icon: const Icon(Icons.clear_rounded, color: AppTheme.textMuted, size: 20), onPressed: () {
+                        _debounce?.cancel();
+                        _pendingCancel?.cancel();
+                        _searchCtrl.clear();
+                        setState(() { _results = []; _hasSearched = false; _errorMessage = null; _isLoading = false; });
+                        _searchFocus.requestFocus();
+                      })
                     : null,
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(vertical: 14),

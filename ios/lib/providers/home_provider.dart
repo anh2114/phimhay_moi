@@ -70,7 +70,7 @@ class HomeProvider extends ChangeNotifier {
       }
     } catch (e) {
       if (_currentFilter != filter) return;
-      _error = e.toString();
+      _error = 'Có lỗi xảy ra. Vui lòng thử lại.';
     } finally {
       if (_currentFilter == filter) {
         _isLoading = false;

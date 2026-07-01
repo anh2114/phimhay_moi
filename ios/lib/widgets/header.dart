@@ -101,11 +101,14 @@ class _HeaderState extends State<Header> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  Image.asset(
-                    'assets/images/logo2.png',
-                    height: 28,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => const Text('Xiao Phim', style: TextStyle(color: AppTheme.gold, fontSize: 22, fontWeight: FontWeight.bold)),
+                  GestureDetector(
+                    onLongPress: () => Navigator.pushNamed(context, '/debug/ads'),
+                    child: Image.asset(
+                      'assets/images/logo2.png',
+                      height: 28,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const Text('Xiao Phim', style: TextStyle(color: AppTheme.gold, fontSize: 22, fontWeight: FontWeight.bold)),
+                    ),
                   ),
                   const Spacer(),
                   // Profile icon with popup

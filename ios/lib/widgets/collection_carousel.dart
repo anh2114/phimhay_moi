@@ -107,15 +107,10 @@ class _CollectionCard extends StatelessWidget {
             colors: [color1, color2],
           ),
           borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: color1.withValues(alpha: 0.4),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
         ),
-        child: Stack(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Stack(
           children: [
             // Decorative circles
             Positioned(
@@ -171,6 +166,7 @@ class _CollectionCard extends StatelessWidget {
               ),
             ),
           ],
+        ),
         ),
       ),
     );
