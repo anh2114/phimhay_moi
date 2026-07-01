@@ -4,145 +4,83 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_client.dart';
 
 class AuthProvider extends ChangeNotifier {
-  static const String _userKey = 'auth_user';
-
+  static const _key = 'auth_user';
   Map<String, dynamic>? _user;
-  bool _isLoading = false;
+  bool _loading = false;
   String? _error;
 
   Map<String, dynamic>? get user => _user;
-  bool get isLoggedIn => _user != null && (_user!['logged_in'] == true || _user!['user_id'] != null);
-  bool get isLoading => _isLoading;
+  bool get isLoggedIn => _user != null && _user!['logged_in'] == true;
+  bool get isLoading => _loading;
   String? get error => _error;
 
-  AuthProvider() {
-    _init();
-  }
+  AuthProvider() => _init();
 
   Future<void> _init() async {
-    await ApiClient.loadTokens();
-    await _loadFromStorage();
-    // Chỉ notify — KHÔNG gọi server check, token lưu local là đủ
-    if (_user != null && ApiClient.isAuthenticated) {
-      notifyListeners();
-    }
-  }
-
-  Future<void> _loadFromStorage() async {
+    await ApiClient.init();
     final prefs = await SharedPreferences.getInstance();
-    final userJson = prefs.getString(_userKey);
-    if (userJson != null) {
+    final raw = prefs.getString(_key);
+    if (raw != null) {
       try {
-        _user = Map<String, dynamic>.from(jsonDecode(userJson));
+        _user = Map<String, dynamic>.from(jsonDecode(raw));
+        notifyListeners();
       } catch (_) {}
     }
   }
 
-  Future<bool> login(String usernameOrEmail, String password) async {
-    _isLoading = true;
-    _error = null;
-    notifyListeners();
-
+  Future<bool> login(String user, String pass) async {
+    _loading = true; _error = null; notifyListeners();
     try {
-      final res = await ApiClient.post('/mobile_auth.php', data: {
-        'action': 'login',
-        'username': usernameOrEmail,
-        'password': password,
-      });
-      final data = res.data as Map<String, dynamic>;
-      if (data['success'] == true) {
-        await ApiClient.setTokens(
-          accessToken: data['access_token'] ?? '',
-          refreshToken: data['refresh_token'] ?? '',
-        );
-        _user = data['user'] is Map ? Map<String, dynamic>.from(data['user']) : {'user_id': 0, 'username': usernameOrEmail};
+      final res = await ApiClient.post('/auth_simple.php', data: {'action': 'login', 'username': user, 'password': pass});
+      final d = res.data;
+      if (d['success'] == true) {
+        await ApiClient.saveToken(d['token'] ?? '');
+        _user = Map<String, dynamic>.from(d['user'] ?? {});
         _user!['logged_in'] = true;
-        await _saveToStorage();
-        _isLoading = false;
-        notifyListeners();
+        await _save();
+        _loading = false; notifyListeners();
         return true;
-      } else {
-        _error = data['error'] ?? 'Đăng nhập thất bại';
-        _isLoading = false;
-        notifyListeners();
-        return false;
       }
-    } catch (e) {
-      _error = 'Lỗi kết nối. Vui lòng kiểm tra mạng.';
-      _isLoading = false;
-      notifyListeners();
-      return false;
+      _error = d['error'] ?? 'Đăng nhập thất bại';
+    } catch (_) {
+      _error = 'Lỗi kết nối';
     }
+    _loading = false; notifyListeners();
+    return false;
   }
 
-  Future<bool> register(String username, String email, String password) async {
-    _isLoading = true;
-    _error = null;
-    notifyListeners();
+  Future<bool> register(String user, String email, String pass) async {
+    _loading = true; _error = null; notifyListeners();
     try {
-      final res = await ApiClient.post('/mobile_auth.php', data: {
-        'action': 'register',
-        'username': username,
-        'email': email,
-        'password': password,
-        'password_confirm': password,
-      });
-      final data = res.data as Map<String, dynamic>;
-      if (data['success'] == true) {
-        await ApiClient.setTokens(
-          accessToken: data['access_token'] ?? '',
-          refreshToken: data['refresh_token'] ?? '',
-        );
-        _user = data['user'] is Map ? Map<String, dynamic>.from(data['user']) : {'user_id': 0, 'username': username};
+      final res = await ApiClient.post('/auth_simple.php', data: {'action': 'register', 'username': user, 'email': email, 'password': pass, 'password_confirm': pass});
+      final d = res.data;
+      if (d['success'] == true) {
+        await ApiClient.saveToken(d['token'] ?? '');
+        _user = Map<String, dynamic>.from(d['user'] ?? {});
         _user!['logged_in'] = true;
-        await _saveToStorage();
-        _isLoading = false;
-        notifyListeners();
+        await _save();
+        _loading = false; notifyListeners();
         return true;
-      } else {
-        _error = data['error'] ?? 'Đăng ký thất bại';
-        _isLoading = false;
-        notifyListeners();
-        return false;
       }
-    } catch (e) {
-      _error = 'Lỗi kết nối. Vui lòng kiểm tra mạng.';
-      _isLoading = false;
-      notifyListeners();
-      return false;
+      _error = d['error'] ?? 'Đăng ký thất bại';
+    } catch (_) {
+      _error = 'Lỗi kết nối';
     }
+    _loading = false; notifyListeners();
+    return false;
   }
 
   Future<void> logout() async {
-    try {
-      await ApiClient.post('/mobile_auth.php', data: {
-        'action': 'logout',
-        'refresh_token': ApiClient.refreshToken,
-      });
-    } catch (_) {}
     _user = null;
-    await _clearStorage();
-    await ApiClient.clearTokens();
+    await ApiClient.clearToken();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_key);
     notifyListeners();
   }
 
-  Future<void> updateAvatar(String avatarUrl) async {
-    if (_user == null) return;
-    _user!['avatar'] = avatarUrl;
-    notifyListeners();
-    await _saveToStorage();
-  }
-
-  Future<void> _saveToStorage() async {
+  Future<void> _save() async {
     if (_user == null) return;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_userKey, jsonEncode(_user));
+    await prefs.setString(_key, jsonEncode(_user));
   }
-
-  Future<void> _clearStorage() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_userKey);
-  }
-
-  void clearError() { _error = null; notifyListeners(); }
 }
