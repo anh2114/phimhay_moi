@@ -197,10 +197,8 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       });
     } catch (e) {
       if (mounted) {
-        final msg = e.toString().contains('401') || e.toString().contains('unauthorized')
-            ? 'Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.'
-            : 'Không thể tải dữ liệu. Kiểm tra mạng và thử lại.';
-        setState(() { _error = msg; _isLoading = false; });
+        // Không clear token — giữ đăng nhập, chỉ hiện lỗi network
+        setState(() { _error = 'Không thể tải dữ liệu. Kiểm tra mạng và thử lại.'; _isLoading = false; });
       }
     }
   }
@@ -304,22 +302,12 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       )));
     }
     if (_error != null && _profileData == null) {
-      final isAuthError = _error!.contains('hết hạn') || _error!.contains('401');
       return SafeArea(child: Center(child: Padding(
         padding: EdgeInsets.only(bottom: bottomPad + 80),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
           const Icon(Icons.error_outline, size: 48, color: AppTheme.textMuted),
           const SizedBox(height: 12), Text(_error!, style: const TextStyle(color: AppTheme.textSub)),
           const SizedBox(height: 16), ElevatedButton(onPressed: () => _loadTab('overview'), child: const Text('Thử lại')),
-          if (isAuthError) ...[
-            const SizedBox(height: 12),
-            TextButton(
-              onPressed: () async {
-                await context.read<AuthProvider>().logout();
-              },
-              child: const Text('Đăng xuất', style: TextStyle(color: Colors.redAccent)),
-            ),
-          ],
         ]),
       )));
     }
