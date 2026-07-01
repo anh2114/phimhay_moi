@@ -18,6 +18,8 @@ class ApiClient {
 
   static String? _accessToken;
   static String? _refreshToken;
+  static String? get accessToken => _accessToken;
+  static String? get refreshToken => _refreshToken;
   static bool get isAuthenticated => _accessToken != null && _accessToken!.isNotEmpty;
 
   static const _tokenKey = 'auth_token_raw';

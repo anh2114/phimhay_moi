@@ -387,11 +387,6 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       final data = res.data;
       if (data['success'] == true && data['room_code'] != null) {
         final roomCode = data['room_code'];
-        final cookies = await ApiClient.cookieJar.loadForRequest(Uri.parse(AppConfig.baseUrl));
-        final cookieManager = CookieManager.instance();
-        for (var cookie in cookies) {
-          await cookieManager.setCookie(url: WebUri(AppConfig.baseUrl), name: cookie.name, value: cookie.value);
-        }
         if (mounted) {
           Navigator.push(context, MaterialPageRoute(
             builder: (_) => Scaffold(

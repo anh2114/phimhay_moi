@@ -126,13 +126,6 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   }
 
   Future<void> _openAdminWebView() async {
-    // Sync cookie xác thực từ app sang WebView
-    final cookies = await ApiClient.cookieJar.loadForRequest(Uri.parse(AppConfig.baseUrl));
-    final cookieManager = CookieManager.instance();
-    for (var cookie in cookies) {
-      await cookieManager.setCookie(url: WebUri(AppConfig.baseUrl), name: cookie.name, value: cookie.value);
-    }
-
     if (!mounted) return;
     Navigator.push(
       context,
