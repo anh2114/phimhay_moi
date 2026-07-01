@@ -179,11 +179,42 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
 
   Future<void> _loadTab(String tab) async {
     setState(() { _currentTab = tab; _isLoading = true; _error = null; _successMsg = null; });
+
+    // Dùng data local từ auth_provider thay vì gọi API
+    final auth = context.read<AuthProvider>();
+    final userData = auth.user;
+
+    if (userData != null) {
+      setState(() {
+        _profileData = {
+          'user': userData,
+          'stats': {'favorites': 0, 'history': 0, 'comments': 0},
+        };
+        _recentMovies = [];
+        _recentFavs = [];
+        _favorites = [];
+        _history = [];
+        _comments = [];
+        _isLoading = false;
+        if (tab == 'settings') {
+          _emailCtrl.text = userData['email']?.toString() ?? '';
+          _avatarCtrl.text = userData['avatar']?.toString() ?? '';
+        }
+      });
+    } else {
+      setState(() { _error = 'Không có dữ liệu người dùng'; _isLoading = false; });
+    }
+
+    // Thử load thêm data từ server (fire-and-forget, không block UI)
+    _loadTabFromServer(tab);
+  }
+
+  Future<void> _loadTabFromServer(String tab) async {
     try {
       final data = await _profileService.fetchProfile(tab);
       if (!mounted) return;
       setState(() {
-        _profileData = data; _isLoading = false;
+        _profileData = data;
         _recentMovies = (data['recent'] as List<dynamic>?) ?? [];
         _recentFavs = (data['recent_favorites'] as List<dynamic>?) ?? [];
         _favorites = (data['favorites'] as List<dynamic>?) ?? [];
@@ -195,11 +226,8 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           _avatarCtrl.text = u?['avatar']?.toString() ?? '';
         }
       });
-    } catch (e) {
-      if (mounted) {
-        // Không clear token — giữ đăng nhập, chỉ hiện lỗi network
-        setState(() { _error = 'Không thể tải dữ liệu. Kiểm tra mạng và thử lại.'; _isLoading = false; });
-      }
+    } catch (_) {
+      // Bỏ qua lỗi — data local vẫn hiển thị
     }
   }
 
