@@ -89,13 +89,15 @@ class ApiClient {
         return const ApiException('Kết nối bị timeout. Vui lòng thử lại.');
       case DioExceptionType.badResponse:
         return ApiException(
-          (e.response?.data?['error'] ?? e.message).toString(),
+          (e.response?.data?['error'] ?? 'Lỗi máy chủ').toString(),
           statusCode: e.response?.statusCode,
         );
       case DioExceptionType.cancel:
         return const ApiException('Yêu cầu đã bị hủy.');
+      case DioExceptionType.connection:
+        return const ApiException('Không thể kết nối máy chủ. Vui lòng kiểm tra mạng.');
       default:
-        return ApiException(e.message ?? 'Lỗi kết nối. Vui lòng kiểm tra mạng.');
+        return const ApiException('Có lỗi xảy ra. Vui lòng thử lại.');
     }
   }
 }

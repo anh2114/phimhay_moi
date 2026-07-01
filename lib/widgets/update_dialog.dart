@@ -57,10 +57,10 @@ class _UpdateDialogState extends State<UpdateDialog> {
       if (mounted) {
         setState(() => _isDownloading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString().replaceAll('Exception: ', '')),
+          const SnackBar(
+            content: Text('Có lỗi xảy ra khi tải bản cập nhật'),
             backgroundColor: Colors.redAccent,
-            duration: const Duration(seconds: 5),
+            duration: Duration(seconds: 5),
           ),
         );
       }
