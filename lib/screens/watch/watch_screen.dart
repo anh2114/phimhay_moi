@@ -125,6 +125,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   String _selectedQuality = 'Auto';
   String _selectedSubtitleColor = '#FFFFFF';
   double _selectedSubtitleSize = 14.0;
+  double _selectedSubtitleBgOpacity = 0.0;
   double _volume = 100.0;
   bool _isMuted = false;
   bool _isDragging = false;
@@ -309,6 +310,37 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       }
     }
     return null;
+  }
+
+  /// Build subtitle zone — below video, not overlapping content
+  Widget _buildSubtitleZone({bool isLandscape = false}) {
+    if (!_subtitleEnabled || _subtitles.isEmpty || _playerMode != _PlayerMode.hls) {
+      return const SizedBox.shrink();
+    }
+    final text = _getSubtitleForPosition(_currentPos);
+    if (text == null) return const SizedBox.shrink();
+
+    final colorHex = int.parse('0xFF${_selectedSubtitleColor.substring(1)}');
+    final bgAlpha = (_selectedSubtitleBgOpacity * 255).toInt();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      color: bgAlpha > 0 ? Colors.black.withOpacity(_selectedSubtitleBgOpacity) : null,
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: Color(colorHex),
+          fontSize: _selectedSubtitleSize,
+          fontWeight: FontWeight.w600,
+          shadows: [
+            const Shadow(blurRadius: 4, color: Colors.black87, offset: Offset(1, 1)),
+            const Shadow(blurRadius: 8, color: Colors.black54, offset: Offset(-1, -1)),
+          ],
+        ),
+      ),
+    );
   }
 
   // ── Check và skip ad zone ────────────────────────
@@ -1527,6 +1559,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         child: isLandscape
             ? Stack(children: [
                 Positioned.fill(child: _buildPlayer()),
+                // SRT subtitle zone — below video, above controls
+                Positioned(
+                  bottom: 50,
+                  left: 0,
+                  right: 0,
+                  child: _buildSubtitleZone(isLandscape: true),
+                ),
               ])
             : Column(children: [
                 // Header
@@ -1539,6 +1578,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 ),
                 // Player
                 AspectRatio(aspectRatio: 16 / 9, child: _buildPlayer()),
+                // SRT subtitle zone — below video, above info
+                _buildSubtitleZone(),
                 // Info + Episodes (padding đáy cho BottomNav)
                 Expanded(
                   child: Stack(
@@ -2000,33 +2041,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               ]),
             ),
 
-          // ── Subtitle overlay ──
-          if (_subtitleEnabled && _subtitles.isNotEmpty && _playerMode == _PlayerMode.hls)
-            Positioned(
-              bottom: _showControls ? 70 : 20,
-              left: 20,
-              right: 20,
-              child: Builder(
-                builder: (context) {
-                  final text = _getSubtitleForPosition(_currentPos);
-                  if (text == null) return const SizedBox.shrink();
-                  final colorHex = int.parse('0xFF${_selectedSubtitleColor.substring(1)}');
-                  return Text(
-                    text,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Color(colorHex),
-                      fontSize: _selectedSubtitleSize,
-                      fontWeight: FontWeight.w600,
-                      shadows: [
-                        const Shadow(blurRadius: 4, color: Colors.black87, offset: Offset(1, 1)),
-                        const Shadow(blurRadius: 8, color: Colors.black54, offset: Offset(-1, -1)),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
+          // ── Subtitle overlay — moved to _buildSubtitleZone() ──
 
           // ── Ad overlay simulation ──
           if (_adMode)
@@ -3380,6 +3395,22 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       ...sizes.map((s) => _buildOptionRow(s['label']! as String, _selectedSubtitleSize == s['value'], () {
         setModalState(() => _selectedSubtitleSize = s['value'] as double);
       })),
+      const Padding(
+        padding: EdgeInsets.all(16),
+        child: Text('Nền phụ đề', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+      ),
+      _buildOptionRow('Tắt', _selectedSubtitleBgOpacity == 0.0, () {
+        setModalState(() => _selectedSubtitleBgOpacity = 0.0);
+      }),
+      _buildOptionRow('Mờ nhẹ', _selectedSubtitleBgOpacity == 0.3, () {
+        setModalState(() => _selectedSubtitleBgOpacity = 0.3);
+      }),
+      _buildOptionRow('Đậm', _selectedSubtitleBgOpacity == 0.6, () {
+        setModalState(() => _selectedSubtitleBgOpacity = 0.6);
+      }),
+      _buildOptionRow('Đặc', _selectedSubtitleBgOpacity == 0.85, () {
+        setModalState(() => _selectedSubtitleBgOpacity = 0.85);
+      }),
     ];
   }
 
