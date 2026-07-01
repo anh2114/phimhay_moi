@@ -20,21 +20,11 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> _init() async {
-    // Xóa token cũ nếu domain thay đổi
-    final prefs = await SharedPreferences.getInstance();
-    final savedDomain = prefs.getString('auth_domain');
-    if (savedDomain != null && savedDomain != 'xiaofilm.online') {
-      print('[Auth] Domain changed, clearing old tokens');
-      await ApiClient.clearTokens();
-      await _clearStorage();
-      await prefs.remove('auth_domain');
-    }
-    await prefs.setString('auth_domain', 'xiaofilm.online');
-
     await ApiClient.loadTokens();
     await _loadFromStorage();
-    if (ApiClient.isAuthenticated && _user != null) {
-      await _checkAuthStatus();
+    // Chỉ notify — KHÔNG gọi server check, token lưu local là đủ
+    if (_user != null && ApiClient.isAuthenticated) {
+      notifyListeners();
     }
   }
 
@@ -44,26 +34,8 @@ class AuthProvider extends ChangeNotifier {
     if (userJson != null) {
       try {
         _user = Map<String, dynamic>.from(jsonDecode(userJson));
-        notifyListeners();
       } catch (_) {}
     }
-  }
-
-  Future<void> _checkAuthStatus() async {
-    if (!ApiClient.isAuthenticated) return;
-    try {
-      final res = await ApiClient.post('/mobile_auth.php', data: {'action': 'status'});
-      final data = res.data;
-      if (data is Map<String, dynamic> && data['logged_in'] == true) {
-        _user = data;
-        await _saveToStorage();
-      } else {
-        _user = null;
-        await _clearStorage();
-        await ApiClient.clearTokens();
-      }
-      notifyListeners();
-    } catch (_) {}
   }
 
   Future<bool> login(String usernameOrEmail, String password) async {
