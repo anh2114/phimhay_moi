@@ -46,14 +46,21 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
   }
 
   void _proceedToMovie() {
-    widget.onComplete();
+    // Pop first, then call onComplete after navigation settles
     if (mounted) {
       Navigator.pop(context);
+      // Use post-frame callback to ensure pop completes before pushing new route
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        widget.onComplete();
+      });
     }
   }
 
   Future<bool> _onWillPop() async {
-    if (_canProceed) return true;
+    if (_canProceed) {
+      _proceedToMovie();
+      return false;
+    }
 
     // Show message
     if (mounted) {
@@ -118,7 +125,7 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
                         size: 20,
                       ),
                       onPressed: _canProceed
-                          ? () => Navigator.pop(context)
+                          ? () => _proceedToMovie()
                           : () => _onWillPop(),
                     ),
                     const SizedBox(width: 8),
@@ -137,7 +144,7 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
                     if (_canProceed)
                       IconButton(
                         icon: const Icon(Icons.close, color: Colors.white, size: 20),
-                        onPressed: () => Navigator.pop(context),
+                        onPressed: () => _proceedToMovie(),
                       ),
                   ],
                 ),
