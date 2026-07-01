@@ -45,11 +45,16 @@ class AuthProvider extends ChangeNotifier {
 
   /// Kiểm tra trạng thái login từ server (dùng JWT token)
   Future<void> _checkAuthStatus() async {
-    if (!ApiClient.isAuthenticated) return;
+    if (!ApiClient.isAuthenticated) {
+      print('[Auth] _checkAuthStatus: NOT authenticated, skipping');
+      return;
+    }
 
+    print('[Auth] _checkAuthStatus: Checking with server...');
     try {
       final res = await ApiClient.post('/mobile_auth.php', data: {'action': 'status'});
       final data = res.data;
+      print('[Auth] Status response: ${data}');
       if (data is Map<String, dynamic> && data['logged_in'] == true) {
         _user = data;
         await _saveToStorage();
@@ -77,12 +82,15 @@ class AuthProvider extends ChangeNotifier {
         'password': password,
       });
       final data = res.data as Map<String, dynamic>;
+      print('[Auth] Login response: success=${data['success']}, hasToken=${data['access_token'] != null}');
       if (data['success'] == true) {
         // Lưu tokens
         await ApiClient.setTokens(
           accessToken: data['access_token'],
           refreshToken: data['refresh_token'],
         );
+        print('[Auth] Tokens saved. isAuthenticated=${ApiClient.isAuthenticated}');
+        print('[Auth] Access token length: ${ApiClient.accessToken?.length}');
 
         // Lưu user data
         _user = data['user'] is Map
