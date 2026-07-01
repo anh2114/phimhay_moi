@@ -1819,8 +1819,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         ),
         // Server selector — hiện cho mọi user
         if (_servers.length > 1) _buildServerSelector(),
-        // Real banner ad (StartApp)
-        StartAppBannerWidget(showDebug: kDebugMode),
         const Divider(color: Color(0x22FFFFFF), height: 1),
         // Episode list header
         Padding(

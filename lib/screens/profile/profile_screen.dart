@@ -253,13 +253,6 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               },
             ),
           ),
-          // Banner ad above BottomNav
-          const Positioned(
-            bottom: 100,
-            left: 0,
-            right: 0,
-            child: StartAppBannerWidget(),
-          ),
         ],
       ),
     );
