@@ -26,40 +26,29 @@ class _AppodealDebugScreenState extends State<AppodealDebugScreen> {
     try {
       final info = await StartAppAdService.getDebugInfo();
       setState(() => _debugInfo = info);
-      _log('Debug info received ✓');
-      _log('Platform: ${info['platform']}');
-      _log('App ID: ${info['appId']}');
-      _log('Interstitial ready: ${info['interstitialReady']}');
-      _log('Rewarded ready: ${info['rewardedReady']}');
+      _log('Platform: ${info['platform']} | App ID: ${info['appId']}');
+      _log('Interstitial: ready=${info['interstitialReady']} loading=${info['interstitialLoading']}');
+      _log('Rewarded: ready=${info['rewardedReady']} loading=${info['rewardedLoading']}');
+      _log('Native Ads: ${info['nativeAdsCount']}');
     } catch (e) {
       _log('ERROR getting debug info: $e');
     }
   }
 
   Future<void> _initSdk() async {
-    _log('Initializing StartApp SDK...');
+    _log('=== Initializing StartApp SDK ===');
     try {
       StartAppAdService.init();
       _log('SDK init called ✓');
-      await Future.delayed(const Duration(seconds: 2));
+      await Future.delayed(const Duration(seconds: 3));
       await _getDebugInfo();
     } catch (e) {
       _log('ERROR initializing: $e');
     }
   }
 
-  Future<void> _toggleTestMode(bool enable) async {
-    _log('Setting test mode: $enable');
-    try {
-      await StartAppAdService.sdk.setTestAdsEnabled(enable);
-      _log('Test mode ${enable ? "ENABLED" : "DISABLED"} ✓');
-    } catch (e) {
-      _log('ERROR setting test mode: $e');
-    }
-  }
-
   Future<void> _loadInterstitial() async {
-    _log('Loading interstitial ad...');
+    _log('--- Loading Interstitial ---');
     try {
       StartAppAdService.sdk.loadInterstitialAd(
         onAdDisplayed: () {
@@ -77,16 +66,17 @@ class _AppodealDebugScreenState extends State<AppodealDebugScreen> {
       ).then((ad) {
         _log('Interstitial loaded ✓');
         _getDebugInfo();
-      }).onError((err, stack) {
-        _log('ERROR loading interstitial: $err');
+      }).catchError((error, stackTrace) {
+        _log('ERROR loading interstitial: $error');
+        return null;
       });
     } catch (e) {
-      _log('ERROR: $e');
+      _log('EXCEPTION: $e');
     }
   }
 
   Future<void> _showInterstitial() async {
-    _log('Showing interstitial ad...');
+    _log('--- Showing Interstitial ---');
     try {
       StartAppAdService.showInterstitialIfAllowed(
         context,
@@ -96,12 +86,12 @@ class _AppodealDebugScreenState extends State<AppodealDebugScreen> {
         },
       );
     } catch (e) {
-      _log('ERROR showing interstitial: $e');
+      _log('EXCEPTION: $e');
     }
   }
 
   Future<void> _loadRewardedVideo() async {
-    _log('Loading rewarded video...');
+    _log('--- Loading Rewarded Video ---');
     try {
       StartAppAdService.sdk.loadRewardedVideoAd(
         onAdNotDisplayed: () {
@@ -116,16 +106,17 @@ class _AppodealDebugScreenState extends State<AppodealDebugScreen> {
       ).then((ad) {
         _log('Rewarded video loaded ✓');
         _getDebugInfo();
-      }).onError((err, stack) {
-        _log('ERROR loading rewarded: $err');
+      }).catchError((error, stackTrace) {
+        _log('ERROR loading rewarded: $error');
+        return null;
       });
     } catch (e) {
-      _log('ERROR: $e');
+      _log('EXCEPTION: $e');
     }
   }
 
   Future<void> _showRewardedVideo() async {
-    _log('Showing rewarded video...');
+    _log('--- Showing Rewarded Video ---');
     try {
       StartAppAdService.showRewardedBeforeAction(
         context,
@@ -138,16 +129,15 @@ class _AppodealDebugScreenState extends State<AppodealDebugScreen> {
         },
       );
     } catch (e) {
-      _log('ERROR showing rewarded: $e');
+      _log('EXCEPTION: $e');
     }
   }
 
   Future<void> _loadBanner() async {
-    _log('Loading banner ad...');
+    _log('--- Loading Banner ---');
     try {
       StartAppAdService.sdk.loadBannerAd(StartAppBannerType.BANNER).then((bannerAd) {
         _log('Banner loaded ✓');
-        // Show banner in a dialog for testing
         if (mounted) {
           showDialog(
             context: context,
@@ -166,11 +156,22 @@ class _AppodealDebugScreenState extends State<AppodealDebugScreen> {
             ),
           );
         }
-      }).onError((err, stack) {
-        _log('ERROR loading banner: $err');
+      }).catchError((error, stackTrace) {
+        _log('ERROR loading banner: $error');
+        return null;
       });
     } catch (e) {
-      _log('ERROR: $e');
+      _log('EXCEPTION: $e');
+    }
+  }
+
+  Future<void> _toggleTestMode(bool enable) async {
+    _log('Setting test mode: $enable');
+    try {
+      await StartAppAdService.sdk.setTestAdsEnabled(enable);
+      _log('Test mode ${enable ? "ENABLED" : "DISABLED"} ✓');
+    } catch (e) {
+      _log('ERROR setting test mode: $e');
     }
   }
 
@@ -180,7 +181,7 @@ class _AppodealDebugScreenState extends State<AppodealDebugScreen> {
   @override
   void initState() {
     super.initState();
-    _log('StartApp Debug Screen opened');
+    _log('=== StartApp Debug Screen ===');
     _log('iOS App ID: 206259683');
     _getDebugInfo();
   }
@@ -201,7 +202,6 @@ class _AppodealDebugScreenState extends State<AppodealDebugScreen> {
       backgroundColor: Colors.black,
       body: Column(
         children: [
-          // Action buttons
           Container(
             color: Colors.grey.shade900,
             padding: const EdgeInsets.all(8),
@@ -255,6 +255,7 @@ class _AppodealDebugScreenState extends State<AppodealDebugScreen> {
                 ),
                 const SizedBox(height: 8),
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const Text('Test Ads:', style: TextStyle(color: Colors.white70, fontSize: 12)),
                     const SizedBox(width: 8),
@@ -275,7 +276,6 @@ class _AppodealDebugScreenState extends State<AppodealDebugScreen> {
             ),
           ),
 
-          // Debug info panel
           if (_debugInfo.isNotEmpty)
             Container(
               width: double.infinity,
@@ -284,20 +284,17 @@ class _AppodealDebugScreenState extends State<AppodealDebugScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Platform: ${_debugInfo['platform']}',
+                  Text('Platform: ${_debugInfo['platform']} | App ID: ${_debugInfo['appId']}',
                       style: const TextStyle(color: Colors.white70, fontSize: 11)),
-                  Text('App ID: ${_debugInfo['appId']}',
-                      style: const TextStyle(color: Colors.white70, fontSize: 11)),
-                  const SizedBox(height: 6),
-                  _buildInfoRow('Interstitial', _debugInfo['interstitialReady']),
-                  _buildInfoRow('Rewarded Video', _debugInfo['rewardedReady']),
+                  const SizedBox(height: 4),
+                  _buildInfoRow('Interstitial', _debugInfo['interstitialReady'], _debugInfo['interstitialLoading']),
+                  _buildInfoRow('Rewarded Video', _debugInfo['rewardedReady'], _debugInfo['rewardedLoading']),
                   Text('Native Ads: ${_debugInfo['nativeAdsCount']}',
                       style: const TextStyle(color: Colors.white, fontSize: 12)),
                 ],
               ),
             ),
 
-          // Logs
           Expanded(
             child: Container(
               color: Colors.black,
@@ -307,9 +304,9 @@ class _AppodealDebugScreenState extends State<AppodealDebugScreen> {
                 itemBuilder: (ctx, i) {
                   final line = _logs[_logs.length - 1 - i];
                   Color color = Colors.white70;
-                  if (line.contains('ERROR')) color = Colors.redAccent;
-                  else if (line.contains('✓') || line.contains('true')) color = Colors.green;
-                  else if (line.contains('false')) color = Colors.orange;
+                  if (line.contains('ERROR') || line.contains('EXCEPTION')) color = Colors.redAccent;
+                  else if (line.contains('✓')) color = Colors.green;
+                  else if (line.contains('FAILED')) color = Colors.orange;
                   return Text(line, style: TextStyle(color: color, fontSize: 11, fontFamily: 'monospace'));
                 },
               ),
@@ -320,14 +317,19 @@ class _AppodealDebugScreenState extends State<AppodealDebugScreen> {
     );
   }
 
-  Widget _buildInfoRow(String label, bool? value) {
+  Widget _buildInfoRow(String label, bool? ready, bool? loading) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         children: [
           SizedBox(width: 120, child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600))),
-          Icon(_boolIcon(value), color: _boolColor(value), size: 14),
-          Text(' ${value == true ? "READY" : "NOT READY"}', style: TextStyle(color: value == true ? Colors.green : Colors.red, fontSize: 10)),
+          Icon(_boolIcon(ready), color: _boolColor(ready), size: 14),
+          Text(' ${ready == true ? "READY" : "NOT READY"}', style: TextStyle(color: ready == true ? Colors.green : Colors.red, fontSize: 10)),
+          if (loading == true)
+            const Padding(
+              padding: EdgeInsets.only(left: 8),
+              child: SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2)),
+            ),
         ],
       ),
     );
