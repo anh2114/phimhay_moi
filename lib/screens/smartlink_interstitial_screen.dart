@@ -46,25 +46,15 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
   }
 
   void _proceedToMovie() {
-    // Pop first, then call onComplete after navigation settles
-    if (mounted) {
-      Navigator.pop(context);
-      // Use post-frame callback to ensure pop completes before pushing new route
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        widget.onComplete();
-      });
-    }
+    if (!mounted) return;
+    // Call onComplete first (pushes WatchScreen), then pop this screen
+    widget.onComplete();
+    Navigator.pop(context);
   }
 
-  Future<bool> _onWillPop() async {
-    if (_canProceed) {
-      _proceedToMovie();
-      return false;
-    }
-
-    // Show message
-    if (mounted) {
-      showDialog(
+  void _showBackWarning() {
+    if (!mounted) return;
+    showDialog(
         context: context,
         barrierDismissible: false,
         builder: (ctx) => AlertDialog(
@@ -93,17 +83,18 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
           ],
         ),
       );
-    }
-    return false;
   }
 
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: _canProceed,
+      canPop: false,
       onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) {
-          _onWillPop();
+        if (didPop) return;
+        if (_canProceed) {
+          _proceedToMovie();
+        } else {
+          _showBackWarning();
         }
       },
       child: Scaffold(
@@ -117,16 +108,16 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
                 color: Colors.black,
                 child: Row(
                   children: [
-                    // Back button - disabled until can proceed
+                    // Back button
                     IconButton(
                       icon: Icon(
                         Icons.arrow_back_ios,
-                        color: _canProceed ? Colors.white : Colors.white24,
+                        color: Colors.white,
                         size: 20,
                       ),
                       onPressed: _canProceed
                           ? () => _proceedToMovie()
-                          : () => _onWillPop(),
+                          : () => _showBackWarning(),
                     ),
                     const SizedBox(width: 8),
                     // Title
@@ -140,12 +131,13 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
                         ),
                       ),
                     ),
-                    // Close button - only when can proceed
-                    if (_canProceed)
-                      IconButton(
-                        icon: const Icon(Icons.close, color: Colors.white, size: 20),
-                        onPressed: () => _proceedToMovie(),
-                      ),
+                    // Close button (X)
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white, size: 20),
+                      onPressed: _canProceed
+                          ? () => _proceedToMovie()
+                          : () => _showBackWarning(),
+                    ),
                   ],
                 ),
               ),
