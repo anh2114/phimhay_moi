@@ -1,5 +1,4 @@
 import 'package:dio/dio.dart';
-import '../config/app_config.dart';
 import '../services/api_client.dart';
 import 'dart:io';
 
@@ -41,8 +40,8 @@ class ProfileService {
   Future<String?> uploadAvatar(File imageFile) async {
     try {
       final formData = FormData.fromMap({
-        'action' => 'upload_avatar',
-        'avatar' => await MultipartFile.fromFile(imageFile.path, filename: 'avatar.jpg'),
+        'action': 'upload_avatar',
+        'avatar': await MultipartFile.fromFile(imageFile.path, filename: 'avatar.jpg'),
       });
       final res = await _dio.post(
         '/profile_update.php',
@@ -63,42 +62,6 @@ class ProfileService {
   }) async {
     final res = await _dio.post(
       '/profile_update.php',
-      data: FormData.fromMap({
-        'action' => 'change_password',
-        'old_password' => oldPassword,
-        'new_password' => newPassword,
-        'new_password2' => newPassword,
-      }),
-    );
-    return _parseResponse(res);
-  }
-
-  /// Upload avatar image file
-  Future<String?> uploadAvatar(File imageFile) async {
-    try {
-      final formData = FormData.fromMap({
-        'action': 'upload_avatar',
-        'avatar': await MultipartFile.fromFile(imageFile.path, filename: 'avatar.jpg'),
-      });
-      final res = await _dio.post(
-        '${AppConfig.apiUrl}/profile_update.php',
-        data: formData,
-      );
-      final data = await _parseResponse(res);
-      if (data['success'] == true) {
-        return data['url'] as String?;
-      }
-    } catch (_) {}
-    return null;
-  }
-
-  /// Change password
-  Future<Map<String, dynamic>> changePassword({
-    required String oldPassword,
-    required String newPassword,
-  }) async {
-    final res = await _dio.post(
-      '${AppConfig.apiUrl}/profile_update.php',
       data: FormData.fromMap({
         'action': 'change_password',
         'old_password': oldPassword,
