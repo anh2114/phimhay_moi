@@ -23,9 +23,9 @@ class StartAppAdService {
     await AdFrequencyService.init();
 
     try {
-      // Enable test ads for debug
-      await _sdk.setTestAdsEnabled(true);
-      print('[StartApp] Test ads enabled on $platform');
+      // Disable test ads for production
+      await _sdk.setTestAdsEnabled(false);
+      print('[StartApp] Test ads disabled (production mode) on $platform');
       print('[StartApp] SDK initialized OK on $platform');
     } catch (e) {
       print('[StartApp] ERROR init on $platform: $e');

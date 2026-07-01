@@ -48,6 +48,16 @@ class _AppodealDebugScreenState extends State<AppodealDebugScreen> {
     }
   }
 
+  Future<void> _toggleTestMode(bool enable) async {
+    _log('Setting test mode: $enable');
+    try {
+      await StartAppAdService.sdk.setTestAdsEnabled(enable);
+      _log('Test mode ${enable ? "ENABLED" : "DISABLED"} ✓');
+    } catch (e) {
+      _log('ERROR setting test mode: $e');
+    }
+  }
+
   Future<void> _loadInterstitial() async {
     _log('Loading interstitial ad...');
     try {
@@ -242,6 +252,24 @@ class _AppodealDebugScreenState extends State<AppodealDebugScreen> {
                 ElevatedButton(
                   onPressed: _loadBanner,
                   child: const Text('Show Banner'),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Text('Test Ads:', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () => _toggleTestMode(true),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                      child: const Text('ON'),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () => _toggleTestMode(false),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                      child: const Text('OFF (Real)'),
+                    ),
+                  ],
                 ),
               ],
             ),
