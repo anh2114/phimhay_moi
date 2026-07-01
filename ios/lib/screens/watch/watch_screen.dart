@@ -192,8 +192,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    WakelockPlus.enable(); // Chặn màn hình khóa khi xem phim
-    _lockBrightness(); // Giữ độ sáng max khi xem phim
+    _enableWakelockWithRetry(); // Chặn màn hình khóa khi xem phim
+    _lockBrightness(); // Giữ độ sáng khi xem phim
     _checkPipAvailability();
     WidgetsBinding.instance.addObserver(this);
     _currentEpId = widget.episodeId;
@@ -923,8 +923,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         _saveCurrentProgress();
       }
     } else if (state == AppLifecycleState.resumed) {
-      // Re-enable wakelock khi quay lại app
-      WakelockPlus.enable();
+      // Re-enable wakelock khi quay lại app (với retry)
+      _enableWakelockWithRetry();
       // Re-lock brightness (OS có thể reset về auto khi app background)
       _lockBrightness();
 
@@ -978,8 +978,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    WakelockPlus.disable(); // Bật lại màn hình khóa khi thoát
+    // Restore wakelock và brightness
+    try { WakelockPlus.disable(); } catch (_) {}
     _unlockBrightness(); // Restore độ sáng gốc
+    // Restore system UI
+    try { SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge); } catch (_) {}
     _healthCheckTimer?.cancel();
     _autoHideControlsTimer?.cancel();
     _clockTimer?.cancel();
@@ -1006,15 +1009,42 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   // Không ép max — chỉ khóa để OS auto-brightness không thay đổi
   Timer? _brightnessTimer;
 
+  /// Enable wakelock với retry — tránh màn hình tối khi fail
+  Future<void> _enableWakelockWithRetry() async {
+    for (int i = 0; i < 3; i++) {
+      try {
+        await WakelockPlus.enable();
+        return; // Thành công → thoát
+      } catch (_) {
+        // Retry sau 1s
+        if (i < 2) await Future.delayed(const Duration(seconds: 1));
+      }
+    }
+    // Nếu fail cả 3 lần → thử setSystemUIOverlayStyle để giữ màn hình
+    try {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    } catch (_) {}
+  }
+
   Future<void> _lockBrightness() async {
     try {
       _originalBrightness = await ScreenBrightness().current;
-      // Giữ nguyên brightness hiện tại — không ép max
+      // Nếu brightness quá thấp (< 0.1) → set về 0.5 để tránh tối đen
+      if (_originalBrightness < 0.1) {
+        _originalBrightness = 0.5;
+        await ScreenBrightness().setScreenBrightness(0.5);
+      }
       // Periodic timer chống OS auto-brightness override
       _brightnessTimer?.cancel();
       _brightnessTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
         if (_brightnessLocked && mounted) {
-          try { await ScreenBrightness().setScreenBrightness(_originalBrightness); } catch (_) {}
+          try {
+            final current = await ScreenBrightness().current;
+            // Chỉ set lại nếu brightness bị thay đổi (OS auto-brightness)
+            if ((current - _originalBrightness).abs() > 0.05) {
+              await ScreenBrightness().setScreenBrightness(_originalBrightness);
+            }
+          } catch (_) {}
         }
       });
       _brightnessLocked = true;
