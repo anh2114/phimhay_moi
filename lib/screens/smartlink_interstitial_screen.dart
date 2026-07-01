@@ -161,7 +161,6 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
                     mediaPlaybackRequiresUserGesture: false,
                     allowsInlineMediaPlayback: true,
                     useOnLoadResource: true,
-                    useOnProgressChanged: true,
                     supportZoom: false,
                     useWideViewPort: true,
                     loadWithOverviewMode: true,
