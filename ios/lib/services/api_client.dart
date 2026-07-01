@@ -193,6 +193,8 @@ class _AuthInterceptor extends Interceptor {
     // Thêm Bearer token nếu có
     if (ApiClient._accessToken != null) {
       options.headers['Authorization'] = 'Bearer ${ApiClient._accessToken}';
+      // Fallback header (Cloudflare có thể strip Authorization)
+      options.headers['X-Auth-Token'] = ApiClient._accessToken;
     }
     handler.next(options);
   }
