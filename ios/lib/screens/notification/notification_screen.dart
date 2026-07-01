@@ -11,8 +11,7 @@ import '../../widgets/bottom_nav.dart';
 import '../home/home_screen.dart';
 import '../auth/auth_screen.dart';
 import '../actors/actors_list_screen.dart';
-import '../../services/smartlink_service.dart';
-import '../../widgets/smartlink_banner_widget.dart';
+
 
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});
@@ -37,8 +36,6 @@ class _NotificationScreenState extends State<NotificationScreen> with AutomaticK
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Show interstitial when opening notification screen
-      SmartLinkService.showInterstitialIfNeeded(context);
       final auth = context.read<AuthProvider>();
       if (auth.isLoggedIn) {
         _fetchData();
@@ -148,13 +145,7 @@ class _NotificationScreenState extends State<NotificationScreen> with AutomaticK
               },
             ),
           ),
-          // Banner ad above BottomNav
-          const Positioned(
-            bottom: 100,
-            left: 0,
-            right: 0,
-            child: SmartLinkBannerWidget(),
-          ),
+
         ],
       ),
     );

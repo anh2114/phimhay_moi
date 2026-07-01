@@ -31,9 +31,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:screen_brightness/screen_brightness.dart';
-import 'package:phimhay_app/services/smartlink_service.dart';
-import 'package:phimhay_app/widgets/smartlink_banner_widget.dart';
-import 'package:phimhay_app/services/m3u8_ad_parser.dart';
 import 'package:phimhay_app/services/srt_parser.dart';
 
 /// Loại player hiện tại
@@ -214,44 +211,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     }
   }
 
-  // ── Fetch ad markers từ API ────────────────────────
-  Future<void> _fetchAdMarkers(String m3u8Url, String serverName) async {
-    if (widget.movieId <= 0 || m3u8Url.isEmpty) return;
-    try {
-      final res = await _dio.get('${AppConfig.apiUrl}/ad_markers.php', queryParameters: {
-        'url': m3u8Url,
-        'movie_id': widget.movieId,
-        'server_name': serverName,
-      });
-      final data = res.data;
-      if (data is Map && data['success'] == true) {
-        final ads = data['ads'] as List<dynamic>? ?? [];
-        _adMarkers = ads.map((e) => Map<String, dynamic>.from(e)).toList();
-        if (_adMarkers.isNotEmpty) {
-          debugPrint('Ad markers: ${_adMarkers.length} zones');
-        }
-      }
-    } catch (_) {}
-  }
-
-  // ── Parse m3u8 để detect ad chính xác ──────────────────
-  Future<void> _parseM3u8ForAds(String m3u8Url) async {
-    try {
-      _m3u8Result = await _adParser.parse(m3u8Url);
-      if (_m3u8Result!.hasAds) {
-        debugPrint('=== M3U8 AD PARSER ===');
-        debugPrint('Segments: ${_m3u8Result!.segments.length}');
-        debugPrint('Ad zones: ${_m3u8Result!.adZones.length}');
-        for (final zone in _m3u8Result!.adZones) {
-          debugPrint('  $zone');
-        }
-        debugPrint('======================');
-      }
-    } catch (e) {
-      debugPrint('M3U8 parse error: $e');
-    }
-  }
-
   // ── Load subtitles for current episode ──────────────────
   Future<void> _loadSubtitles(Map<String, dynamic> episode) async {
     final slug = widget.movieSlug ?? '';
@@ -365,195 +324,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       }
     }
     return best4kIdx >= 0 ? best4kIdx : bestIdx;
-  }
-
-  // ── Check và skip ad zone ────────────────────────
-  int _lastAdCheckTime = 0; // Throttle periodic check
-
-  void _checkAdZone(int positionSec) {
-    if (_adSkipping || _currentUrl.isEmpty) return;
-
-    // ★ 0. Neu user vua seek → reset jump tracker (khong unmute sai)
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastSeekByUser < 2000) {
-      _lastPositionForJump = positionSec;
-      return; // Bo qua check sau seek
-    }
-
-    // ★ 1. Check parsed m3u8 ad zones
-    if (_m3u8Result != null && _m3u8Result!.hasAds) {
-      final adZone = _m3u8Result!.adZoneAt(positionSec.toDouble());
-      if (adZone != null && !_adMuted) {
-        debugPrint('M3U8 AD HIT at ${positionSec}s → mute');
-        _muteForAdSkip();
-        return;
-      }
-      final nextAd = _m3u8Result!.nextAdAfter(positionSec.toDouble());
-      if (nextAd != null && nextAd.startTime - positionSec <= 3 && !_adMuted) {
-        debugPrint('AD LOOK-AHEAD: mute at ${positionSec}s');
-        _muteForAdSkip();
-        return;
-      }
-    }
-
-    // ★ 2. Detect position jump
-    if (_lastPositionForJump >= 0) {
-      final jump = positionSec - _lastPositionForJump;
-
-      // Jump nguoc RẤT LỚN (>30s) → server dang phat ad (position reset ve 0)
-      // → SKIP NGAY: stop → open → seek den sau ad
-      if (jump < -30 && !_adSkipping) {
-        int lastPos = _lastPositionForJump;
-        int seekTarget = lastPos + 10; // fallback
-
-        // Tim ad marker gan nhat SAU position cu
-        int bestStart = 99999;
-        for (final ad in _adMarkers) {
-          final start = (ad['start_time'] as int?) ?? 0;
-          // Ad marker nam SAU position cu, trong vong 60s
-          if (start > lastPos && (start - lastPos) < 60) {
-            if (start < bestStart) bestStart = start;
-          }
-        }
-        if (bestStart < 99999) {
-          seekTarget = bestStart + 2;
-        }
-
-        debugPrint('AD SKIP: ${lastPos}s → ${positionSec}s → seek to ${seekTarget}s');
-        _skipAdZone(seekTarget);
-      }
-      // Jump nguoc nho (3-30s) → mute
-      else if (jump < -3 && jump >= -30 && !_adSkipping) {
-        debugPrint('AD INJECT (mute): ${_lastPositionForJump}s → ${positionSec}s');
-        _muteForAdSkip();
-      }
-
-      // Jump tien > 3s + dang muted → ad xong, content tiep tuc
-      if (jump > 3 && _adMuted) {
-        debugPrint('AD END: ${_lastPositionForJump}s → ${positionSec}s → unmute');
-        _unmuteAfterAdSkip();
-      }
-    }
-    _lastPositionForJump = positionSec;
-
-    // ★ 3. Periodic check moi 2s — bat qua truong hop ad bi lo
-    if (now - _lastAdCheckTime > 2000 && !_adMuted) {
-      _lastAdCheckTime = now;
-      // Check API markers
-      for (final ad in _adMarkers) {
-        final start = (ad['start_time'] as int?) ?? 0;
-        if (positionSec >= start - 3 && positionSec < start + 5) {
-          debugPrint('API AD HIT (periodic) at ${positionSec}s → mute');
-          _muteForAdSkip();
-          return;
-        }
-      }
-      // Check m3u8 zones
-      if (_m3u8Result != null && _m3u8Result!.hasAds) {
-        final adZone = _m3u8Result!.adZoneAt(positionSec.toDouble());
-        if (adZone != null) {
-          debugPrint('M3U8 AD HIT (periodic) at ${positionSec}s → mute');
-          _muteForAdSkip();
-        }
-      }
-    }
-  }
-
-  /// ★ Mute để chặn audio leak trước khi skip ad
-  void _muteForAdSkip() {
-    if (_adMuted) return;
-    _adMuted = true;
-    _hlsPlayer?.setVolume(0.0);
-    debugPrint('AD SKIP: muted');
-  }
-
-  /// ★ Unmute sau khi skip ad xong
-  void _unmuteAfterAdSkip() {
-    _adUnmuteTimer?.cancel();
-    _adUnmuteTimer = Timer(const Duration(milliseconds: 800), () {
-      if (!mounted) return;
-      _adMuted = false;
-      final restoreVol = _isMuted ? 0.0 : (_volume > 0 ? _volume : 100.0);
-      _hlsPlayer?.setVolume(restoreVol);
-      debugPrint('AD SKIP: unmuted, volume=$restoreVol');
-    });
-  }
-
-  /// ★ Skip ad zone: Mute → Stop → Re-open → Wait ready → Seek → Unmute
-  void _skipAdZone(int seekToSec) {
-    _adSkipping = true;
-    final wasPlaying = _hlsPlayer?.state.playing ?? false;
-
-    // Step 1: MUTE ngay lập tức → zero audio leak
-    _muteForAdSkip();
-
-    // Step 2: STOP player → xóa sạch buffer (không đơ)
-    _hlsPlayer?.stop().then((_) {
-      if (!mounted) return;
-
-      // Step 3: Re-open stream
-      _hlsPlayer?.open(Media(_currentUrl));
-
-      // Step 4: Đợi player ready (duration > 0) rồi mới seek
-      StreamSubscription? durationSub;
-      durationSub = _hlsPlayer!.stream.duration.listen((dur) {
-        if (dur.inSeconds <= 0) return; // Chưa load xong
-        durationSub?.cancel(); // Chỉ trigger 1 lần
-
-        if (!mounted) return;
-
-        // Player đã ready → seek tới sau ad
-        _hlsPlayer!.seek(Duration(seconds: seekToSec)).then((_) {
-          Future.delayed(const Duration(milliseconds: 500), () {
-            if (mounted && wasPlaying) _hlsPlayer?.play();
-            // Unmute sau khi video chạy ổn định
-            _unmuteAfterAdSkip();
-            Future.delayed(const Duration(seconds: 3), () {
-              _adSkipping = false;
-            });
-          });
-        });
-      });
-    });
-  }
-
-  // ── Ad overlay simulation ──────────────────────────
-  void _showAdOverlay(AdZone adZone) {
-    _adMode = true;
-    _currentAdZone = adZone;
-    _adRemainingSec = adZone.duration.toInt();
-
-    // ★ MUTE + Pause để zero audio leak
-    _muteForAdSkip();
-    _hlsPlayer?.pause();
-
-    // Start countdown
-    _adCountdownTimer?.cancel();
-    _adCountdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) { timer.cancel(); return; }
-      setState(() {
-        _adRemainingSec--;
-        if (_adRemainingSec <= 0) {
-          _dismissAdOverlay();
-          timer.cancel();
-        }
-      });
-    });
-
-    setState(() {});
-  }
-
-  void _dismissAdOverlay() {
-    _adMode = false;
-    _adCountdownTimer?.cancel();
-    final adZone = _currentAdZone;
-    _currentAdZone = null;
-
-    if (adZone == null) return;
-
-    // ★ Stop + Re-open → clear buffer, avoid freeze
-    final seekTo = adZone.endTime.toInt() + 2;
-    _skipAdZone(seekTo);
   }
 
   // ── Load watch progress từ DB ────────────────────────
@@ -720,7 +490,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   Future<void> _saveCurrentProgress() async {
     if (widget.movieId <= 0) return;
-    if (_watchRoomActive || _adMode) return;
+    if (_watchRoomActive) return;
     if (!_seekCompleted && _currentPosition > 15) return;
     // Dedup: skip if save in-flight or too recent (< 3s)
     if (_isSaving) return;
@@ -964,8 +734,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _playingSub?.cancel();
     _stuckDetector?.cancel();
     _stateSyncTimer?.cancel();
-    _adCountdownTimer?.cancel();
-    _adUnmuteTimer?.cancel();
     _doubleTapTimer?.cancel();
     _brightnessTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
@@ -1089,9 +857,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       _currentUrl = url;
       final isM3u8 = url.contains('.m3u8');
       if (isM3u8) {
-        _adMarkers = [];
         _initHlsPlayer(url);
-        _fetchAdMarkers(url, _currentServerName);
       }
       if (mounted) setState(() { _playerMode = isM3u8 ? _PlayerMode.hls : _PlayerMode.embed; _isLoading = false; });
     } else {
@@ -1125,9 +891,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       _loadSubtitles(currentEp);
       if (m3u8.isNotEmpty) {
         _currentUrl = m3u8;
-        _adMarkers = []; // Reset ad markers cho tap moi
         _initHlsPlayer(m3u8);
-        _fetchAdMarkers(m3u8, _currentServerName);
         if (mounted) setState(() { _playerMode = _PlayerMode.hls; _isLoading = false; });
       } else if (embed.isNotEmpty) {
         _currentUrl = embed;
@@ -1149,24 +913,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   int _positionBeforePause = 0; // Vị trí trước khi app vào background
   StreamSubscription<Duration>? _durationSub; // Lắng nghe duration
   int _seekTargetTime = 0; // Thời gian seek đang nhắm tới (chống position nhảy)
-  int _lastPosForAdCheck = -1; // Position trước đó để detect crossed ad zone
   bool _isSaving = false; // Dedup concurrent save requests
   DateTime? _lastSaveTime; // Minimum interval between saves
-
-  // ── Ad markers ──
-  List<Map<String, dynamic>> _adMarkers = [];
-  bool _adSkipping = false; // Dang skip ad → khong trigger lai
-
-  // ── M3U8 Ad Parser ──
-  final M3u8AdParser _adParser = M3u8AdParser();
-  M3u8ParseResult? _m3u8Result;
-  bool _adMode = false;        // Đang hiển thị overlay ad?
-  int _adRemainingSec = 0;     // Đếm ngược ad
-  Timer? _adCountdownTimer;
-  AdZone? _currentAdZone;      // Ad zone hiện tại
-  bool _adMuted = false;       // Đã mute để chống audio leak
-  int _lastPositionForJump = -1; // Track position để detect jump (ad injection)
-  Timer? _adUnmuteTimer;       // Timer unmute sau khi skip ad
 
   int _lastSeekByUser = 0;
   String _currentServerName = '';
@@ -1213,7 +961,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       final sec = pos.inSeconds;
       final showSkip = sec >= 10 && sec <= 120;
       if (showSkip != _showSkipIntro && mounted) _showSkipIntro = showSkip;
-      _checkAdZone(sec);
       if (mounted && !_isDragging) {
         final posSec = pos.inSeconds;
         if (_seekTargetTime > 0) {
@@ -1279,11 +1026,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       _playerReady = true;
       setState(() => _isLoading = false);
-
-      // ★ Parse m3u8 for ad detection (async, non-blocking)
-      if (url.contains('.m3u8')) {
-        _parseM3u8ForAds(url);
-      }
 
       // Setup PiP controller (iOS) — tạo AVPlayer sẵn khi video load
       _setupPip();
@@ -1461,10 +1203,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   // ── Chuyển tập ────────────────────────────────────
   void _switchEpisode(Map<String, dynamic> ep, {bool keepPosition = false}) {
-    // Show interstitial on episode switch (frequency-capped)
-    SmartLinkService.showInterstitialIfNeeded(context, onDone: () {
-      _doSwitchEpisode(ep, keepPosition: keepPosition);
-    });
+    _doSwitchEpisode(ep, keepPosition: keepPosition);
   }
 
   void _doSwitchEpisode(Map<String, dynamic> ep, {bool keepPosition = false}) {
@@ -1497,11 +1236,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         _lastSavedPosition = 0;
         _seekTargetTime = 0;
         _seekCompleted = false;
-        _lastPositionForJump = -1;
-        _adMarkers = [];
-        _m3u8Result = null;
-        _adMuted = false;
-        _adSkipping = false;
         _subtitles = [];
       }
     });
@@ -1509,11 +1243,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _loadSubtitles(ep);
 
     if (useHls) {
-      _adMarkers = [];
       if (!_tryUsePrefetched(ep)) {
         _initHlsPlayer(url);
       }
-      _fetchAdMarkers(url, _currentServerName);
       _updatePipUrl();
     }
 
@@ -1766,11 +1498,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           child: Row(
             children: [
               GestureDetector(
-                onTap: () {
-                  SmartLinkService.showInterstitialIfNeeded(context, onDone: () {
-                    Navigator.pop(context);
-                  });
-                },
+                onTap: () => Navigator.pop(context),
                 child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
               ),
               const SizedBox(width: 10),
@@ -1822,8 +1550,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         ),
         // Server selector — hiện cho mọi user
         if (_servers.length > 1) _buildServerSelector(),
-        // Real banner ad (SmartLink)
-        SmartLinkBannerWidget(),
         const Divider(color: Color(0x22FFFFFF), height: 1),
         // Episode list header
         Padding(
@@ -2101,60 +1827,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             ),
 
           // ── Subtitle overlay — moved to _buildSubtitleZone() ──
-
-          // ── Ad overlay simulation ──
-          if (_adMode)
-            Positioned.fill(
-              child: Container(
-                color: Colors.black87,
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.ad_units, color: Colors.amber, size: 48),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'Quảng cáo',
-                        style: TextStyle(color: Colors.white70, fontSize: 14),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '$_adRemainingSec giây',
-                        style: const TextStyle(
-                          color: Colors.amber,
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      // Progress bar
-                      SizedBox(
-                        width: 200,
-                        child: LinearProgressIndicator(
-                          value: _currentAdZone != null && _currentAdZone!.duration > 0
-                              ? (_currentAdZone!.duration - _adRemainingSec) / _currentAdZone!.duration
-                              : 0,
-                          backgroundColor: Colors.white24,
-                          valueColor: const AlwaysStoppedAnimation(Colors.amber),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      GestureDetector(
-                        onTap: _dismissAdOverlay,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.white38),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: const Text('Bỏ qua ▸', style: TextStyle(color: Colors.white70, fontSize: 13)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
         ],
       );
   }
@@ -2989,107 +2661,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   void _cycleSpeed() {
     final idx = _speeds.indexOf(_playbackSpeed);
-                            thumbColor: AppTheme.accent,
-                            overlayColor: AppTheme.accent.withValues(alpha: 0.1),
-                          ),
-                          child: Slider(
-                            value: _volume,
-                            min: 0,
-                            max: 100,
-                            divisions: 20,
-                            onChanged: (val) {
-                              setState(() {
-                                _volume = val;
-                                _isMuted = val == 0;
-                                _hlsPlayer?.setVolume(val);
-                              });
-                            },
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              const Spacer(),
-              // Subtitle toggle
-              if (_subtitles.isNotEmpty)
-                GestureDetector(
-                  onTap: () => setState(() => _subtitleEnabled = !_subtitleEnabled),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Icon(
-                      Icons.subtitles_rounded,
-                      size: 20,
-                      color: _subtitleEnabled ? AppTheme.accent : Colors.white,
-                    ),
-                  ),
-                ),
-              // Next episode button
-              _nextEpisodeButton(),
-              // PiP button
-              if (_pipAvailable)
-                GestureDetector(
-                  onTap: _startPip,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 4),
-                    child: AppSvgIcon('picture-in-picture-2.svg', size: 20, color: Colors.white),
-                  ),
-                ),
-              // AirPlay button (iOS only)
-              if (Platform.isIOS)
-                GestureDetector(
-                  onTap: _showAirPlayPicker,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 4),
-                    child: AppSvgIcon('airplay.svg', size: 20, color: Colors.white),
-                  ),
-                ),
-              // Mic button → server popup
-              if (_servers.isNotEmpty)
-                GestureDetector(
-                  onTap: _showServerPopup,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: AppSvgIcon(
-                      'mic.svg',
-                      size: 20,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              // Speed
-              GestureDetector(
-                onTap: _showSettingsPopup,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: AppSvgIcon(
-                    'bolt.svg',
-                    size: 20,
-                    color: _playbackSpeed != 1.0 ? AppTheme.accent : Colors.white,
-                  ),
-                ),
-              ),
-              // Fullscreen
-              GestureDetector(
-                onTap: _toggleFullscreen,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: AppSvgIcon(
-                    _isLandscape ? 'expand.svg' : 'maximize.svg',
-                    size: 20,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _cycleSpeed() {
-    final idx = _speeds.indexOf(_playbackSpeed);
     final nextIdx = (idx + 1) % _speeds.length;
     setState(() {
       _playbackSpeed = _speeds[nextIdx];
@@ -3255,6 +2826,17 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         _hlsPlayer?.setRate(s);
       });
       setModalState(() => _settingsPanel = 'main');
+    })).toList();
+  }
+
+  List<Widget> _buildSpeedPanel(Function setModalState) {
+    final speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+    return speeds.map((s) => _buildOptionRow('${s}x', _playbackSpeed == s, () {
+      setModalState(() {
+        _playbackSpeed = s;
+        _hlsPlayer?.setRate(s);
+        _settingsPanel = 'main';
+      });
     })).toList();
   }
 

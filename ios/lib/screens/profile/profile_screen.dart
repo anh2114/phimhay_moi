@@ -19,8 +19,6 @@ import 'package:phimhay_app/screens/search/search_screen.dart';
 import 'package:phimhay_app/screens/schedule/schedule_screen.dart';
 import 'package:phimhay_app/screens/list/list_screen.dart';
 import 'package:phimhay_app/widgets/bottom_nav.dart';
-import 'package:phimhay_app/services/smartlink_service.dart';
-import 'package:phimhay_app/widgets/smartlink_banner_widget.dart';
 
 class ProfileScreen extends StatefulWidget {
   final bool isTab;
@@ -254,13 +252,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               },
             ),
           ),
-          // Banner ad above BottomNav
-          const Positioned(
-            bottom: 100,
-            left: 0,
-            right: 0,
-            child: SmartLinkBannerWidget(),
-          ),
+
         ],
       ),
     );
@@ -593,14 +585,14 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           final pos = (m['position'] as int?) ?? 0;
           final epName = m['ep_name']?.toString() ?? '';
           return _glassTap(
-            onTap: () => SmartLinkService.showInterstitialIfNeeded(context, onDone: () => Navigator.push(context, MaterialPageRoute(builder: (_) => WatchScreen(
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => WatchScreen(
               movieId: movieId,
               episodeId: episodeId > 0 ? episodeId : 1,
               serverIdx: serverIdx,
               movieSlug: slug,
               movieTitle: name,
               initialPosition: pos,
-            )))),
+            ))),
             child: SizedBox(width: 110, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Expanded(child: Stack(children: [
                 ClipRRect(borderRadius: BorderRadius.circular(8),
@@ -676,14 +668,14 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       final serverIdx = (m['server_idx'] as int?) ?? 0;
       final pos = (m['position'] as int?) ?? 0; final last = _timeAgo(m['last_watched']?.toString());
       return _glassTap(
-        onTap: () => SmartLinkService.showInterstitialIfNeeded(context, onDone: () => Navigator.push(context, MaterialPageRoute(builder: (_) => WatchScreen(
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => WatchScreen(
           movieId: movieId,
           episodeId: episodeId > 0 ? episodeId : 1,
           serverIdx: serverIdx,
           movieSlug: slug,
           movieTitle: name,
           initialPosition: pos,
-        )))),
+        ))),
         child: Container(margin: const EdgeInsets.only(bottom: 10), padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(color: AppTheme.bgCard, border: Border.all(color: AppTheme.border), borderRadius: BorderRadius.circular(12)),
           child: Row(children: [
