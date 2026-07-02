@@ -22,10 +22,10 @@ class Responsive {
 
   static int episodeColumns(BuildContext context) {
     final w = width(context);
-    if (w >= 1200) return 10;
-    if (w >= 900) return 8;
-    if (w >= 600) return 6;
-    return 5;
+    if (w >= 1200) return 8;
+    if (w >= 900) return 6;
+    if (w >= 600) return 5;
+    return 4;
   }
 
   static double maxContentWidth(BuildContext context) {

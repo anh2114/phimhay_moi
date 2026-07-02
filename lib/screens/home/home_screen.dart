@@ -37,15 +37,26 @@ class _HomeScreenState extends State<HomeScreen> {
   String _selectedChip = 'Đề xuất';
   final ScrollController _scrollController = ScrollController();
   int _heroCurrentPage = 0;
+  double _headerOpacity = 0.0;
 
   @override
   void initState() {
     super.initState();
     _navIndex = widget.initialIndex;
+    _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<HomeProvider>().fetchHome();
       context.read<WatchHistoryProvider>().fetchContinueWatching();
     });
+  }
+
+  void _onScroll() {
+    final offset = _scrollController.offset;
+    // Fade in from 0 to 150px scroll
+    final opacity = (offset / 150.0).clamp(0.0, 1.0);
+    if (opacity != _headerOpacity) {
+      setState(() => _headerOpacity = opacity);
+    }
   }
 
   /// Convert chip name → API filter param
@@ -122,6 +133,14 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: AppTheme.bg,
       body: Stack(
         children: [
+          // Glow background — chỉ hiện khi ở tab Home và scroll chưa quá mức
+          if (_navIndex == 0 && _headerOpacity < 0.3)
+            Positioned.fill(
+              child: Opacity(
+                opacity: (1.0 - _headerOpacity / 0.3).clamp(0.0, 1.0),
+                child: _buildGlowBackground(),
+              ),
+            ),
           // Nội dung tab — padding tránh Header & BottomNav
           Padding(
             padding: EdgeInsets.only(
@@ -143,6 +162,7 @@ class _HomeScreenState extends State<HomeScreen> {
             left: 0,
             right: 0,
             child: Header(
+              backgroundOpacity: _headerOpacity,
               onSearchTap: () => setState(() => _navIndex = 1),
               onWatchPartyTap: () {
                 Navigator.push(
@@ -239,58 +259,69 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Widget _buildGlowBackground() {
+    return Consumer<HomeProvider>(builder: (context, provider, _) {
+      if (provider.heroMovies.isEmpty) return const SizedBox.shrink();
+      final movie = provider.heroMovies[_heroCurrentPage.clamp(0, provider.heroMovies.length - 1)];
+      return Stack(
+        clipBehavior: Clip.none,
+        children: [
+          // Blurred poster glow — tràn lên navbar
+          Positioned(
+            top: -80,
+            left: -40,
+            right: -40,
+            height: 800,
+            child: ImageFiltered(
+              imageFilter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+              child: Opacity(
+                opacity: 0.6,
+                child: CachedNetworkImage(
+                  imageUrl: (movie.thumbUrl?.isNotEmpty == true)
+                      ? movie.thumbUrl!
+                      : (movie.posterUrl ?? ''),
+                  fit: BoxFit.cover,
+                  memCacheWidth: 400,
+                  cacheKey: '${movie.slug}_${movie.id}_glow',
+                  placeholder: (_, __) => const SizedBox.shrink(),
+                  errorWidget: (_, __, ___) => const SizedBox.shrink(),
+                ),
+              ),
+            ),
+          ),
+          // Radial warm glow
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 350,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment.center,
+                  radius: 0.8,
+                  colors: [
+                    AppTheme.accent.withValues(alpha: 0.12),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    });
+  }
+
   Widget _buildHeroSection(HomeProvider provider) {
     if (provider.heroMovies.isEmpty) return const SizedBox.shrink();
     final topPad = MediaQuery.of(context).padding.top;
-    final movie = provider.heroMovies[_heroCurrentPage.clamp(0, provider.heroMovies.length - 1)];
     final blurTop = -(topPad + 56);
 
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        // Blurred poster glow - tràn lên navbar
-        Positioned(
-          top: blurTop,
-          left: -40,
-          right: -40,
-          height: 700,
-          child: ImageFiltered(
-            imageFilter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
-            child: Opacity(
-              opacity: 0.6,
-              child: CachedNetworkImage(
-                imageUrl: (movie.thumbUrl?.isNotEmpty == true)
-                    ? movie.thumbUrl!
-                    : (movie.posterUrl ?? ''),
-                fit: BoxFit.cover,
-                memCacheWidth: 400,
-                cacheKey: '${movie.slug}_${movie.id}_glow',
-                placeholder: (_, __) => const SizedBox.shrink(),
-                errorWidget: (_, __, ___) => const SizedBox.shrink(),
-              ),
-            ),
-          ),
-        ),
-        // Radial warm glow
-        Positioned(
-          top: blurTop + 80,
-          left: 0,
-          right: 0,
-          height: 300,
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: Alignment.center,
-                radius: 0.8,
-                colors: [
-                  AppTheme.accent.withValues(alpha: 0.1),
-                  Colors.transparent,
-                ],
-              ),
-            ),
-          ),
-        ),
-        // Gradient fade — blur tự nhiên mờ xuống, gradient nhẹ ở mép dưới
+        // Gradient fade — blur tự nhiên mờ xuống
         Positioned(
           top: blurTop + 380,
           left: 0,

@@ -8,8 +8,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:dio/dio.dart';
-import 'package:media_kit/media_kit.dart' show Player, Media;
-import 'package:media_kit_video/media_kit_video.dart' show Video, VideoController, NoVideoControls;
+import 'package:better_player_plus/better_player_plus.dart';
 import 'package:phimhay_app/config/app_config.dart';
 import 'package:phimhay_app/config/theme.dart';
 import 'package:phimhay_app/config/responsive.dart';
@@ -97,10 +96,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   final Dio _dio = Dio();
   final MovieService _movieService = MovieService();
   InAppWebViewController? _webController;
-  Player? _hlsPlayer;
-  VideoController? _videoController;
-  // Prefetch player — preloads next episode in background
-  Player? _prefetchPlayer;
+  BetterPlayerController? _bpController;
+  final GlobalKey _bpGlobalKey = GlobalKey();
+  // Prefetch — giữ đơn giản ban đầu
   String _prefetchUrl = '';
   dynamic _prefetchEpId;
   static const _pipChannel = MethodChannel('phimhay/pip');
@@ -118,21 +116,19 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   int _selectedServer = 0;
   dynamic _currentEpId;
   String _currentEpName = '';
-  bool _hasSwitchedEp = false; // Da chuyen tap → khong restore progress cu
+  bool _hasSwitchedEp = false;
 
   // Controls overlay
   bool _showControls = true;
   bool _showSkipIntro = false;
-  StreamSubscription<Duration>? _positionSub;
-  bool _playerReady = false; // true khi media đã load xong
-  StreamSubscription<bool>? _playingSub;
+  bool _playerReady = false;
 
-  // Custom player controls (giống watch room host controls)
+  // Custom player controls
   bool _isPlaying = false;
   bool _playPressed = false;
   double _playbackSpeed = 1.0;
   static const List<double> _speeds = [0.5, 1.0, 1.5, 2.0, 3.0];
-  String _settingsPanel = 'main'; // 'main', 'quality', 'subtitles', 'speed'
+  String _settingsPanel = 'main';
   String _selectedQuality = 'Auto';
   String _selectedSubtitleColor = '#FFFFFF';
   double _selectedSubtitleSize = 14.0;
@@ -155,9 +151,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   int _currentDuration = 0;
   Map<String, dynamic>? _savedProgress;
 
-  // ★ Fix: stuck detector + state sync
+  // ★ Fix: stuck detector
   Timer? _stuckDetector;
-  Timer? _stateSyncTimer;
   int _lastPositionForStuckCheck = 0;
   int _stuckTickCount = 0;
 
@@ -486,7 +481,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   void _muteForAdSkip() {
     if (_adMuted) return;
     _adMuted = true;
-    _hlsPlayer?.setVolume(0.0);
+    _bpController?.setVolume(0.0);
     debugPrint('AD SKIP: muted');
   }
 
@@ -496,44 +491,45 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _adUnmuteTimer = Timer(const Duration(milliseconds: 800), () {
       if (!mounted) return;
       _adMuted = false;
-      final restoreVol = _isMuted ? 0.0 : (_volume > 0 ? _volume : 100.0);
-      _hlsPlayer?.setVolume(restoreVol);
+      final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0) / 100.0);
+      _bpController?.setVolume(restoreVol);
       debugPrint('AD SKIP: unmuted, volume=$restoreVol');
     });
   }
 
-  /// ★ Skip ad zone: Mute → Stop → Re-open → Wait ready → Seek → Unmute
+  /// ★ Skip ad zone: Mute → Pause → Re-setup → Wait ready → Seek → Unmute
   void _skipAdZone(int seekToSec) {
     _adSkipping = true;
-    final wasPlaying = _hlsPlayer?.state.playing ?? false;
+    final wasPlaying = _isPlaying;
 
     // Step 1: MUTE ngay lập tức → zero audio leak
     _muteForAdSkip();
 
-    // Step 2: STOP player → xóa sạch buffer (không đơ)
-    _hlsPlayer?.stop().then((_) {
+    // Step 2: Pause player → stop playback
+    _bpController?.pause();
+
+    // Step 3: Re-setup data source
+    final headers = <String, String>{};
+    if (!kIsWeb) {
+      headers['Referer'] = AppConfig.baseUrl;
+      headers['User-Agent'] = 'Mozilla/5.0';
+    }
+    final dataSource = BetterPlayerDataSource(
+      BetterPlayerDataSourceType.network,
+      _currentUrl,
+      headers: headers,
+    );
+    _bpController?.setupDataSource(dataSource);
+
+    // Step 4: Wait for initialized event then seek
+    Future.delayed(const Duration(seconds: 2), () {
       if (!mounted) return;
-
-      // Step 3: Re-open stream
-      _hlsPlayer?.open(Media(_currentUrl));
-
-      // Step 4: Đợi player ready (duration > 0) rồi mới seek
-      StreamSubscription? durationSub;
-      durationSub = _hlsPlayer!.stream.duration.listen((dur) {
-        if (dur.inSeconds <= 0) return; // Chưa load xong
-        durationSub?.cancel(); // Chỉ trigger 1 lần
-
-        if (!mounted) return;
-
-        // Player đã ready → seek tới sau ad
-        _hlsPlayer!.seek(Duration(seconds: seekToSec)).then((_) {
-          Future.delayed(const Duration(milliseconds: 500), () {
-            if (mounted && wasPlaying) _hlsPlayer?.play();
-            // Unmute sau khi video chạy ổn định
-            _unmuteAfterAdSkip();
-            Future.delayed(const Duration(seconds: 3), () {
-              _adSkipping = false;
-            });
+      _bpController!.seekTo(Duration(seconds: seekToSec)).then((_) {
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted && wasPlaying) _bpController?.play();
+          _unmuteAfterAdSkip();
+          Future.delayed(const Duration(seconds: 3), () {
+            _adSkipping = false;
           });
         });
       });
@@ -548,7 +544,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     // ★ MUTE + Pause để zero audio leak
     _muteForAdSkip();
-    _hlsPlayer?.pause();
+    _bpController?.pause();
 
     // Start countdown
     _adCountdownTimer?.cancel();
@@ -657,15 +653,15 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     });
   }
 
-  // ★ Fix A: Stuck detector — phát hiện player bị treo
+  // ★ Fix A: Stuck detector — simplified for better_player_plus (event listener handles state)
   void _startStuckDetector() {
     _stuckDetector?.cancel();
     _stuckTickCount = 0;
     _lastPositionForStuckCheck = 0;
     _stuckDetector = Timer.periodic(const Duration(seconds: 2), (_) {
-      if (!mounted || _hlsPlayer == null) return;
-      final pos = _hlsPlayer!.state.position.inSeconds;
-      final playing = _hlsPlayer!.state.playing;
+      if (!mounted || _bpController == null) return;
+      final pos = _currentPosition;
+      final playing = _isPlaying;
 
       // Nếu đang "play" nhưng position không thay đổi > 6s
       if (playing && pos > 0 && pos == _lastPositionForStuckCheck) {
@@ -673,17 +669,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         if (_stuckTickCount >= 3) { // 3 ticks x 2s = 6s stuck
           debugPrint('★ STUCK DETECTED: pos=$pos, trying recovery...');
           _stuckTickCount = 0;
-          // Thử force play
-          _hlsPlayer!.play();
-          // Nếu sau 2s nữa vẫn stuck → seek nhỏ rồi play
+          _bpController!.play();
           Future.delayed(const Duration(seconds: 2), () {
-            if (!mounted || _hlsPlayer == null) return;
-            final newPos = _hlsPlayer!.state.position.inSeconds;
-            if (playing && newPos == pos) {
+            if (!mounted || _bpController == null) return;
+            if (playing && _currentPosition == pos) {
               debugPrint('★ STUCK RECOVERY: seek+play');
-              _hlsPlayer!.seek(Duration(seconds: pos + 1));
+              _bpController!.seekTo(Duration(seconds: pos + 1));
               Future.delayed(const Duration(milliseconds: 500), () {
-                if (mounted) _hlsPlayer?.play();
+                if (mounted) _bpController?.play();
               });
             }
           });
@@ -695,25 +688,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     });
   }
 
-  // ★ Fix B: State sync — sync _isPlaying với player thực mỗi 1s
-  void _startStateSync() {
-    _stateSyncTimer?.cancel();
-    _stateSyncTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted || _hlsPlayer == null) return;
-      final actualPlaying = _hlsPlayer!.state.playing;
-      // Sync _isPlaying nếu khác player thực
-      if (_isPlaying != actualPlaying && mounted) {
-        setState(() => _isPlaying = actualPlaying);
-      }
-      // Sync position nếu player đang play nhưng _currentPos không update
-      if (actualPlaying) {
-        final actualPos = _hlsPlayer!.state.position;
-        if (actualPos.inSeconds > 0 && !_isDragging) {
-          _currentPos = actualPos;
-        }
-      }
-    });
-  }
+  // ★ Fix B: State sync — no longer needed, handled by _onBetterPlayerEvent
 
   // Lưu progress ngay lập tức với position cho trước (dùng khi chuyển server)
   Future<void> _saveProgressImmediate(int position) async {
@@ -752,9 +727,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     try {
     int pos = 0;
     int dur = 0;
-    if (_playerMode == _PlayerMode.hls && _hlsPlayer != null) {
-      pos = _hlsPlayer!.state.position.inSeconds;
-      dur = _hlsPlayer!.state.duration.inSeconds;
+    if (_playerMode == _PlayerMode.hls && _bpController != null) {
+      pos = _currentPosition;
+      dur = _currentDuration;
     } else if (_playerMode == _PlayerMode.embed && _webController != null) {
       try {
         final posResult = await _webController!.evaluateJavascript(
@@ -828,7 +803,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         // iOS: pause vì PiP dùng AVPlayer riêng
         // Android: KHÔNG pause vì PiP dùng Flutter surface
         if (Platform.isIOS) {
-          _hlsPlayer?.pause();
+          _bpController?.pause();
         }
       }
     });
@@ -852,18 +827,18 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           if (Platform.isIOS) {
             // iOS: PiP dùng AVPlayer riêng → seek video chính về position PiP
             final position = await _pipChannel.invokeMethod('getPipPosition') ?? 0.0;
-            if (position > 0 && _hlsPlayer != null) {
-              await _hlsPlayer!.seek(Duration(seconds: (position as double).toInt()));
-              _hlsPlayer!.play();
-              final restoreVol = _isMuted ? 0.0 : (_volume > 0 ? _volume : 100.0);
+            if (position > 0 && _bpController != null) {
+              await _bpController!.seekTo(Duration(seconds: (position as double).toInt()));
+              _bpController!.play();
+              final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0) / 100.0);
               await Future.delayed(const Duration(milliseconds: 200));
-              _hlsPlayer!.setVolume(restoreVol);
+              _bpController!.setVolume(restoreVol);
               debugPrint('PiP: seeked to ${position}s');
             }
           } else {
             // Android: video vẫn chạy trong PiP → chỉ restore volume
-            final restoreVol = _isMuted ? 0.0 : (_volume > 0 ? _volume : 100.0);
-            _hlsPlayer?.setVolume(restoreVol);
+            final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0) / 100.0);
+            _bpController?.setVolume(restoreVol);
           }
         }
       } catch (_) {}
@@ -873,7 +848,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   /// Setup PiP controller — gọi 1 lần khi video load xong (iOS cần AVPlayer sẵn)
   Future<void> _setupPip() async {
     if (!_pipAvailable || _currentUrl.isEmpty) return;
-    final position = _hlsPlayer?.state.position.inSeconds.toDouble() ?? 0;
+    final position = _currentPos.inSeconds.toDouble();
     try {
       await _pipChannel.invokeMethod('setupPip', {
         'url': _currentUrl,
@@ -888,7 +863,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   /// Bật PiP — pass vị trí hiện tại + bắt đầu poll position
   Future<void> _startPip() async {
-    final position = _hlsPlayer?.state.position.inSeconds.toDouble() ?? 0;
+    final position = _currentPos.inSeconds.toDouble();
     _pipActive = true;
     try {
       final result = await _pipChannel.invokeMethod('startPip', {'position': position});
@@ -918,8 +893,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
       // Lưu vị trí hiện tại trước khi app vào background
-      if (_hlsPlayer != null) {
-        _positionBeforePause = _hlsPlayer!.state.position.inSeconds;
+      if (_bpController != null) {
+        _positionBeforePause = _currentPos.inSeconds;
         _saveCurrentProgress();
       }
     } else if (state == AppLifecycleState.resumed) {
@@ -929,50 +904,46 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       _lockBrightness();
 
       // Quay lại app → restore audio session + volume
-      if (_hlsPlayer != null) {
+      if (_bpController != null) {
         // Restore volume theo user setting
-        final restoreVol = _isMuted ? 0.0 : (_volume > 0 ? _volume : 100.0);
-        _hlsPlayer!.setVolume(restoreVol);
+        final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0) / 100.0);
+        _bpController!.setVolume(restoreVol);
 
         // ★ FIX: Nếu position bị reset về 0 → seek lại vị trí trước đó
-        final currentPos = _hlsPlayer!.state.position.inSeconds;
-        if (_positionBeforePause > 15 && currentPos < 5) {
-          _hlsPlayer!.seek(Duration(seconds: _positionBeforePause)).then((_) {
-            final restoreVol2 = _isMuted ? 0.0 : (_volume > 0 ? _volume : 100.0);
-            _hlsPlayer!.setVolume(restoreVol2);
-            _hlsPlayer!.play();
+        if (_positionBeforePause > 15 && _currentPosition < 5) {
+          _bpController!.seekTo(Duration(seconds: _positionBeforePause)).then((_) {
+            final restoreVol2 = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0) / 100.0);
+            _bpController!.setVolume(restoreVol2);
+            _bpController!.play();
           });
         }
       }
 
-      // Quay lại app → nếu PiP vừa tắt → seek video đến vị trí mới
+      // Quay lại app → nếu PiP vừa tắt → seek video đến vị trí mới (iOS only)
       if (_pipActive) {
         _pipActive = false;
         _pipPollTimer?.cancel();
-        _pipChannel.invokeMethod('getPipPosition').then((pos) {
-          final position = (pos as double?) ?? 0;
-          if (position > 0 && _hlsPlayer != null) {
-            _hlsPlayer!.seek(Duration(seconds: position.toInt())).then((_) {
-              // ★ FIX: restore volume to ensure audio is loud after PIP
-              final restoreVol = _isMuted ? 0.0 : (_volume > 0 ? _volume : 100.0);
-              _hlsPlayer!.setVolume(restoreVol);
-              _hlsPlayer!.play();
-            });
-          }
-        });
+        if (Platform.isIOS) {
+          // iOS: PiP dùng AVPlayer riêng → cần seek Flutter player về vị trí PiP
+          _pipChannel.invokeMethod('getPipPosition').then((pos) {
+            final position = (pos as double?) ?? 0;
+            if (position > 0 && _bpController != null) {
+              _bpController!.seekTo(Duration(seconds: position.toInt())).then((_) {
+                final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0) / 100.0);
+                _bpController!.setVolume(restoreVol);
+                _bpController!.play();
+              });
+            }
+          });
+        } else {
+          // Android: video vẫn chạy trong Flutter surface → chỉ restore volume
+          final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0) / 100.0);
+          _bpController?.setVolume(restoreVol);
+          _bpController?.play();
+        }
       }
 
-      // ★ Fix E: Sync state với player thực khi resume
-      if (mounted && _hlsPlayer != null) {
-        final actualPlaying = _hlsPlayer!.state.playing;
-        if (_isPlaying != actualPlaying) {
-          setState(() => _isPlaying = actualPlaying);
-        }
-        final actualPos = _hlsPlayer!.state.position;
-        if (actualPos.inSeconds > 0) {
-          _currentPos = actualPos;
-        }
-      }
+      // ★ Fix E: Sync state — handled by _onBetterPlayerEvent now
     }
   }
 
@@ -986,10 +957,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _healthCheckTimer?.cancel();
     _autoHideControlsTimer?.cancel();
     _clockTimer?.cancel();
-    _positionSub?.cancel();
-    _playingSub?.cancel();
-    _stuckDetector?.cancel();
-    _stateSyncTimer?.cancel();
     _adCountdownTimer?.cancel();
     _adUnmuteTimer?.cancel();
     _doubleTapTimer?.cancel();
@@ -999,7 +966,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     ActivityService.stopWatching();
     _restoreOrientations();
     _cancelPrefetch();
-    _hlsPlayer?.dispose();
+    _bpController?.dispose();
     _webController?.dispose();
     super.dispose();
   }
@@ -1084,13 +1051,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   void _onLongPressStart() {
     _speedBeforeLongPress = _playbackSpeed;
     _isLongPressSpeedUp = true;
-    _hlsPlayer?.setRate(2.0);
+    _bpController?.setSpeed(2.0);
     setState(() {});
   }
 
   void _onLongPressEnd() {
     _isLongPressSpeedUp = false;
-    _hlsPlayer?.setRate(_speedBeforeLongPress);
+    _bpController?.setSpeed(_speedBeforeLongPress);
     setState(() {});
   }
 
@@ -1147,7 +1114,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       final isM3u8 = url.contains('.m3u8');
       if (isM3u8) {
         _adMarkers = [];
-        _initHlsPlayer(url);
+        _initPlayer(url);
         _fetchAdMarkers(url, _currentServerName);
       }
       if (mounted) setState(() { _playerMode = isM3u8 ? _PlayerMode.hls : _PlayerMode.embed; _isLoading = false; });
@@ -1185,7 +1152,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (m3u8.isNotEmpty) {
         _currentUrl = m3u8;
         _adMarkers = []; // Reset ad markers cho tap moi
-        _initHlsPlayer(m3u8);
+        _initPlayer(m3u8);
         _fetchAdMarkers(m3u8, _currentServerName);
         if (mounted) setState(() { _playerMode = _PlayerMode.hls; _isLoading = false; });
       } else if (embed.isNotEmpty) {
@@ -1206,7 +1173,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   bool _seekCompleted = false; // Flag để track seek đã hoàn thành
   bool _watchRoomActive = false; // Watch room đang mở → chặn save
   int _positionBeforePause = 0; // Vị trí trước khi app vào background
-  StreamSubscription<Duration>? _durationSub; // Lắng nghe duration
   int _seekTargetTime = 0; // Thời gian seek đang nhắm tới (chống position nhảy)
   int _lastPosForAdCheck = -1; // Position trước đó để detect crossed ad zone
   bool _isSaving = false; // Dedup concurrent save requests
@@ -1263,115 +1229,125 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     setState(() {});
   }
 
-  void _setupPlayerSubscriptions() {
-    _positionSub?.cancel();
-    _playingSub?.cancel();
-    _durationSub?.cancel();
+  // _setupPlayerSubscriptions() removed — replaced by _onBetterPlayerEvent in BetterPlayerConfiguration
 
-    _positionSub = _hlsPlayer!.stream.position.distinct().listen((pos) {
-      final sec = pos.inSeconds;
-      final showSkip = sec >= 10 && sec <= 120;
-      if (showSkip != _showSkipIntro && mounted) _showSkipIntro = showSkip;
-      _checkAdZone(sec);
-      if (mounted && !_isDragging) {
-        final posSec = pos.inSeconds;
-        if (_seekTargetTime > 0) {
-          if ((posSec - _seekTargetTime).abs() <= 5) _seekTargetTime = 0;
-          else if (posSec.abs() < _seekTargetTime - 5 || posSec > _seekTargetTime + 15) return;
+  void _onBetterPlayerEvent(BetterPlayerEvent event) {
+    if (!mounted) return;
+
+    switch (event.betterPlayerEventType) {
+      case BetterPlayerEventType.initialized:
+        setState(() {
+          _playerReady = true;
+          _isLoading = false;
+        });
+        // Seek to saved position
+        if (_currentPosition > 0 && !_seekCompleted) {
+          _bpController?.seekTo(Duration(seconds: _currentPosition)).then((_) {
+            _seekCompleted = true;
+            _bpController?.play();
+          });
         }
-        final now = DateTime.now().millisecondsSinceEpoch;
-        if (now - _lastPositionUpdate > 200) {
-          _lastPositionUpdate = now;
-          _currentPos = pos;
-          setState(() {});
+        break;
+      case BetterPlayerEventType.play:
+        if (mounted) setState(() => _isPlaying = true);
+        break;
+      case BetterPlayerEventType.pause:
+        if (mounted) setState(() => _isPlaying = false);
+        break;
+      case BetterPlayerEventType.progress:
+        final pos = event.parameters?['progress'] as Duration? ?? Duration.zero;
+        final dur = event.parameters?['duration'] as Duration? ?? Duration.zero;
+        if (mounted) {
+          setState(() {
+            _currentPos = pos;
+            _currentDur = dur;
+            _currentPosition = pos.inSeconds;
+            _currentDuration = dur.inSeconds;
+          });
+          // Auto-save progress every 5 seconds of movement
+          final diff = (pos.inSeconds - _lastSavedPosition).abs();
+          if (diff > 5 && pos.inSeconds > 0) {
+            _lastSavedPosition = pos.inSeconds;
+            _saveCurrentProgress();
+          }
+          // Prefetch next episode when near end
+          if (dur.inSeconds > 0 && pos.inSeconds >= dur.inSeconds - 30) {
+            _startPrefetch();
+          }
+          // Skip intro button
+          _showSkipIntro = pos.inSeconds >= 10 && pos.inSeconds <= 120;
+          _checkAdZone(pos.inSeconds);
         }
-      }
-      final diff = (pos.inSeconds - _lastSavedPosition).abs();
-      if (diff > 5 && pos.inSeconds > 0) {
-        _lastSavedPosition = pos.inSeconds;
-        _saveCurrentProgress();
-      }
-      if (_currentDur.inSeconds > 0 && pos.inSeconds >= _currentDur.inSeconds - 30) {
-        _startPrefetch();
-      }
-    });
-
-    _playingSub = _hlsPlayer!.stream.playing.listen((playing) {
-      if (playing && !_playerReady && mounted) setState(() => _playerReady = true);
-      if (playing && !_seekCompleted && mounted) _hlsPlayer!.pause();
-      if (mounted) setState(() => _isPlaying = playing);
-    });
-
-    _durationSub = _hlsPlayer!.stream.duration.distinct().listen((dur) {
-      if (dur.inSeconds > 0 && !_seekCompleted && _currentPosition > 15 && mounted) _seekToPosition();
-      if (mounted) setState(() => _currentDur = dur);
-    });
+        break;
+      case BetterPlayerEventType.finished:
+        // Video ended - auto play next episode or loop
+        break;
+      case BetterPlayerEventType.exception:
+        _fallbackToEmbed();
+        break;
+      default:
+        break;
+    }
   }
 
-  void _initHlsPlayer(String url) {
-    _hlsPlayer ??= Player();
-    _videoController ??= VideoController(_hlsPlayer!);
+  void _initPlayer(String url) {
+    _bpController?.dispose();
+    _bpController = null;
     _healthCheckTimer?.cancel();
     _playerReady = false;
     _seekCompleted = _currentPosition <= 15;
-    _setupPlayerSubscriptions();
 
-    // Buffering listener
-    _hlsPlayer!.stream.buffering.listen((buffering) {
-      if (!buffering && mounted && !_hlsPlayer!.state.playing && _seekCompleted) {
-        _hlsPlayer!.play();
-      }
-    });
+    final headers = <String, String>{};
+    if (!kIsWeb) {
+      headers['Referer'] = AppConfig.baseUrl;
+      headers['User-Agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+    }
 
-    // Web: dùng proxy để tránh CORS | Mobile: dùng URL trực tiếp
-    final mediaUrl = kIsWeb ? AppConfig.proxyHlsUrl(url) : url;
-    final mediaHeaders = kIsWeb
-        ? <String, String>{} // Proxy đã handle headers
-        : {
-            'Referer': AppConfig.baseUrl,
-            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-          };
+    final config = BetterPlayerConfiguration(
+      autoPlay: true,
+      handleLifecycle: false,
+      allowedScreenSleep: false,
+      aspectRatio: 16 / 9,
+      fit: BoxFit.contain,
+      controlsConfiguration: const BetterPlayerControlsConfiguration(
+        showControls: false,
+      ),
+      eventListener: _onBetterPlayerEvent,
+    );
 
-    _hlsPlayer!.open(
-      Media(mediaUrl, httpHeaders: mediaHeaders),
-    ).then((_) {
-      if (!mounted) return;
-      _playerReady = true;
-      setState(() => _isLoading = false);
+    final dataSource = BetterPlayerDataSource(
+      BetterPlayerDataSourceType.network,
+      url,
+      headers: headers,
+    );
 
-      // ★ Parse m3u8 for ad detection (async, non-blocking)
-      if (url.contains('.m3u8')) {
-        _parseM3u8ForAds(url);
-      }
+    _bpController = BetterPlayerController(
+      config,
+      betterPlayerDataSource: dataSource,
+    );
 
-      // Setup PiP controller (iOS) — tạo AVPlayer sẵn khi video load
-      _setupPip();
-
-      // Nếu không cần seek → play ngay
-      if (_currentPosition <= 15) {
-        _seekCompleted = true;
-        _hlsPlayer!.play();
-      }
-      // Nếu cần seek → đợi duration listener xử lý
-
-      _startProgressTimer();
-      _startStuckDetector();
-      _startStateSync();
-      _reportHealth('ok');
-    }).catchError((e) {
-      _fallbackToEmbed();
-      return null;
+    setState(() {
+      _playerReady = false;
+      _isLoading = true;
     });
 
     // Health check: nếu sau 8s player vẫn stuck ở 0 → fallback embed
     _healthCheckTimer = Timer(const Duration(seconds: 8), () {
-      if (!mounted || _hlsPlayer == null) return;
-      final pos = _hlsPlayer!.state.position.inSeconds;
-      final playing = _hlsPlayer!.state.playing;
-      if (pos == 0 && !playing) {
+      if (!mounted || _bpController == null) return;
+      if (_currentPosition == 0 && !_playerReady) {
         _fallbackToEmbed();
       }
     });
+
+    // Parse m3u8 for ad detection (async, non-blocking)
+    if (url.contains('.m3u8')) {
+      _parseM3u8ForAds(url);
+    }
+
+    // Setup PiP controller (iOS) — tạo AVPlayer sẵn khi video load
+    _setupPip();
+
+    _startProgressTimer();
   }
 
   /// Seek đến _currentPosition - gọi khi duration đã available
@@ -1382,8 +1358,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _seekCompleted = true;
 
     // Fire seek immediately — position stream sẽ confirm arrival
-    _hlsPlayer!.seek(Duration(seconds: _currentPosition)).then((_) {
-      if (mounted) _hlsPlayer!.play();
+    _bpController!.seekTo(Duration(seconds: _currentPosition)).then((_) {
+      if (mounted) _bpController!.play();
     });
   }
 
@@ -1473,8 +1449,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     // Lấy vị trí hiện tại TRƯỚC KHI chuyển server
     int currentPosition = 0;
-    if (_playerMode == _PlayerMode.hls && _hlsPlayer != null) {
-      currentPosition = _hlsPlayer!.state.position.inSeconds;
+    if (_playerMode == _PlayerMode.hls && _bpController != null) {
+      currentPosition = _currentPosition;
     } else if (_playerMode == _PlayerMode.embed && _webController != null) {
       currentPosition = _currentPosition;
     }
@@ -1581,7 +1557,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       _adMarkers = [];
       // Try using prefetched player first (instant switch)
       if (!_tryUsePrefetched(ep)) {
-        _initHlsPlayer(url);
+        _initPlayer(url);
       }
       _fetchAdMarkers(url, _currentServerName);
       _updatePipUrl();
@@ -1694,8 +1670,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     if (movieId <= 0) return;
 
     // DỪNG video trước, rồi lấy position
-    if (_playerMode == _PlayerMode.hls && _hlsPlayer != null) {
-      _hlsPlayer!.pause();
+    if (_playerMode == _PlayerMode.hls && _bpController != null) {
+      _bpController!.pause();
       await Future.delayed(const Duration(milliseconds: 200));
     } else if (_playerMode == _PlayerMode.embed && _webController != null) {
       try {
@@ -1708,8 +1684,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     // Lấy position SAU khi pause
     int pos = 0;
-    if (_playerMode == _PlayerMode.hls && _hlsPlayer != null) {
-      pos = _hlsPlayer!.state.position.inSeconds;
+    if (_playerMode == _PlayerMode.hls && _bpController != null) {
+      pos = _currentPosition;
     } else if (_playerMode == _PlayerMode.embed && _webController != null) {
       try {
         final r = await _webController!.evaluateJavascript(
@@ -1742,12 +1718,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         // Chặn save + dừng timer/listener
         _watchRoomActive = true;
         _saveProgressTimer?.cancel();
-        _positionSub?.cancel();
-        _playingSub?.cancel();
         await _saveCurrentProgress();
 
         // Pause player NGAY
-        _hlsPlayer?.pause();
+        _bpController?.pause();
         _webController?.evaluateJavascript(
           source: "document.querySelector('video')?.pause();",
         );
@@ -1766,11 +1740,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             _watchRoomActive = false;
             _startProgressTimer();
             _startStuckDetector();
-            _startStateSync();
             await _loadWatchProgress();
-            if (_hlsPlayer != null && _currentPosition > 3) {
+            if (_bpController != null && _currentPosition > 3) {
               _seekCompleted = false;
-              await _hlsPlayer!.seek(Duration(seconds: _currentPosition));
+              await _bpController!.seekTo(Duration(seconds: _currentPosition));
               _seekCompleted = true;
               _lastSavedPosition = _currentPosition;
             }
@@ -1874,7 +1847,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         fit: StackFit.expand,
         children: [
           // ── HLS native player ──
-          if (_playerMode == _PlayerMode.hls && _videoController != null)
+          if (_playerMode == _PlayerMode.hls && _bpController != null)
             AnimatedOpacity(
               opacity: _playerReady ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 300),
@@ -1882,10 +1855,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   ? Center(
                       child: AspectRatio(
                         aspectRatio: _aspectRatios[_aspectRatioIndex]!,
-                        child: Video(controller: _videoController!, controls: NoVideoControls),
+                        child: BetterPlayer(controller: _bpController!, key: _bpGlobalKey),
                       ),
                     )
-                  : Video(controller: _videoController!, controls: NoVideoControls),
+                  : BetterPlayer(controller: _bpController!, key: _bpGlobalKey),
             ),
 
           // ── Black overlay khi PiP active — CHỈ iOS (Android dùng Flutter surface → video tự hiện) ──
@@ -1902,7 +1875,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             ),
 
           // ── Buffering indicator (hiện khi HLS đang load nhưng chưa phát) ──
-          if (_playerMode == _PlayerMode.hls && _hlsPlayer != null && !_playerReady && !_isLoading)
+          if (_playerMode == _PlayerMode.hls && _bpController != null && !_playerReady && !_isLoading)
             const Center(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 CircularProgressIndicator(color: AppTheme.accent, strokeWidth: 3),
@@ -1941,7 +1914,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   );
                 }
                 _startProgressTimer();
-                _startStateSync();
                 _reportHealth('ok');
               },
               onReceivedError: (_, __, ___) {
@@ -1962,12 +1934,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                         behavior: HitTestBehavior.translucent,
                         onTap: _showControlsWithAutoHide,
                         onDoubleTap: () {
-                          final pos = _hlsPlayer?.state.position ?? Duration.zero;
+                          final pos = _currentPos;
                           final target = max(0, pos.inSeconds - 10);
                           _seekTargetTime = target;
                           _lastSeekByUser = DateTime.now().millisecondsSinceEpoch;
                           if (mounted) setState(() => _currentPos = Duration(seconds: target));
-                          _hlsPlayer?.seek(Duration(seconds: target));
+                          _bpController?.seekTo(Duration(seconds: target));
                           _showDoubleTapFeedback(false);
                         },
                         onLongPressStart: (_) => _onLongPressStart(),
@@ -1990,12 +1962,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                         behavior: HitTestBehavior.translucent,
                         onTap: _showControlsWithAutoHide,
                         onDoubleTap: () {
-                          final pos = _hlsPlayer?.state.position ?? Duration.zero;
+                          final pos = _currentPos;
                           final target = pos.inSeconds + 10;
                           _seekTargetTime = target;
                           _lastSeekByUser = DateTime.now().millisecondsSinceEpoch;
                           if (mounted) setState(() => _currentPos = Duration(seconds: target));
-                          _hlsPlayer?.seek(Duration(seconds: target));
+                          _bpController?.seekTo(Duration(seconds: target));
                           _showDoubleTapFeedback(true);
                         },
                         onLongPressStart: (_) => _onLongPressStart(),
@@ -2186,59 +2158,32 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     return null;
   }
 
-  // ── Prefetch: pre-load next episode in background ──
+  // ── Prefetch: disabled for better_player_plus migration (can re-add later) ──
   void _startPrefetch() {
-    final next = _getNextEpisode();
-    if (next == null) return;
-    final m3u8 = (next['link_m3u8'] ?? '').toString().trim();
-    if (m3u8.isEmpty) return;
-    if (m3u8 == _prefetchUrl && _prefetchPlayer != null) return; // already prefetching
-
-    _cancelPrefetch();
-    _prefetchUrl = m3u8;
-    _prefetchEpId = next['id'];
-    _prefetchPlayer = Player();
-    _prefetchPlayer!.open(
-      Media(m3u8, httpHeaders: {
-        'Referer': AppConfig.baseUrl,
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)',
-      }),
-    );
+    // TODO: Re-implement prefetch with better_player_plus
   }
 
   void _cancelPrefetch() {
-    _prefetchPlayer?.dispose();
-    _prefetchPlayer = null;
     _prefetchUrl = '';
     _prefetchEpId = null;
   }
 
-  /// Nếu prefetch match ep → swap player, skip init
+  /// If prefetch match ep → swap player, skip init
   bool _tryUsePrefetched(Map<String, dynamic> ep) {
-    if (_prefetchPlayer == null || _prefetchEpId != ep['id']) return false;
-    _hlsPlayer?.dispose();
-    _hlsPlayer = _prefetchPlayer;
-    _videoController = VideoController(_hlsPlayer!);
-    _prefetchPlayer = null;
-    _prefetchUrl = '';
-    _prefetchEpId = null;
-    _playerReady = false;
-    _seekCompleted = _currentPosition <= 15;
-    _setupPlayerSubscriptions();
-    _hlsPlayer!.play();
-    return true;
+    // TODO: Re-implement prefetch with better_player_plus
+    return false;
   }
 
   Widget _skipIntroButton() {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
-        if (_hlsPlayer == null) return;
-        final current = _hlsPlayer!.state.position.inSeconds;
+        if (_bpController == null) return;
+        final current = _currentPosition;
         final target = current + 120;
         _seekTargetTime = target;
         if (mounted) setState(() => _currentPos = Duration(seconds: target));
-        _hlsPlayer!.seek(Duration(seconds: target));
+        _bpController!.seekTo(Duration(seconds: target));
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -2668,12 +2613,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               }
             },
             onDoubleTap: () {
-              final pos = _hlsPlayer?.state.position ?? Duration.zero;
+              final pos = _currentPos;
               final target = max(0, pos.inSeconds - 10);
               _seekTargetTime = target;
               _lastSeekByUser = DateTime.now().millisecondsSinceEpoch;
               if (mounted) setState(() => _currentPos = Duration(seconds: target));
-              _hlsPlayer?.seek(Duration(seconds: target));
+              _bpController?.seekTo(Duration(seconds: target));
               _showDoubleTapFeedback(false);
             },
             onLongPressStart: (_) => _onLongPressStart(),
@@ -2707,11 +2652,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               // Rewind 10s
               GestureDetector(
                 onTap: () {
-                  final pos = _hlsPlayer?.state.position ?? Duration.zero;
+                  final pos = _currentPos;
                   final target = max(0, pos.inSeconds - 10);
                   _seekTargetTime = target;
                   if (mounted) setState(() => _currentPos = Duration(seconds: target));
-                  _hlsPlayer?.seek(Duration(seconds: target));
+                  _bpController?.seekTo(Duration(seconds: target));
                 },
                 child: const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 12),
@@ -2724,7 +2669,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 onTapUp: (_) => setState(() => _playPressed = false),
                 onTapCancel: () => setState(() => _playPressed = false),
                 onTap: () {
-                  if (_isPlaying) { _hlsPlayer?.pause(); } else { _hlsPlayer?.play(); }
+                  if (_isPlaying) { _bpController?.pause(); } else { _bpController?.play(); }
                 },
                 child: AnimatedScale(
                   scale: _playPressed ? 0.88 : 1.0,
@@ -2746,11 +2691,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               // Forward 10s
               GestureDetector(
                 onTap: () {
-                  final pos = _hlsPlayer?.state.position ?? Duration.zero;
+                  final pos = _currentPos;
                   final target = pos.inSeconds + 10;
                   _seekTargetTime = target;
                   if (mounted) setState(() => _currentPos = Duration(seconds: target));
-                  _hlsPlayer?.seek(Duration(seconds: target));
+                  _bpController?.seekTo(Duration(seconds: target));
                 },
                 child: const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 12),
@@ -2775,12 +2720,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               }
             },
             onDoubleTap: () {
-              final pos = _hlsPlayer?.state.position ?? Duration.zero;
+              final pos = _currentPos;
               final target = pos.inSeconds + 10;
               _seekTargetTime = target;
               _lastSeekByUser = DateTime.now().millisecondsSinceEpoch;
               if (mounted) setState(() => _currentPos = Duration(seconds: target));
-              _hlsPlayer?.seek(Duration(seconds: target));
+              _bpController?.seekTo(Duration(seconds: target));
               _showDoubleTapFeedback(true);
             },
             onLongPressStart: (_) => _onLongPressStart(),
@@ -2851,7 +2796,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                       _seekTargetTime = targetSec;
                       _lastSeekByUser = DateTime.now().millisecondsSinceEpoch;
                       if (mounted) setState(() => _currentPos = Duration(seconds: targetSec));
-                      _hlsPlayer?.seek(Duration(seconds: targetSec));
+                      _bpController?.seekTo(Duration(seconds: targetSec));
                     },
                   ),
                 ),
@@ -2929,7 +2874,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                       value: (_currentDur.inSeconds > 0 ? _currentPos.inSeconds / _currentDur.inSeconds : 0.0).clamp(0.0, 1.0),
                       onChanged: (v) {
                         final t = (v * _currentDur.inSeconds).toInt();
-                        _hlsPlayer?.seek(Duration(seconds: t));
+                        _bpController?.seekTo(Duration(seconds: t));
                         if (mounted) setState(() => _currentPos = Duration(seconds: t));
                       },
                     ),
@@ -2945,25 +2890,25 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 // Play/Pause
                 GestureDetector(
                   onTap: () {
-                    if (_isPlaying) { _hlsPlayer?.pause(); } else { _hlsPlayer?.play(); }
+                    if (_isPlaying) { _bpController?.pause(); } else { _bpController?.play(); }
                   },
                   child: Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 28),
                 ),
                 // Rewind 10
                 GestureDetector(
                   onTap: () {
-                    final pos = _hlsPlayer?.state.position ?? Duration.zero;
+                    final pos = _currentPos;
                     final target = max(0, pos.inSeconds - 10);
-                    _hlsPlayer?.seek(Duration(seconds: target));
+                    _bpController?.seekTo(Duration(seconds: target));
                   },
                   child: const AppSvgIcon('rewind.svg', size: 22, color: Colors.white),
                 ),
                 // Forward 10
                 GestureDetector(
                   onTap: () {
-                    final pos = _hlsPlayer?.state.position ?? Duration.zero;
+                    final pos = _currentPos;
                     final target = pos.inSeconds + 10;
-                    _hlsPlayer?.seek(Duration(seconds: target));
+                    _bpController?.seekTo(Duration(seconds: target));
                   },
                   child: const AppSvgIcon('fast-forward.svg', size: 22, color: Colors.white),
                 ),
@@ -3052,7 +2997,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                             _currentPos = Duration(seconds: targetSec);
                           });
                         }
-                        _hlsPlayer?.seek(Duration(seconds: targetSec));
+                        _bpController?.seekTo(Duration(seconds: targetSec));
                       },
                     ),
                   ),
@@ -3072,9 +3017,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               GestureDetector(
                 onTap: () {
                   if (_isPlaying) {
-                    _hlsPlayer?.pause();
+                    _bpController?.pause();
                   } else {
-                    _hlsPlayer?.play();
+                    _bpController?.play();
                   }
                 },
                 child: Padding(
@@ -3089,11 +3034,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               // Rewind 10s
               GestureDetector(
                 onTap: () {
-                  final pos = _hlsPlayer?.state.position ?? Duration.zero;
+                  final pos = _currentPos;
                   final target = max(0, pos.inSeconds - 10);
                   _seekTargetTime = target;
                   if (mounted) setState(() => _currentPos = Duration(seconds: target));
-                  _hlsPlayer?.seek(Duration(seconds: target));
+                  _bpController?.seekTo(Duration(seconds: target));
                 },
                 child: const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 6),
@@ -3103,11 +3048,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               // Forward 10s
               GestureDetector(
                 onTap: () {
-                  final pos = _hlsPlayer?.state.position ?? Duration.zero;
+                  final pos = _currentPos;
                   final target = pos.inSeconds + 10;
                   _seekTargetTime = target;
                   if (mounted) setState(() => _currentPos = Duration(seconds: target));
-                  _hlsPlayer?.seek(Duration(seconds: target));
+                  _bpController?.seekTo(Duration(seconds: target));
                 },
                 child: const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 6),
@@ -3155,7 +3100,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                               setState(() {
                                 _volume = val;
                                 _isMuted = val == 0;
-                                _hlsPlayer?.setVolume(val);
+                                _bpController?.setVolume(val / 100.0);
                               });
                             },
                           ),
@@ -3247,77 +3192,43 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     final nextIdx = (idx + 1) % _speeds.length;
     setState(() {
       _playbackSpeed = _speeds[nextIdx];
-      _hlsPlayer?.setRate(_playbackSpeed);
+      _bpController?.setSpeed(_playbackSpeed);
     });
   }
 
   void _showSettingsPopup() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return Container(
-              height: MediaQuery.of(context).size.height * 0.6,
-              decoration: const BoxDecoration(
-                color: Color(0xFF1E2026),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-              ),
-              child: Column(
-                children: [
-                  // Handle bar
-                  Container(
-                    margin: const EdgeInsets.only(top: 12, bottom: 16),
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.white24,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  // Header with back button
-                  if (_settingsPanel != 'main')
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: Row(
-                        children: [
-                          GestureDetector(
-                            onTap: () {
-                              setModalState(() => _settingsPanel = 'main');
-                            },
-                            child: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20),
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            _settingsPanel == 'quality' ? 'Chất lượng' :
-                            _settingsPanel == 'subtitles' ? 'Phụ đề' : 'Tốc độ',
-                            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
-                          ),
-                        ],
-                      ),
-                    ),
-                  // Content
-                  Expanded(
-                    child: ListView(
-                      padding: EdgeInsets.zero,
-                      children: _settingsPanel == 'main'
-                          ? _buildMainPanel(setModalState)
-                          : _settingsPanel == 'quality'
-                              ? _buildQualityPanel(setModalState)
-                              : _settingsPanel == 'subtitles'
-                                  ? _buildSubtitlesPanel(setModalState)
-                                  : _buildSpeedPanel(setModalState),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
+    _settingsPanel = 'main';
+    Navigator.of(context).push(PageRouteBuilder(
+      opaque: false,
+      barrierDismissible: true,
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 250),
+      reverseTransitionDuration: const Duration(milliseconds: 200),
+      pageBuilder: (_, __, ___) => _SettingsSlidePanel(
+        initialPanel: _settingsPanel,
+        subtitleEnabled: _subtitleEnabled,
+        subtitles: _subtitles,
+        selectedSubtitleColor: _selectedSubtitleColor,
+        selectedSubtitleSize: _selectedSubtitleSize,
+        selectedSubtitleBgOpacity: _selectedSubtitleBgOpacity,
+        selectedQuality: _selectedQuality,
+        playbackSpeed: _playbackSpeed,
+        onSubtitleEnabledChanged: (val) => setState(() => _subtitleEnabled = val),
+        onSubtitleColorChanged: (val) => setState(() => _selectedSubtitleColor = val),
+        onSubtitleSizeChanged: (val) => setState(() => _selectedSubtitleSize = val),
+        onSubtitleBgOpacityChanged: (val) => setState(() => _selectedSubtitleBgOpacity = val),
+        onQualityChanged: (val) => setState(() => _selectedQuality = val),
+        onSpeedChanged: (val) => setState(() => _playbackSpeed = val),
+      ),
+      transitionsBuilder: (_, a, __, child) {
+        return SlideTransition(
+          position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(
+            CurvedAnimation(parent: a, curve: Curves.easeOutCubic),
+          ),
+          child: child,
         );
       },
-    );
+    ));
   }
 
   List<Widget> _buildMainPanel(Function setModalState) {
@@ -3409,7 +3320,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     return speeds.map((s) => _buildOptionRow('${s}x', _playbackSpeed == s, () {
       setState(() {
         _playbackSpeed = s;
-        _hlsPlayer?.setRate(s);
+        _bpController?.setSpeed(s);
       });
       setModalState(() => _settingsPanel = 'main');
     })).toList();
@@ -3474,14 +3385,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   void _toggleMute() {
-    final currentVol = _hlsPlayer?.state.volume ?? 100.0;
+    final currentVol = _volume;
     if (currentVol > 0) {
-      _volume = currentVol;
       _isMuted = true;
-      _hlsPlayer?.setVolume(0.0);
+      _bpController?.setVolume(0.0);
     } else {
       _isMuted = false;
-      _hlsPlayer?.setVolume(_volume > 0 ? _volume : 100.0);
+      _bpController?.setVolume((_volume > 0 ? _volume : 100.0) / 100.0);
     }
     setState(() {});
   }
@@ -3636,9 +3546,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   void _retry() {
     setState(() { _error = null; _isLoading = true; _playerReady = false; });
-    if (_playerMode == _PlayerMode.hls && _hlsPlayer != null) {
+    if (_playerMode == _PlayerMode.hls && _bpController != null) {
       final retryUrl = kIsWeb ? AppConfig.proxyHlsUrl(_currentUrl) : _currentUrl;
-      _hlsPlayer!.open(Media(retryUrl));
+      _initPlayer(retryUrl);
     } else if (_currentUrl.isNotEmpty) {
       _webController?.loadUrl(urlRequest: URLRequest(url: WebUri(_currentUrl)));
     }
@@ -3659,30 +3569,28 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
           return GestureDetector(
             onTap: () {
-              // ★ FIX: Chỉ chọn server, KHÔNG auto-play
-              // User phải bấm tập mới play
               setState(() => _selectedServer = i);
             },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               decoration: BoxDecoration(
-                color: isActive ? AppTheme.accent : const Color(0xFF1E2130),
-                borderRadius: BorderRadius.circular(999),
+                color: isActive ? Colors.white.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.02),
+                borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: isActive ? AppTheme.accent : const Color(0x22FFFFFF),
+                  color: isActive ? Colors.white.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.1),
                 ),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Container(
                   width: 6, height: 6,
-                  decoration: const BoxDecoration(color: Colors.greenAccent, shape: BoxShape.circle),
+                  decoration: const BoxDecoration(color: Color(0xFF4CAF50), shape: BoxShape.circle),
                 ),
                 const SizedBox(width: 6),
                 Text(
                   s['server_name']?.toString() ?? 'Server ${i + 1}',
                   style: TextStyle(
-                    color: isActive ? const Color(0xFF1A1100) : Colors.white70,
+                    color: isActive ? Colors.white.withValues(alpha: 0.85) : Colors.white.withValues(alpha: 0.5),
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
@@ -3786,7 +3694,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               crossAxisCount: Responsive.episodeColumns(context),
               crossAxisSpacing: 6,
               mainAxisSpacing: 6,
-              childAspectRatio: 1.4,
+              childAspectRatio: 2.2,
             ),
             itemCount: pagedList.length,
             itemBuilder: (context, i) {
@@ -3801,10 +3709,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
                   decoration: BoxDecoration(
-                    color: isActive ? AppTheme.accent : const Color(0xFF1E2130),
+                    gradient: isActive ? const LinearGradient(colors: [Color(0xFFFECF59), Color(0xFFF1E2B0)], begin: Alignment.centerLeft, end: Alignment.centerRight) : null,
+                    color: isActive ? null : const Color(0xFF1E2130),
                     borderRadius: BorderRadius.circular(6),
                     border: Border.all(
-                      color: isActive ? AppTheme.accent : const Color(0x22FFFFFF),
+                      color: isActive ? const Color(0xFFFECF59) : const Color(0x22FFFFFF),
                     ),
                   ),
                   child: Center(
@@ -3872,7 +3781,31 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
     _selectedServer = widget.selectedServer;
   }
 
-  List<dynamic> get _eps => widget.currentServerEps.isNotEmpty ? widget.currentServerEps : widget.flatEps;
+  /// Lấy episodes trực tiếp từ server đang chọn, không phụ thuộc widget.currentServerEps
+  List<dynamic> get _eps {
+    if (widget.servers.isNotEmpty && _selectedServer < widget.servers.length) {
+      final eps = (widget.servers[_selectedServer]['episodes'] as List<dynamic>?) ?? [];
+      if (eps.isNotEmpty) return eps;
+    }
+    return widget.flatEps;
+  }
+
+  /// Tìm ep_id tương ứng trên server mới để highlight (so sánh theo ep_slug hoặc index)
+  dynamic _findMatchingEpId(List<dynamic> newEps, dynamic oldEpId) {
+    if (oldEpId == null || widget.currentServerEps.isEmpty) return null;
+    final oldEp = widget.currentServerEps.where((e) => e['id'] == oldEpId).toList();
+    if (oldEp.isEmpty) return null;
+    final oldSlug = (oldEp.first['ep_slug'] ?? '').toString();
+    final oldIdx = widget.currentServerEps.indexOf(oldEp.first);
+    // Tìm theo slug trước
+    if (oldSlug.isNotEmpty) {
+      final bySlug = newEps.where((e) => (e['ep_slug'] ?? '').toString() == oldSlug).toList();
+      if (bySlug.isNotEmpty) return bySlug.first['id'];
+    }
+    // Fallback: tìm theo index
+    if (oldIdx < newEps.length) return newEps[oldIdx]['id'];
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -3889,6 +3822,9 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
     final startIdx = (currentPage - 1) * widget.epPerPage;
     final endIdx = (startIdx + widget.epPerPage).clamp(0, uniqueEps.length);
     final pagedList = uniqueEps.sublist(startIdx, endIdx);
+
+    // Tìm ep_id để highlight trên server hiện tại
+    final highlightEpId = _findMatchingEpId(uniqueEps, widget.currentEpId);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -3967,9 +3903,9 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
                                   margin: const EdgeInsets.only(right: 8),
                                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                                   decoration: BoxDecoration(
-                                    color: isActive ? Colors.white.withValues(alpha: 0.06) : Colors.white.withValues(alpha: 0.02),
+                                    color: isActive ? Colors.white.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.02),
                                     borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: isActive ? Colors.white.withValues(alpha: 0.3) : Colors.white.withValues(alpha: 0.1)),
+                                    border: Border.all(color: isActive ? Colors.white.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.1)),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -4025,9 +3961,9 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
                         padding: const EdgeInsets.fromLTRB(24, 10, 24, 24),
                         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 3,
-                          crossAxisSpacing: 10,
-                          mainAxisSpacing: 10,
-                          childAspectRatio: 2.5,
+                          crossAxisSpacing: 8,
+                          mainAxisSpacing: 8,
+                          childAspectRatio: 7.0,
                         ),
                         itemCount: pagedList.length,
                         itemBuilder: (ctx, i) {
@@ -4035,7 +3971,7 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
                           final epId = ep['id'];
                           final rawName = ep['ep_name']?.toString() ?? '';
                           final displayName = widget.formatEpName(rawName);
-                          final isActive = epId == widget.currentEpId;
+                          final isActive = epId == highlightEpId;
                           final label = 'Tập $displayName';
 
                           return GestureDetector(
@@ -4061,6 +3997,470 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Settings Slide Panel (from right) ──────────────────────
+
+class _SettingsSlidePanel extends StatefulWidget {
+  final String initialPanel;
+  final bool subtitleEnabled;
+  final List<dynamic> subtitles;
+  final String selectedSubtitleColor;
+  final double selectedSubtitleSize;
+  final double selectedSubtitleBgOpacity;
+  final String selectedQuality;
+  final double playbackSpeed;
+  final ValueChanged<bool> onSubtitleEnabledChanged;
+  final ValueChanged<String> onSubtitleColorChanged;
+  final ValueChanged<double> onSubtitleSizeChanged;
+  final ValueChanged<double> onSubtitleBgOpacityChanged;
+  final ValueChanged<String> onQualityChanged;
+  final ValueChanged<double> onSpeedChanged;
+
+  const _SettingsSlidePanel({
+    required this.initialPanel,
+    required this.subtitleEnabled,
+    required this.subtitles,
+    required this.selectedSubtitleColor,
+    required this.selectedSubtitleSize,
+    required this.selectedSubtitleBgOpacity,
+    required this.selectedQuality,
+    required this.playbackSpeed,
+    required this.onSubtitleEnabledChanged,
+    required this.onSubtitleColorChanged,
+    required this.onSubtitleSizeChanged,
+    required this.onSubtitleBgOpacityChanged,
+    required this.onQualityChanged,
+    required this.onSpeedChanged,
+  });
+
+  @override
+  State<_SettingsSlidePanel> createState() => _SettingsSlidePanelState();
+}
+
+class _SettingsSlidePanelState extends State<_SettingsSlidePanel> {
+  late String _currentPanel;
+  late bool _subtitleEnabled;
+  late String _selectedSubtitleColor;
+  late double _selectedSubtitleSize;
+  late double _selectedSubtitleBgOpacity;
+  late String _selectedQuality;
+  late double _playbackSpeed;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentPanel = widget.initialPanel;
+    _subtitleEnabled = widget.subtitleEnabled;
+    _selectedSubtitleColor = widget.selectedSubtitleColor;
+    _selectedSubtitleSize = widget.selectedSubtitleSize;
+    _selectedSubtitleBgOpacity = widget.selectedSubtitleBgOpacity;
+    _selectedQuality = widget.selectedQuality;
+    _playbackSpeed = widget.playbackSpeed;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Material(
+        color: const Color(0xFF1E2026),
+        borderRadius: const BorderRadius.horizontal(left: Radius.circular(16)),
+        child: DefaultTextStyle(
+          style: const TextStyle(color: Colors.white, fontSize: 14, decoration: TextDecoration.none),
+          child: SizedBox(
+            width: MediaQuery.of(context).size.width * 0.45,
+            height: MediaQuery.of(context).size.height,
+            child: Column(
+              children: [
+                // Header
+                Padding(
+                  padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + 16, left: 16, right: 16, bottom: 8),
+                  child: Row(
+                    children: [
+                      if (_currentPanel != 'main')
+                        GestureDetector(
+                          onTap: () => setState(() => _currentPanel = 'main'),
+                          child: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20),
+                        ),
+                      if (_currentPanel != 'main') const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _currentPanel == 'main' ? 'Cài đặt' :
+                          _currentPanel == 'quality' ? 'Chất lượng' :
+                          _currentPanel == 'subtitles' ? 'Phụ đề' : 'Tốc độ',
+                          style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600, decoration: TextDecoration.none),
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: Container(
+                          width: 32, height: 32,
+                          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.08), shape: BoxShape.circle),
+                          child: const Icon(Icons.close, color: Colors.white60, size: 18),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(color: Colors.white12, height: 1),
+                // Content
+                Expanded(
+                  child: ListView(
+                    padding: EdgeInsets.zero,
+                    children: _currentPanel == 'main'
+                        ? _buildMainPanel()
+                        : _currentPanel == 'quality'
+                            ? _buildQualityPanel()
+                            : _currentPanel == 'subtitles'
+                                ? _buildSubtitlesPanel()
+                                : _buildSpeedPanel(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildMainPanel() {
+    return [
+      _sectionCard(
+        child: Column(
+          children: [
+            _mainRow('Chất lượng', _selectedQuality, () {
+              setState(() => _currentPanel = 'quality');
+            }),
+            const Divider(color: Colors.white12, height: 1),
+            _mainRow('Phụ đề', 'Tuỳ chỉnh', () {
+              setState(() => _currentPanel = 'subtitles');
+            }),
+            const Divider(color: Colors.white12, height: 1),
+            _mainRow('Tốc độ', '${_playbackSpeed}x', () {
+              setState(() => _currentPanel = 'speed');
+            }),
+          ],
+        ),
+      ),
+    ];
+  }
+
+  Widget _mainRow(String title, String value, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        child: Row(
+          children: [
+            Expanded(child: Text(title, style: const TextStyle(color: Colors.white, fontSize: 15, decoration: TextDecoration.none))),
+            Text(value, style: TextStyle(color: Colors.white38, fontSize: 13, decoration: TextDecoration.none)),
+            const SizedBox(width: 4),
+            const Icon(Icons.chevron_right, color: Colors.white24, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildQualityPanel() {
+    final qualities = ['Auto', '1080p', '720p', '480p', '360p'];
+    return [
+      _sectionCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Chọn chất lượng', style: TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.w600, decoration: TextDecoration.none)),
+            const SizedBox(height: 10),
+            Row(
+              children: qualities.map((q) {
+                final isActive = _selectedQuality == q;
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedQuality = q;
+                        _currentPanel = 'main';
+                      });
+                      widget.onQualityChanged(q);
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 6),
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: isActive ? AppTheme.accent : const Color(0xFF2A2D36),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Center(
+                        child: Text(q, style: TextStyle(color: isActive ? const Color(0xFF1A1100) : Colors.white54, fontSize: 12, fontWeight: FontWeight.w600, decoration: TextDecoration.none)),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _buildSubtitlesPanel() {
+    final colors = <Map<String, dynamic>>[
+      {'label': 'Trắng', 'hex': '#FFFFFF', 'color': Colors.white},
+      {'label': 'Vàng', 'hex': '#FFFF00', 'color': Colors.yellow},
+      {'label': 'Xanh', 'hex': '#00FFFF', 'color': Colors.cyan},
+    ];
+    final sizes = [14.0, 16.0, 18.0, 20.0];
+    final bgOptions = <Map<String, dynamic>>[
+      {'label': 'Tắt', 'value': 0.0},
+      {'label': 'Mờ', 'value': 0.3},
+      {'label': 'Đậm', 'value': 0.6},
+      {'label': 'Đặc', 'value': 0.85},
+    ];
+
+    return [
+      // Toggle card
+      _sectionCard(
+        child: Row(
+          children: [
+            const Expanded(
+              child: Text('Hiện phụ đề', style: TextStyle(color: Colors.white, fontSize: 15, decoration: TextDecoration.none)),
+            ),
+            Switch(
+              value: _subtitleEnabled,
+              activeColor: AppTheme.accent,
+              onChanged: (val) {
+                setState(() => _subtitleEnabled = val);
+                widget.onSubtitleEnabledChanged(val);
+              },
+            ),
+          ],
+        ),
+      ),
+      if (widget.subtitles.isEmpty)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          child: Text('Phim này chưa có phụ đề SRT', style: TextStyle(color: Colors.white30, fontSize: 12, decoration: TextDecoration.none)),
+        ),
+      const SizedBox(height: 8),
+      // Color section
+      _sectionCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Màu phụ đề', style: TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.w600, decoration: TextDecoration.none)),
+            const SizedBox(height: 10),
+            Row(
+              children: colors.map((c) {
+                final hex = c['hex'] as String;
+                final isActive = _selectedSubtitleColor == hex;
+                return GestureDetector(
+                  onTap: () {
+                    setState(() => _selectedSubtitleColor = hex);
+                    widget.onSubtitleColorChanged(hex);
+                  },
+                  child: Container(
+                    margin: const EdgeInsets.only(right: 10),
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: isActive ? AppTheme.accent.withValues(alpha: 0.2) : const Color(0xFF2A2D36),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isActive ? AppTheme.accent : Colors.white.withValues(alpha: 0.08),
+                        width: isActive ? 2 : 1,
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 16, height: 16,
+                          decoration: BoxDecoration(color: c['color'] as Color, shape: BoxShape.circle, border: Border.all(color: Colors.white24, width: 1)),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(c['label'] as String, style: TextStyle(color: isActive ? Colors.white : Colors.white38, fontSize: 8, decoration: TextDecoration.none)),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 8),
+      // Size section
+      _sectionCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Cỡ chữ', style: TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.w600, decoration: TextDecoration.none)),
+            const SizedBox(height: 10),
+            Row(
+              children: sizes.map((s) {
+                final isActive = _selectedSubtitleSize == s;
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() => _selectedSubtitleSize = s);
+                      widget.onSubtitleSizeChanged(s);
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 6),
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: isActive ? AppTheme.accent : const Color(0xFF2A2D36),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Center(
+                        child: Text('${s.toInt()}', style: TextStyle(color: isActive ? const Color(0xFF1A1100) : Colors.white54, fontSize: 13, fontWeight: FontWeight.w600, decoration: TextDecoration.none)),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 8),
+      // Background section
+      _sectionCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Nền phụ đề', style: TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.w600, decoration: TextDecoration.none)),
+            const SizedBox(height: 10),
+            Row(
+              children: bgOptions.map((bg) {
+                final isActive = _selectedSubtitleBgOpacity == (bg['value'] as double);
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() => _selectedSubtitleBgOpacity = bg['value'] as double);
+                      widget.onSubtitleBgOpacityChanged(bg['value'] as double);
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 6),
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: isActive ? AppTheme.accent : const Color(0xFF2A2D36),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Center(
+                        child: Text(bg['label'] as String, style: TextStyle(color: isActive ? const Color(0xFF1A1100) : Colors.white54, fontSize: 12, fontWeight: FontWeight.w600, decoration: TextDecoration.none)),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+      ),
+    ];
+  }
+
+  Widget _sectionCard({required Widget child}) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF252830),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: child,
+    );
+  }
+
+  List<Widget> _buildSpeedPanel() {
+    final speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+    return [
+      _sectionCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Chọn tốc độ', style: TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.w600, decoration: TextDecoration.none)),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: speeds.map((s) {
+                final isActive = _playbackSpeed == s;
+                return GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _playbackSpeed = s;
+                      _currentPanel = 'main';
+                    });
+                    widget.onSpeedChanged(s);
+                  },
+                  child: Container(
+                    width: 56,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: isActive ? AppTheme.accent : const Color(0xFF2A2D36),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Center(
+                      child: Text('${s}x', style: TextStyle(color: isActive ? const Color(0xFF1A1100) : Colors.white54, fontSize: 13, fontWeight: FontWeight.w600, decoration: TextDecoration.none)),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+      ),
+    ];
+  }
+
+  Widget _buildSettingsRow(String title, String value, IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Expanded(child: Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, decoration: TextDecoration.none))),
+            Text(value, style: const TextStyle(color: Colors.white54, fontSize: 14, decoration: TextDecoration.none)),
+            const SizedBox(width: 4),
+            Icon(icon, color: Colors.white54, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOptionRow(String label, bool isActive, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        color: isActive ? AppTheme.accent.withValues(alpha: 0.15) : Colors.transparent,
+        child: Row(
+          children: [
+            if (isActive)
+              Icon(Icons.check, color: AppTheme.accent, size: 18),
+            if (isActive) const SizedBox(width: 12),
+            Text(
+              label,
+              style: TextStyle(
+                color: isActive ? AppTheme.accent : Colors.white,
+                fontSize: 15,
+                fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                decoration: TextDecoration.none,
+              ),
+            ),
+          ],
         ),
       ),
     );

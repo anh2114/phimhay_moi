@@ -11,6 +11,7 @@ class Header extends StatefulWidget {
   final VoidCallback? onAccountTap;
   final VoidCallback? onWatchPartyTap;
   final VoidCallback? onActorsTap;
+  final double backgroundOpacity;
 
   const Header({
     super.key,
@@ -19,6 +20,7 @@ class Header extends StatefulWidget {
     this.onAccountTap,
     this.onWatchPartyTap,
     this.onActorsTap,
+    this.backgroundOpacity = 1.0,
   });
 
   @override
@@ -85,77 +87,85 @@ class _HeaderState extends State<Header> {
     final isLoggedIn = auth.isLoggedIn;
     final username = user?['username']?.toString() ?? '';
     final initial = username.isNotEmpty ? username[0].toUpperCase() : '';
+    final opacity = widget.backgroundOpacity;
 
-    return Container(
+    Widget child = Container(
       padding: EdgeInsets.only(top: _topPadding),
-      decoration: const BoxDecoration(
-        color: Color(0xEB0D0F14),
-        border: Border(bottom: BorderSide(color: Color(0x1AFFFFFF), width: 0.5)),
-      ),
-      child: ClipRect(
-        child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: SizedBox(
-            height: 56,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  GestureDetector(
-                    onLongPress: () => Navigator.pushNamed(context, '/debug/ads'),
-                    child: Image.asset(
-                      'assets/images/logo2.png',
-                      height: 28,
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => const Text('Xiao Phim', style: TextStyle(color: AppTheme.gold, fontSize: 22, fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                  const Spacer(),
-                  // Profile icon with popup
-                  CompositedTransformTarget(
-                    link: _layerLink,
-                    child: GestureDetector(
-                      onTap: _togglePopup,
-                      child: Padding(
-                        padding: const EdgeInsets.all(8),
-                        child: isLoggedIn && avatarUrl.isNotEmpty
+      decoration: opacity < 0.01
+          ? null
+          : BoxDecoration(
+              color: Color.fromRGBO(13, 15, 20, opacity),
+              border: Border(bottom: BorderSide(color: Color.fromRGBO(255, 255, 255, 0.1 * opacity), width: 0.5)),
+            ),
+      child: SizedBox(
+        height: 56,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              GestureDetector(
+                onLongPress: () => Navigator.pushNamed(context, '/debug/ads'),
+                child: Image.asset(
+                  'assets/images/logo2.png',
+                  height: 28,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const Text('Xiao Phim', style: TextStyle(color: AppTheme.gold, fontSize: 22, fontWeight: FontWeight.bold)),
+                ),
+              ),
+              const Spacer(),
+              CompositedTransformTarget(
+                link: _layerLink,
+                child: GestureDetector(
+                  onTap: _togglePopup,
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: isLoggedIn && avatarUrl.isNotEmpty
+                        ? Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(color: AppTheme.accent, width: 1.5),
+                            ),
+                            child: ClipOval(
+                              child: CachedNetworkImage(
+                                imageUrl: avatarUrl,
+                                fit: BoxFit.cover,
+                                memCacheWidth: 64,
+                                placeholder: (_, __) => _avatarFallback(initial),
+                                errorWidget: (_, __, ___) => _avatarFallback(initial),
+                              ),
+                            ),
+                          )
+                        : isLoggedIn
                             ? Container(
                                 width: 32,
                                 height: 32,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: AppTheme.accent, width: 1.5),
-                                ),
-                                child: ClipOval(
-                                  child: CachedNetworkImage(
-                                    imageUrl: avatarUrl,
-                                    fit: BoxFit.cover,
-                                    memCacheWidth: 64,
-                                    placeholder: (_, __) => _avatarFallback(initial),
-                                    errorWidget: (_, __, ___) => _avatarFallback(initial),
-                                  ),
+                                decoration: const BoxDecoration(shape: BoxShape.circle, color: AppTheme.accent),
+                                child: Center(
+                                  child: Text(initial, style: const TextStyle(color: Color(0xFF1A1100), fontSize: 14, fontWeight: FontWeight.w800)),
                                 ),
                               )
-                            : isLoggedIn
-                                ? Container(
-                                    width: 32,
-                                    height: 32,
-                                    decoration: const BoxDecoration(shape: BoxShape.circle, color: AppTheme.accent),
-                                    child: Center(
-                                      child: Text(initial, style: const TextStyle(color: Color(0xFF1A1100), fontSize: 14, fontWeight: FontWeight.w800)),
-                                    ),
-                                  )
-                                : Icon(Icons.person_outline, color: AppTheme.textPrimary, size: 22),
-                      ),
-                    ),
+                            : Icon(Icons.person_outline, color: AppTheme.textPrimary, size: 22),
                   ),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),
     );
+
+    if (opacity > 0.1) {
+      child = ClipRect(
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 10 * opacity, sigmaY: 10 * opacity),
+          child: child,
+        ),
+      );
+    }
+
+    return child;
   }
 
   Widget _avatarFallback(String initial) {

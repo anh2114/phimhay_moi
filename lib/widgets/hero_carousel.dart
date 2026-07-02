@@ -31,21 +31,32 @@ class _HeroCarouselState extends State<HeroCarousel> {
   void initState() {
     super.initState();
     _currentPage = widget.initialPage;
+    // Start at initialPage so first frame renders immediately,
+    // then jump to offset position for infinite scroll in both directions
     _pageController = PageController(
       viewportFraction: _viewportFraction,
       initialPage: widget.initialPage,
     );
+    if (widget.movies.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_pageController.hasClients) {
+          final offset = widget.movies.length * 500 + widget.initialPage;
+          _pageController.jumpToPage(offset);
+        }
+      });
+    }
   }
 
   @override
   void didUpdateWidget(HeroCarousel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.initialPage != widget.initialPage &&
-        widget.initialPage != _currentPage) {
+    if (oldWidget.movies.length != widget.movies.length ||
+        (oldWidget.initialPage != widget.initialPage && widget.initialPage != _currentPage)) {
       _currentPage = widget.initialPage;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_pageController.hasClients) {
-          _pageController.jumpToPage(widget.initialPage);
+        if (_pageController.hasClients && widget.movies.isNotEmpty) {
+          final offset = widget.movies.length * 500 + widget.initialPage;
+          _pageController.jumpToPage(offset);
         }
       });
     }
@@ -57,9 +68,15 @@ class _HeroCarouselState extends State<HeroCarousel> {
     super.dispose();
   }
 
+  int _realIndex(int rawIndex) {
+    if (widget.movies.isEmpty) return 0;
+    return rawIndex % widget.movies.length;
+  }
+
   void _onPageChanged(int page) {
-    setState(() => _currentPage = page);
-    widget.onPageChanged?.call(page);
+    final real = _realIndex(page);
+    setState(() => _currentPage = real);
+    widget.onPageChanged?.call(real);
   }
 
   @override
@@ -79,12 +96,13 @@ class _HeroCarouselState extends State<HeroCarousel> {
         SizedBox(
           height: sectionH,
           child: PageView.builder(
-            controller: _pageController,
-            onPageChanged: _onPageChanged,
-            itemCount: widget.movies.length,
-            itemBuilder: (context, index) {
-              final movie = widget.movies[index];
-              final isActive = index == _currentPage;
+              controller: _pageController,
+              onPageChanged: _onPageChanged,
+              itemCount: widget.movies.isEmpty ? 0 : null,
+              itemBuilder: (context, index) {
+                final realIdx = _realIndex(index);
+                final movie = widget.movies[realIdx];
+                final isActive = realIdx == _currentPage;
 
               return AnimatedBuilder(
                 animation: _pageController,
