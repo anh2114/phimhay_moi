@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:phimhay_app/config/app_config.dart';
 import 'package:phimhay_app/config/theme.dart';
 import 'package:provider/provider.dart';
 import 'package:phimhay_app/providers/auth_provider.dart';
@@ -83,7 +84,8 @@ class _HeaderState extends State<Header> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final user = auth.user;
-    final avatarUrl = user?['avatar']?.toString() ?? '';
+    final rawAvatar = user?['avatar']?.toString() ?? '';
+    final avatarUrl = rawAvatar.isNotEmpty && !rawAvatar.startsWith('http') ? '${AppConfig.baseUrl}$rawAvatar' : rawAvatar;
     final isLoggedIn = auth.isLoggedIn;
     final username = user?['username']?.toString() ?? '';
     final initial = username.isNotEmpty ? username[0].toUpperCase() : '';

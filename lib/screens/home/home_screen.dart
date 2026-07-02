@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
+import '../../config/app_config.dart';
 import '../../config/theme.dart';
 import '../../models/movie.dart';
 import '../../providers/home_provider.dart';
@@ -194,7 +195,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 return BottomNav(
                   currentIndex: _navIndex,
                   onTabSelected: _onNavSelected,
-                  avatarUrl: auth.isLoggedIn ? (auth.user?['avatar']?.toString()) : null,
+                  avatarUrl: auth.isLoggedIn ? (() {
+                    final raw = auth.user?['avatar']?.toString() ?? '';
+                    return raw.isNotEmpty && !raw.startsWith('http') ? '${AppConfig.baseUrl}$raw' : raw;
+                  })() : null,
                 );
               },
             ),

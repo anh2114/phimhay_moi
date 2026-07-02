@@ -1651,7 +1651,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                                   MaterialPageRoute(builder: (_) => HomeScreen(initialIndex: index)),
                                 );
                               },
-                              avatarUrl: auth.isLoggedIn ? (auth.user?['avatar']?.toString()) : null,
+                              avatarUrl: auth.isLoggedIn ? (() {
+                                final raw = auth.user?['avatar']?.toString() ?? '';
+                                return raw.isNotEmpty && !raw.startsWith('http') ? '${AppConfig.baseUrl}$raw' : raw;
+                              })() : null,
                             );
                           },
                         ),

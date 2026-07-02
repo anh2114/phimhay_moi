@@ -669,7 +669,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                 return BottomNav(
                   currentIndex: _navIndex,
                   onTabSelected: _onNavSelected,
-                  avatarUrl: auth.isLoggedIn ? (auth.user?['avatar']?.toString()) : null,
+                  avatarUrl: auth.isLoggedIn ? (() {
+                    final raw = auth.user?['avatar']?.toString() ?? '';
+                    return raw.isNotEmpty && !raw.startsWith('http') ? '${AppConfig.baseUrl}$raw' : raw;
+                  })() : null,
                 );
               },
             ),
@@ -2207,24 +2210,23 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                 return GestureDetector(
                   onTap: () => setState(() {
                     _selectedServer = index;
-                    _episodePage = 1; // Reset page khi đổi server
+                    _episodePage = 1;
                   }),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: isActive ? AppTheme.accent : Colors.transparent,
-                      borderRadius: BorderRadius.circular(999),
+                      color: isActive ? Colors.white.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.02),
+                      borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                        color: isActive ? AppTheme.accent : AppTheme.border,
+                        color: isActive ? Colors.white.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.1),
                       ),
                     ),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      // Dot xanh — tất cả đều sống
                       Container(
                         width: 6, height: 6,
                         decoration: const BoxDecoration(
-                          color: Colors.greenAccent,
+                          color: Color(0xFF4CAF50),
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -2232,7 +2234,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                       Text(
                         sName,
                         style: TextStyle(
-                          color: isActive ? const Color(0xFF1A1100) : AppTheme.textSub,
+                          color: isActive ? Colors.white.withValues(alpha: 0.85) : Colors.white.withValues(alpha: 0.5),
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
@@ -2268,16 +2270,16 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                       duration: const Duration(milliseconds: 180),
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: isActive ? AppTheme.accent : AppTheme.bgCard,
+                        color: isActive ? Colors.white.withValues(alpha: 0.15) : AppTheme.bgCard,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                          color: isActive ? AppTheme.accent : AppTheme.border,
+                          color: isActive ? Colors.white.withValues(alpha: 0.5) : AppTheme.border,
                         ),
                       ),
                       child: Text(
                         '$from-$to',
                         style: TextStyle(
-                          color: isActive ? const Color(0xFF1A1100) : AppTheme.textSub,
+                          color: isActive ? Colors.white.withValues(alpha: 0.85) : AppTheme.textSub,
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
                         ),
@@ -2295,32 +2297,35 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
           physics: const NeverScrollableScrollPhysics(),
           padding: const EdgeInsets.all(14),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 5,
+            crossAxisCount: 4,
             mainAxisSpacing: 8,
             crossAxisSpacing: 8,
-            childAspectRatio: 1.6,
+            childAspectRatio: 2.2,
           ),
           itemCount: pagedEps.length,
           itemBuilder: (context, index) {
               final ep = pagedEps[index];
-              // API trả về ep_name — bỏ prefix "Tập " nếu có
               final rawName = ep is Map
                   ? (ep['ep_name'] ?? ep['name'] ?? '${startIdx + index + 1}').toString()
                   : '${startIdx + index + 1}';
               final epName = rawName.replaceAll(RegExp(r'^[Tt]ậ?p?\s*', caseSensitive: false), '').trim();
+              final epId = ep is Map ? ep['id'] : null;
+              final isActive = _watchProgress != null && epId != null && epId == _watchProgress!['episode_id'];
               return GestureDetector(
                 onTap: () => _tapEpisode(ep, startIdx + index),
-                child: Container(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
                   decoration: BoxDecoration(
-                    color: AppTheme.bgCard,
+                    gradient: isActive ? const LinearGradient(colors: [Color(0xFFFECF59), Color(0xFFF1E2B0)], begin: Alignment.centerLeft, end: Alignment.centerRight) : null,
+                    color: isActive ? null : AppTheme.bgCard,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppTheme.border),
+                    border: Border.all(color: isActive ? const Color(0xFFFECF59) : AppTheme.border),
                   ),
                   child: Center(
                     child: Text(
                       epName,
-                      style: const TextStyle(
-                        color: AppTheme.textPrimary,
+                      style: TextStyle(
+                        color: isActive ? const Color(0xFF1A1100) : AppTheme.textPrimary,
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                       ),
@@ -2446,7 +2451,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   // --- Comments Tab ---
   Widget _buildCommentsTab() {
     final auth = Provider.of<AuthProvider>(context, listen: false);
-    final userAvatar = auth.isLoggedIn ? (auth.user?['avatar']?.toString()) : null;
+    final userAvatar = auth.isLoggedIn ? (() {
+      final raw = auth.user?['avatar']?.toString() ?? '';
+      return raw.isNotEmpty && !raw.startsWith('http') ? '${AppConfig.baseUrl}$raw' : raw;
+    })() : null;
 
     return Column(
       children: [

@@ -140,7 +140,10 @@ class _NotificationScreenState extends State<NotificationScreen> with AutomaticK
                 return BottomNav(
                   currentIndex: _navIndex,
                   onTabSelected: _onNavSelected,
-                  avatarUrl: auth.isLoggedIn ? (auth.user?['avatar']?.toString()) : null,
+                  avatarUrl: auth.isLoggedIn ? (() {
+                    final raw = auth.user?['avatar']?.toString() ?? '';
+                    return raw.isNotEmpty && !raw.startsWith('http') ? '${AppConfig.baseUrl}$raw' : raw;
+                  })() : null,
                 );
               },
             ),

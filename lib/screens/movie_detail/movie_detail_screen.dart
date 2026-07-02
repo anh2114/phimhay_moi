@@ -669,7 +669,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                 return BottomNav(
                   currentIndex: _navIndex,
                   onTabSelected: _onNavSelected,
-                  avatarUrl: auth.isLoggedIn ? (auth.user?['avatar']?.toString()) : null,
+                  avatarUrl: auth.isLoggedIn ? (() {
+                    final raw = auth.user?['avatar']?.toString() ?? '';
+                    return raw.isNotEmpty && !raw.startsWith('http') ? '${AppConfig.baseUrl}$raw' : raw;
+                  })() : null,
                 );
               },
             ),
@@ -2448,7 +2451,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   // --- Comments Tab ---
   Widget _buildCommentsTab() {
     final auth = Provider.of<AuthProvider>(context, listen: false);
-    final userAvatar = auth.isLoggedIn ? (auth.user?['avatar']?.toString()) : null;
+    final userAvatar = auth.isLoggedIn ? (() {
+      final raw = auth.user?['avatar']?.toString() ?? '';
+      return raw.isNotEmpty && !raw.startsWith('http') ? '${AppConfig.baseUrl}$raw' : raw;
+    })() : null;
 
     return Column(
       children: [
