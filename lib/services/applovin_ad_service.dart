@@ -15,76 +15,55 @@ class AppLovinAdService {
     if (!Platform.isIOS) return;
     if (_initialized) return;
     _initialized = true;
-
-    print('[Appodeal] Initializing on iOS...');
-
     await AdFrequencyService.init();
 
     try {
       // Set callbacks before initialization
       Appodeal.setBannerCallbacks(
         onBannerLoaded: (isPrecache) {
-          print('[Appodeal] Banner loaded, precache=$isPrecache');
           _sdkReady = true;
         },
         onBannerFailedToLoad: () {
-          print('[Appodeal] Banner failed to load');
         },
         onBannerShown: () {
-          print('[Appodeal] Banner shown');
         },
         onBannerShowFailed: () {
-          print('[Appodeal] Banner show failed');
         },
         onBannerClicked: () {
-          print('[Appodeal] Banner clicked');
         },
         onBannerExpired: () {
-          print('[Appodeal] Banner expired');
         },
       );
 
       Appodeal.setInterstitialCallbacks(
         onInterstitialLoaded: (isPrecache) {
-          print('[Appodeal] Interstitial loaded, precache=$isPrecache');
         },
         onInterstitialFailedToLoad: () {
-          print('[Appodeal] Interstitial failed to load');
         },
         onInterstitialShown: () {
-          print('[Appodeal] Interstitial shown');
         },
         onInterstitialShowFailed: () {
-          print('[Appodeal] Interstitial show failed');
         },
         onInterstitialClosed: () {
-          print('[Appodeal] Interstitial closed');
           loadInterstitial();
         },
         onInterstitialExpired: () {
-          print('[Appodeal] Interstitial expired');
         },
       );
 
       Appodeal.setRewardedVideoCallbacks(
         onRewardedVideoLoaded: (isPrecache) {
-          print('[Appodeal] Rewarded loaded, precache=$isPrecache');
         },
         onRewardedVideoFailedToLoad: () {
-          print('[Appodeal] Rewarded failed to load');
         },
         onRewardedVideoShown: () {
-          print('[Appodeal] Rewarded shown');
         },
         onRewardedVideoFinished: (amount, reward) {
-          print('[Appodeal] Rewarded finished: $amount $reward');
         },
         onRewardedVideoClosed: (isFinished) {
-          print('[Appodeal] Rewarded closed, finished=$isFinished');
           loadRewarded();
         },
         onRewardedVideoExpired: () {
-          print('[Appodeal] Rewarded expired');
         },
       );
 
@@ -98,23 +77,19 @@ class AppLovinAdService {
         ],
         onInitializationFinished: (errors) {
           if (errors != null && errors.isNotEmpty) {
-            print('[Appodeal] Init errors: $errors');
           }
           _sdkReady = true;
-          print('[Appodeal] SDK initialized on iOS');
           loadInterstitial();
           loadRewarded();
         },
       );
     } catch (e) {
-      print('[Appodeal] Init FAILED: $e');
       _sdkReady = false;
     }
   }
 
   static void loadInterstitial() {
     if (!Platform.isIOS) return;
-    print('[Appodeal] Loading interstitial...');
     Appodeal.cache(AppodealAdType.Interstitial);
   }
 
@@ -132,20 +107,16 @@ class AppLovinAdService {
       if (canShow) {
         Appodeal.show(AppodealAdType.Interstitial);
         AdFrequencyService.recordInterstitialShow();
-        print('[Appodeal] Interstitial shown');
       } else {
-        print('[Appodeal] Interstitial not ready / not shown');
       }
       onDone?.call();
     }).catchError((e) {
-      print('[Appodeal] Interstitial show FAILED: $e');
       onDone?.call();
     });
   }
 
   static void loadRewarded() {
     if (!Platform.isIOS) return;
-    print('[Appodeal] Loading rewarded...');
     Appodeal.cache(AppodealAdType.RewardedVideo);
   }
 
@@ -159,20 +130,16 @@ class AppLovinAdService {
       if (canShow) {
         Appodeal.show(AppodealAdType.RewardedVideo);
         onReward?.call();
-        print('[Appodeal] Rewarded shown + reward earned');
       } else {
-        print('[Appodeal] Rewarded not ready / not shown');
       }
       onDone?.call();
     }).catchError((e) {
-      print('[Appodeal] Rewarded show FAILED: $e');
       onDone?.call();
     });
   }
 
   static void loadBanner() {
     if (!Platform.isIOS) return;
-    print('[Appodeal] Loading banner...');
     Appodeal.cache(AppodealAdType.Banner);
   }
 
@@ -183,13 +150,10 @@ class AppLovinAdService {
       final canShow = await Appodeal.canShow(AppodealAdType.Banner);
       if (canShow) {
         Appodeal.show(AppodealAdType.BannerBottom);
-        print('[Appodeal] Banner shown');
         return true;
       }
-      print('[Appodeal] Banner not ready');
       return false;
     } catch (e) {
-      print('[Appodeal] Banner show FAILED: $e');
       return false;
     }
   }
@@ -198,9 +162,7 @@ class AppLovinAdService {
     if (!Platform.isIOS) return;
     try {
       Appodeal.hide(AppodealAdType.BannerBottom);
-      print('[Appodeal] Banner hidden');
     } catch (e) {
-      print('[Appodeal] Banner hide FAILED: $e');
     }
   }
 
@@ -229,7 +191,6 @@ class AppLovinAdService {
   }
 
   static void showBeforeWatch(BuildContext context, Function onReady) {
-    print('[Appodeal] showBeforeWatch called');
     showInterstitialIfAllowed(context, onDone: () => onReady());
   }
 
@@ -239,21 +200,17 @@ class AppLovinAdService {
       onDone?.call();
       return;
     }
-    print('[Appodeal] showRewardedBeforeAction called');
     init().then((_) async {
       final canShow = await Appodeal.canShow(AppodealAdType.RewardedVideo);
       if (canShow) {
         Appodeal.show(AppodealAdType.RewardedVideo);
         onReward?.call();
-        print('[Appodeal] Rewarded shown');
       } else {
-        print('[Appodeal] Rewarded not ready, falling back to interstitial');
         showInterstitialIfAllowed(context, onDone: onDone);
         return;
       }
       onDone?.call();
     }).catchError((e) {
-      print('[Appodeal] Rewarded show FAILED: $e');
       showInterstitialIfAllowed(context, onDone: onDone);
     });
   }
@@ -264,6 +221,5 @@ class AppLovinAdService {
     loadBanner();
     loadInterstitial();
     loadRewarded();
-    print('[Appodeal] Preloading all ad types');
   }
 }

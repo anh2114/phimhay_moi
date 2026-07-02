@@ -30,16 +30,10 @@ library;
     try {
       _m3u8Result = await _adParser.parse(m3u8Url);
       if (_m3u8Result!.hasAds) {
-        debugPrint('=== M3U8 AD PARSER ===');
-        debugPrint('Total segments: ${_m3u8Result!.segments.length}');
-        debugPrint('Ad zones: ${_m3u8Result!.adZones.length}');
         for (final zone in _m3u8Result!.adZones) {
-          debugPrint('  $zone');
         }
-        debugPrint('======================');
       }
     } catch (e) {
-      debugPrint('M3U8 parse error: $e');
     }
   }
 */
@@ -55,9 +49,6 @@ library;
 
     final adZone = _m3u8Result!.adZoneAt(positionSec.toDouble());
     if (adZone == null) return;
-
-    debugPrint('AD ZONE HIT: $adZone at ${positionSec}s');
-
     // Option A: Skip ad entirely (jump to end)
     _hlsPlayer?.seek(Duration(seconds: adZone.endTime.toInt()));
 

@@ -18,26 +18,19 @@ class PushService {
       badge: true,
       sound: true,
     );
-
-    if (kDebugMode) print('Push permission status: ${settings.authorizationStatus}');
-
     // Fix hang on iOS: Wrap token getting in try-catch and wait for APNS on iOS
     try {
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
         final apnsToken = await _messaging.getAPNSToken();
         if (apnsToken == null) {
-          if (kDebugMode) print('APNS token not available yet, waiting...');
         }
       }
 
       final token = await _messaging.getToken();
-      if (kDebugMode) print('FCM Token: $token');
     } catch (e) {
-      if (kDebugMode) print('Error getting FCM token: $e');
     }
 
     _messaging.onTokenRefresh.listen((newToken) {
-      if (kDebugMode) print('FCM Token refreshed: $newToken');
       _sendTokenToServer(newToken);
     });
 
@@ -58,8 +51,6 @@ class PushService {
   /// Gửi FCM token lên server — thử retry 5 lần nếu chưa có token
   /// Trả về chuỗi kết quả (success hoặc chi tiết lỗi) để hiển thị lên UI
   static Future<String> sendTokenToServerAfterLogin() async {
-    if (kDebugMode) print('[PushService] START');
-
     String? token;
     String getTokError = '';
     for (int i = 0; i < 5; i++) {
@@ -67,23 +58,18 @@ class PushService {
         token = await _messaging.getToken();
       } catch (e) {
         getTokError = e.toString();
-        if (kDebugMode) print('[PushService] getToken attempt $i error: $e');
         await Future.delayed(const Duration(seconds: 2));
         continue;
       }
       if (token != null && token.isNotEmpty) {
-        if (kDebugMode) print('[PushService] Token obtained: ${token.substring(0, 15)}...');
         break;
       }
-      if (kDebugMode) print('[PushService] getToken attempt $i empty, retry in 1s');
       await Future.delayed(const Duration(seconds: 1));
     }
 
     if (token == null || token.isEmpty) {
       return 'Không lấy được FCM token. Lỗi: $getTokError';
     }
-
-    if (kDebugMode) print('[PushService] Sending token: ${token.substring(0, 20)}...');
 
     String sendError = '';
     for (int i = 0; i < 3; i++) {
@@ -115,7 +101,6 @@ class PushService {
       } catch (e) {
         sendError = e.toString();
       }
-      if (kDebugMode) print('[PushService] Send attempt $i failed: $sendError, retry in 1s');
       await Future.delayed(const Duration(seconds: 1));
     }
     return 'Lỗi gửi token: $sendError';
@@ -139,14 +124,10 @@ class PushService {
       }
 
       if (responseData is Map) {
-        if (kDebugMode) print('[PushService] Response: $responseData');
         return responseData['success'] == true;
       }
-
-      if (kDebugMode) print('[PushService] Response is not Map: $responseData');
       return false;
     } catch (e) {
-      if (kDebugMode) print('[PushService] Error: $e');
       return false;
     }
   }
@@ -156,7 +137,6 @@ class PushService {
       final topic = 'movie_${movieSlug.replaceAll(RegExp(r'[^a-z0-9_]'), '_')}';
       await _messaging.subscribeToTopic(topic);
     } catch (e) {
-      if (kDebugMode) print('Failed to subscribe: $e');
     }
   }
 
@@ -165,7 +145,6 @@ class PushService {
       final topic = 'movie_${movieSlug.replaceAll(RegExp(r'[^a-z0-9_]'), '_')}';
       await _messaging.unsubscribeFromTopic(topic);
     } catch (e) {
-      if (kDebugMode) print('Failed to unsubscribe: $e');
     }
   }
 
@@ -173,7 +152,6 @@ class PushService {
     try {
       return await _messaging.getToken();
     } catch (e) {
-      if (kDebugMode) print('[PushService] getToken error: $e');
       return null;
     }
   }

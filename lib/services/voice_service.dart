@@ -33,7 +33,6 @@ class VoiceService {
   });
 
   void _log(String msg) {
-    debugPrint(msg);
     onDebugLog?.call(msg);
   }
 
@@ -471,7 +470,6 @@ class VoiceService {
   static Future<void> initMic() async {
     if (_micInitialized) return;
     _micInitialized = true;
-    debugPrint('Voice: initMic — requesting mic permission...');
     // KHÔNG gọi configAVSession ở đây — sẽ đổi audio mode và giảm video volume
     // Chỉ config khi thực sự join voice (trong join())
 
@@ -491,14 +489,11 @@ class VoiceService {
         'video': false,
       });
       if (_pendingStream != null) {
-        debugPrint('Voice: initMic OK — ${_pendingStream!.getAudioTracks().length} tracks');
         // KHÔNG disable track — mic hệ thống LUÔN bật
         // track.enabled = true suốt đời, chỉ kiểm soát truyền qua peer connection
       } else {
-        debugPrint('Voice: initMic FAILED — null stream');
       }
     } catch (e) {
-      debugPrint('Voice: initMic getUserMedia error: $e');
     }
   }
 
@@ -642,7 +637,6 @@ class VoiceService {
       onStateChanged?.call();
       return true;
     } catch (e) {
-      debugPrint('Voice join error: $e');
       _isJoining = false;
       _localStream?.getTracks().forEach((t) => t.stop());
       _localStream = null;
@@ -936,8 +930,6 @@ class VoiceService {
         final type = sig['type']?.toString() ?? '';
         final fromUser = sig['from_user']?.toString() ?? '';
         final payload = sig['payload']?.toString() ?? '{}';
-        debugPrint('Voice signal: $type from $fromUser');
-
         switch (type) {
           case 'new_peer':
             // FIX: Chỉ user có TÊN LỚN HƠN mới tạo offer (tránh glare)
@@ -974,7 +966,6 @@ class VoiceService {
       final onlineUsers = (data['online_users'] as List<dynamic>?) ?? [];
       _mergeParticipants(onlineUsers);
     } catch (e) {
-      debugPrint('Voice poll error: $e');
     }
 
     // Notify UI to rebuild (giữ UI sync — quan trọng cho mobile)
@@ -1613,7 +1604,6 @@ class VoiceService {
         ),
       );
     } catch (e) {
-      debugPrint('Voice sendSignal error ($action): $e');
     }
   }
 

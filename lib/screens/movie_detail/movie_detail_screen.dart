@@ -240,7 +240,6 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
 
   Future<void> _fetchMovieDetail() async {
     // ignore: avoid_print
-    print('=== _fetchMovieDetail START slug=${widget.slug ?? widget.movie?.slug} ===');
     setState(() {
       _isLoading = true;
       _error = null;
@@ -295,17 +294,13 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         return '${AppConfig.baseUrl}/thu_vien/$slug/$num.webp';
       });
       // ignore: avoid_print
-      print('=== Gallery hardcoded: ${_galleryImages.length} images, first=${_galleryImages.first} ===');
-
       // Fetch gallery images from API
       _fetchGallery(slug);
 
       // Fetch actors data — SAU KHI API load thành công
       // ignore: avoid_print
-      print('=== Calling _fetchActors from _fetchMovieDetail ===');
       _fetchActors();
     } on DioException catch (e) {
-      debugPrint('MovieDetail error: ${e.message} | ${e.response?.data}');
       if (_movieData == null) {
         _error = 'Không thể tải thông tin phim';
       } else {
@@ -2709,30 +2704,22 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
 
   Future<void> _fetchActors() async {
     // ignore: avoid_print
-    print('=== _fetchActors START ===');
     // ignore: avoid_print
-    print('tmdb_cast: ${_movieData?['tmdb_cast']}');
     // ignore: avoid_print
-    print('actor: ${_movieData?['actor']}');
-
     final castStr = _movieData?['tmdb_cast'] ?? _movieData?['actor_vi'] ?? _movieData?['actor'] ?? '';
     final castStrStr = castStr.toString();
     // ignore: avoid_print
-    print('castStr: $castStrStr');
     if (castStrStr.isEmpty) {
       // ignore: avoid_print
-      print('=== _fetchActors: castStr is EMPTY, returning ===');
       return;
     }
 
     final names = castStrStr.split(',').map((e) => e.trim()).where((s) => s.isNotEmpty).toList();
     // ignore: avoid_print
-    print('actor names: $names');
     if (names.isEmpty) return;
 
     try {
       // ignore: avoid_print
-      print('Calling actor.php batch...');
       final res = await _dio.get('${AppConfig.apiUrl}/actor.php', queryParameters: {
         'batch': 'true',
         'names': names.join(','),
@@ -2740,7 +2727,6 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       }).timeout(const Duration(seconds: 20));
 
       // ignore: avoid_print
-      print('API response actors: ${res.data}');
       if (res.data is Map && res.data['success'] == true) {
         final actorsList = res.data['actors'] as List<dynamic>? ?? [];
         final actors = actorsList
@@ -2753,35 +2739,28 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             })
             .toList();
         // ignore: avoid_print
-        print('actors filtered: ${actors.length}');
         if (mounted) setState(() => _actors = actors);
       }
     } catch (e) {
       // ignore: avoid_print
-      print('=== _fetchActors ERROR: $e ===');
     }
     // ignore: avoid_print
-    print('=== _fetchActors END ===');
   }
 
   Future<void> _fetchGallery(String slug) async {
     try {
       final url = '${AppConfig.apiUrl}/gallery.php?slug=$slug';
       // ignore: avoid_print
-      print('=== _fetchGallery URL: $url ===');
       final res = await _dio.get(url);
       // ignore: avoid_print
-      print('=== _fetchGallery response: ${res.statusCode} data=${res.data} ===');
       final data = res.data is String ? jsonDecode(res.data as String) : res.data;
       final images = (data['images'] as List<dynamic>? ?? [])
           .map((e) => '${AppConfig.baseUrl}$e')
           .toList();
       // ignore: avoid_print
-      print('=== _fetchGallery images: ${images.length} ===');
       if (mounted && images.isNotEmpty) setState(() => _galleryImages = images);
     } catch (e) {
       // ignore: avoid_print
-      print('=== _fetchGallery ERROR: $e ===');
     }
   }
 

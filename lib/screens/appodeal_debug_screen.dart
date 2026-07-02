@@ -18,7 +18,6 @@ class _AppodealDebugScreenState extends State<AppodealDebugScreen> {
   void _log(String msg) {
     final ts = DateTime.now().toString().substring(11, 19);
     setState(() => _logs.add('[$ts] $msg'));
-    print('[StartAppDebug] $msg');
   }
 
   Future<void> _getDebugInfo() async {

@@ -262,7 +262,6 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
       // Khôi phục: seek về vị trí trước ad (để player load lại từ đó)
       if (posSec < 10 && _lastKnownPosition > 300 && _adSkipRecoverCount < _adSkipMaxRecover) {
         final recoverTo = _lastKnownPosition;
-        debugPrint('★ AD SKIP FIX: pos jumped ${_lastKnownPosition.toInt()}→${posSec.toInt()}, seek to ${recoverTo.toInt()}');
         _adSkipRecoverCount++;
         _setLocalAction();
         _player!.seek(Duration(seconds: recoverTo.toInt()));
@@ -380,7 +379,6 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
       _lastSavedPosition = pos.toDouble();
     }
     // Lưu vào watch_history như xem phim bình thường
-    debugPrint('WatchRoom: saveWatchtime movie=$_movieId ep=$_episodeId pos=$pos dur=$dur');
     if (_movieId > 0 && _episodeId > 0 && pos >= 5) {
       final ok = await _movieService.saveWatchProgress(
         movieId: _movieId,
@@ -392,7 +390,6 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
         sourceType: _sourceType.isNotEmpty ? _sourceType.toLowerCase() : 'hls',
         sourceUrl: '',
       );
-      debugPrint('WatchRoom: saveWatchProgress result=$ok');
     }
   }
 
@@ -458,7 +455,6 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
       }
 
     } catch (e) {
-      debugPrint('Load video error: $e');
       setState(() {
         _isLoading = false;
         _error = 'Không thể tải video';
@@ -794,7 +790,6 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
 
       // Không check server health — tất cả nguồn đều sống (mobile HLS chạy được hết)
     } catch (e) {
-      debugPrint('Poll error: $e');
     }
 
     _isPolling = false;
@@ -862,7 +857,7 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
         onPollCompleted: () {
           if (mounted) setState(() {});
         },
-        onDebugLog: (msg) => debugPrint(msg),
+        onDebugLog: (msg) {},
         onSpeakerToggled: (isSpeaker) {
           if (isSpeaker && mounted) {
             ScaffoldMessenger.of(context).showSnackBar(

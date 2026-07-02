@@ -20,22 +20,16 @@ class StartAppAdService {
     _initialized = true;
 
     final platform = Platform.isIOS ? 'iOS' : (Platform.isAndroid ? 'Android' : 'Unknown');
-    print('[StartApp] === Initializing SDK on $platform ===');
-
     await AdFrequencyService.init();
 
     try {
       // Enable test ads first to verify integration
       await _sdk.setTestAdsEnabled(true);
-      print('[StartApp] Test ads ENABLED for verification on $platform');
-      print('[StartApp] SDK initialized OK on $platform');
     } catch (e) {
-      print('[StartApp] ERROR init on $platform: $e');
     }
 
     // Delay loading ads to ensure SDK is ready
     await Future.delayed(const Duration(milliseconds: 1000));
-    print('[StartApp] App ID configured: ${Platform.isIOS ? "206259683 (iOS)" : "Android"}');
     _preloadInterstitial();
     _preloadRewardedVideo();
   }
@@ -45,21 +39,16 @@ class StartAppAdService {
     _interstitialLoading = true;
 
     final platform = Platform.isIOS ? 'iOS' : (Platform.isAndroid ? 'Android' : 'Unknown');
-    print('[StartApp] Loading interstitial on $platform...');
-
     try {
       _sdk.loadInterstitialAd(
         onAdDisplayed: () {
-          print('[StartApp] Interstitial AD_DISPLAYED');
         },
         onAdNotDisplayed: () {
-          print('[StartApp] Interstitial AD_NOT_DISPLAYED');
           _interstitialAd?.dispose();
           _interstitialAd = null;
           _interstitialLoading = false;
         },
         onAdHidden: () {
-          print('[StartApp] Interstitial AD_HIDDEN');
           _interstitialAd?.dispose();
           _interstitialAd = null;
           _interstitialLoading = false;
@@ -67,20 +56,16 @@ class StartAppAdService {
           Future.delayed(const Duration(seconds: 1), () => _preloadInterstitial());
         },
         onAdClicked: () {
-          print('[StartApp] Interstitial AD_CLICKED');
         },
       ).then((ad) {
         _interstitialAd = ad;
         _interstitialLoading = false;
-        print('[StartApp] Interstitial loaded OK on $platform ✓');
       }).catchError((error, stackTrace) {
-        print('[StartApp] Interstitial load FAILED: $error');
         _interstitialAd = null;
         _interstitialLoading = false;
         return null as dynamic;
       });
     } catch (e) {
-      print('[StartApp] Interstitial load EXCEPTION: $e');
       _interstitialLoading = false;
     }
   }
@@ -88,19 +73,14 @@ class StartAppAdService {
   static void _preloadRewardedVideo() {
     if (_rewardedLoading) return;
     _rewardedLoading = true;
-
-    print('[StartApp] Loading rewarded video...');
-
     try {
       _sdk.loadRewardedVideoAd(
         onAdNotDisplayed: () {
-          print('[StartApp] Rewarded AD_NOT_DISPLAYED');
           _rewardedVideoAd?.dispose();
           _rewardedVideoAd = null;
           _rewardedLoading = false;
         },
         onAdHidden: () {
-          print('[StartApp] Rewarded AD_HIDDEN');
           _rewardedVideoAd?.dispose();
           _rewardedVideoAd = null;
           _rewardedLoading = false;
@@ -108,20 +88,16 @@ class StartAppAdService {
           Future.delayed(const Duration(seconds: 1), () => _preloadRewardedVideo());
         },
         onVideoCompleted: () {
-          print('[StartApp] Rewarded VIDEO_COMPLETED - reward earned!');
         },
       ).then((ad) {
         _rewardedVideoAd = ad;
         _rewardedLoading = false;
-        print('[StartApp] Rewarded video loaded OK ✓');
       }).catchError((error, stackTrace) {
-        print('[StartApp] Rewarded video load FAILED: $error');
         _rewardedVideoAd = null;
         _rewardedLoading = false;
         return null as dynamic;
       });
     } catch (e) {
-      print('[StartApp] Rewarded video load EXCEPTION: $e');
       _rewardedLoading = false;
     }
   }
@@ -130,21 +106,16 @@ class StartAppAdService {
   static void loadNativeAd(String tag) {
     if (_nativeAds.containsKey(tag)) return;
     final platform = Platform.isIOS ? 'iOS' : (Platform.isAndroid ? 'Android' : 'Unknown');
-    print('[StartApp] Loading native ad: $tag on $platform');
-
     try {
       _sdk.loadNativeAd(
         onAdImpression: () {},
         onAdClicked: () {},
       ).then((ad) {
         _nativeAds[tag] = ad;
-        print('[StartApp] Native loaded: $tag ✓');
       }).catchError((error, stackTrace) {
-        print('[StartApp] Native FAILED: $tag $error');
         return null as dynamic;
       });
     } catch (e) {
-      print('[StartApp] Native EXCEPTION: $tag $e');
     }
   }
 
@@ -160,32 +131,24 @@ class StartAppAdService {
   // ── Frequency-capped interstitial ──────────────────
   static void showInterstitialIfAllowed(BuildContext context, {VoidCallback? onDone}) {
     if (!AdFrequencyService.canShowInterstitial()) {
-      print('[StartApp] Interstitial blocked by frequency cap (${AdFrequencyService.remainingAds} remaining)');
       onDone?.call();
       return;
     }
-
-    print('[StartApp] Checking interstitial... ready=${_interstitialAd != null}');
-
     if (_interstitialAd != null) {
-      print('[StartApp] Showing frequency-capped interstitial...');
       final ad = _interstitialAd;
       _interstitialAd = null;
       AdFrequencyService.recordInterstitialShow();
 
       ad!.show().then((shown) {
-        print('[StartApp] Frequency interstitial shown=$shown');
         _interstitialLoading = false;
         Future.delayed(const Duration(seconds: 1), () => _preloadInterstitial());
         onDone?.call();
       }).catchError((error, stackTrace) {
-        print('[StartApp] Frequency interstitial show FAILED: $error');
         _interstitialLoading = false;
         onDone?.call();
         return false;
       });
     } else {
-      print('[StartApp] No interstitial ready, reloading...');
       _interstitialLoading = false;
       _preloadInterstitial();
       onDone?.call();
@@ -194,26 +157,21 @@ class StartAppAdService {
 
   // ── Pre-watch flow ─────────────────────────────────
   static void showBeforeWatch(BuildContext context, Function onReady) {
-    print('[StartApp] showBeforeWatch called');
-    print('[StartApp] interstitialAd=${_interstitialAd != null ? "READY" : "null"}');
     _showInterstitialAd(context, onReady);
   }
 
   // Show rewarded ad (iOS - higher eCPM)
   static void showRewardedBeforeAction(BuildContext context, {VoidCallback? onReward, VoidCallback? onDone}) {
     if (_rewardedVideoAd != null) {
-      print('[StartApp] Showing rewarded video...');
       final ad = _rewardedVideoAd;
       _rewardedVideoAd = null;
 
       ad!.show().then((_) {
-        print('[StartApp] Rewarded video shown');
         onReward?.call();
         onDone?.call();
         _rewardedLoading = false;
         _preloadRewardedVideo();
       }).catchError((error, stackTrace) {
-        print('[StartApp] Rewarded video show FAILED: $error');
         _rewardedLoading = false;
         // Fallback to interstitial
         showInterstitialIfAllowed(context, onDone: onDone);
@@ -221,32 +179,26 @@ class StartAppAdService {
       });
     } else {
       // Fallback to interstitial
-      print('[StartApp] No rewarded video available, using interstitial');
       showBeforeWatch(context, (onDone ?? () {}) as Function);
     }
   }
 
   static void _showInterstitialAd(BuildContext context, Function onReady) {
     if (_interstitialAd != null) {
-      print('[StartApp] Showing interstitial...');
       final ad = _interstitialAd;
       _interstitialAd = null;
 
       ad!.show().then((shown) {
-        print('[StartApp] Interstitial shown=$shown');
         _interstitialLoading = false;
         Future.delayed(const Duration(seconds: 1), () => _preloadInterstitial());
         onReady();
       }).catchError((error, stackTrace) {
-        print('[StartApp] Interstitial show FAILED: $error');
         _interstitialLoading = false;
         _showPreRoll(context, onReady);
         return false;
       });
       return;
     }
-
-    print('[StartApp] No interstitial available, showing pre-roll only');
     _showPreRoll(context, onReady);
   }
 

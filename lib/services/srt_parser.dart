@@ -81,7 +81,6 @@ class SrtParser {
       );
       return parse(response.data.toString());
     } catch (e) {
-      if (kDebugMode) print('[SrtParser] fetchAndParse error: $e');
       return [];
     }
   }

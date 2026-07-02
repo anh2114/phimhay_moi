@@ -127,6 +127,13 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
 
   Future<void> _openAdminWebView() async {
     if (!mounted) return;
+
+    // Inject auth token vào WebView
+    final token = ApiClient.token;
+    final adminUrl = token != null && token.isNotEmpty
+        ? '${AppConfig.baseUrl}/admin/?auth_token=$token'
+        : '${AppConfig.baseUrl}/admin/';
+
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -142,7 +149,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           ),
           body: InAppWebView(
             initialUrlRequest: URLRequest(
-              url: WebUri('${AppConfig.baseUrl}/admin/'),
+              url: WebUri(adminUrl),
             ),
             initialSettings: InAppWebViewSettings(
               javaScriptEnabled: true,

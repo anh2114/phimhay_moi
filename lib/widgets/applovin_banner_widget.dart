@@ -27,7 +27,6 @@ class _AppLovinBannerWidgetState extends State<AppLovinBannerWidget> {
 
   void _loadBanner() {
     if (!Platform.isIOS) return;
-    print('[AppodealBanner] Loading on iOS (attempt ${_retryCount + 1})...');
     setState(() { _status = 'loading'; _error = null; });
 
     AppLovinAdService.loadBanner();
@@ -36,22 +35,18 @@ class _AppLovinBannerWidgetState extends State<AppLovinBannerWidget> {
       if (!mounted) return;
       try {
         final debugInfo = await AppLovinAdService.getDebugInfo();
-        print('[AppodealBanner] Debug: $debugInfo');
       } catch (_) {}
 
       final loaded = await AppLovinAdService.isBannerLoaded();
       if (loaded) {
-        print('[AppodealBanner] Banner loaded successfully on iOS');
         if (mounted) setState(() { _status = 'loaded'; });
       } else {
         _retryCount++;
         if (_retryCount < _maxRetries) {
-          print('[AppodealBanner] Not ready, retry ${_retryCount}/$_maxRetries in 5s...');
           _retryTimer = Timer(const Duration(seconds: 5), () {
             if (mounted) _loadBanner();
           });
         } else {
-          print('[AppodealBanner] Failed after $_maxRetries retries');
           if (mounted) setState(() { _status = 'failed'; _error = 'Max retries reached'; });
         }
       }

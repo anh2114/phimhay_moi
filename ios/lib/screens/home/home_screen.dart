@@ -44,6 +44,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _navIndex = widget.initialIndex;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<HomeProvider>().fetchHome();
+      context.read<WatchHistoryProvider>().fetchContinueWatching();
     });
   }
 
@@ -219,6 +220,8 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             // Hero section: blur background + chips + carousel
             _buildHeroSection(provider),
+            // Continue Watching
+            _buildContinueWatching(),
             // Collection carousel
             const CollectionCarousel(),
             ...provider.sections.map((s) => MovieRail(
@@ -323,6 +326,188 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ],
+    );
+  }
+
+  Widget _buildContinueWatching() {
+    return Consumer<WatchHistoryProvider>(
+      builder: (context, watchProvider, _) {
+        if (watchProvider.isLoadingContinue) {
+          return const SizedBox(height: 300, child: Center(child: CircularProgressIndicator(color: AppTheme.accent)));
+        }
+        if (watchProvider.continueWatching.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        final items = watchProvider.continueWatching;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                'Xem tiếp của bạn',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 310,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: items.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 14),
+                itemBuilder: (context, index) {
+                  final cw = items[index];
+                  return _ContinueWatchingCard(
+                    item: cw,
+                    onTap: () {
+                      final movie = cw.toMovie();
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => MovieDetailScreen(movie: movie),
+                        ),
+                      );
+                    },
+                    onRemove: () => watchProvider.removeFromHistory(cw.movieId),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ContinueWatchingCard extends StatelessWidget {
+  final WatchHistoryMovie item;
+  final VoidCallback onTap;
+  final VoidCallback onRemove;
+
+  const _ContinueWatchingCard({
+    required this.item,
+    required this.onTap,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: 160,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Poster area (portrait, fills most of card)
+            Expanded(
+              child: Stack(
+                children: [
+                  // Poster image - rounded corners
+                  Positioned.fill(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: CachedNetworkImage(
+                        imageUrl: item.thumbUrl,
+                        fit: BoxFit.cover,
+                        memCacheWidth: 320,
+                        placeholder: (_, __) => Container(color: AppTheme.bgSurface),
+                        errorWidget: (_, __, ___) => Container(
+                          color: AppTheme.bgSurface,
+                          child: const Icon(Icons.movie, color: AppTheme.textMuted, size: 40),
+                        ),
+                      ),
+                    ),
+                  ),
+                  // Gradient overlay ở dưới để text đọc được
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: 80,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(10)),
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withValues(alpha: 0.7),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  // Close button (top-right)
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: GestureDetector(
+                      onTap: onRemove,
+                      child: Container(
+                        width: 26,
+                        height: 26,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(13),
+                        ),
+                        child: const Icon(Icons.close, color: Colors.white, size: 16),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            // Progress bar
+            ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                value: item.progress / 100.0,
+                backgroundColor: AppTheme.bgSurface,
+                valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.accent),
+                minHeight: 3,
+              ),
+            ),
+            const SizedBox(height: 6),
+            // Episode + time
+            Text(
+              'Tập ${item.episodeDisplay} • ${item.timeDisplay}',
+              style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 2),
+            // Movie name
+            Text(
+              item.name,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textPrimary,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (item.originName.isNotEmpty)
+              Text(
+                item.originName,
+                style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

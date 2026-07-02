@@ -2287,126 +2287,41 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   void _showEpisodeSheet() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1A1C21),
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+    Navigator.of(context).push(PageRouteBuilder(
+      opaque: false,
+      barrierDismissible: true,
+      barrierColor: Colors.black87,
+      transitionDuration: const Duration(milliseconds: 250),
+      reverseTransitionDuration: const Duration(milliseconds: 200),
+      pageBuilder: (_, __, ___) => _EpisodeFullscreenSheet(
+        movieTitle: widget.movieTitle ?? '',
+        servers: _servers,
+        selectedServer: _selectedServer,
+        currentServerEps: _currentServerEps,
+        flatEps: _flatEps,
+        currentEpId: _currentEpId,
+        epPerPage: _epPerPage,
+        formatEpName: _formatEpName,
+        onServerChanged: (idx) {
+          setState(() {
+            _selectedServer = idx;
+            _sheetEpPage = 1;
+          });
+        },
+        onEpisodeSelected: (ep) {
+          Navigator.pop(context);
+          _switchEpisode(ep, keepPosition: _isLandscape);
+        },
       ),
-      builder: (ctx) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.6,
-          maxChildSize: 0.85,
-          minChildSize: 0.3,
-          expand: false,
-          builder: (ctx, scrollController) {
-            return StatefulBuilder(
-              builder: (context, setSheetState) {
-                return Column(
-                  children: [
-                    // Handle bar
-                    Container(
-                      margin: const EdgeInsets.only(top: 12, bottom: 8),
-                      width: 36, height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.white24,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    // Title + Server tabs
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              const Icon(Icons.playlist_play_rounded, color: Colors.white, size: 20),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Chọn tập',
-                                style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700),
-                              ),
-                            ],
-                          ),
-                          // Server tabs — tất cả nguồn đều sống
-                          if (_servers.length > 1) ...[
-                            const SizedBox(height: 10),
-                            SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Row(
-                                children: _servers.asMap().entries.map((entry) {
-                                  final idx = entry.key;
-                                  final server = entry.value;
-                                  final serverName = server['server_name']?.toString() ?? 'Server ${idx + 1}';
-                                  final isActive = idx == _selectedServer;
-
-                                  return GestureDetector(
-                                    onTap: () {
-                                      // Cập nhật cả outer state VÀ sheet state
-                                      setState(() {
-                                        _selectedServer = idx;
-                                        _sheetEpPage = 1; // Reset page on server switch
-                                      });
-                                      setSheetState(() {});
-                                    },
-                                    child: Container(
-                                      margin: const EdgeInsets.only(right: 8),
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                      decoration: BoxDecoration(
-                                        color: isActive
-                                            ? AppTheme.accent.withValues(alpha: 0.15)
-                                            : Colors.white.withValues(alpha: 0.05),
-                                        borderRadius: BorderRadius.circular(20),
-                                        border: Border.all(
-                                          color: isActive ? AppTheme.accent : Colors.white24,
-                                        ),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          // Dot xanh — tất cả đều sống
-                                          Container(
-                                            width: 6, height: 6,
-                                            decoration: BoxDecoration(
-                                              color: isActive ? AppTheme.accent : Colors.green,
-                                              shape: BoxShape.circle,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Text(
-                                            serverName,
-                                            style: TextStyle(
-                                              color: isActive ? AppTheme.accent : Colors.white70,
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    const Divider(color: Colors.white12, height: 1),
-                    // Episodes grid (includes page chips internally)
-                    Expanded(
-                      child: _buildEpisodeList(scrollController, setSheetState),
-                    ),
-                  ],
-                );
-              },
-            );
-          },
+      transitionsBuilder: (_, a, __, child) {
+        return SlideTransition(
+          position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero).animate(
+            CurvedAnimation(parent: a, curve: Curves.easeOutCubic),
+          ),
+          child: child,
         );
       },
-    );
+    ));
   }
 
   Widget _buildEpisodeList(ScrollController scrollController, StateSetter setSheetState) {
@@ -3912,6 +3827,290 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         ),
         const SizedBox(height: 80), // Spacer cho BottomNav
       ],
+    );
+  }
+}
+
+// ── Fullscreen Episode Sheet Widget ──────────────────────────
+
+class _EpisodeFullscreenSheet extends StatefulWidget {
+  final String movieTitle;
+  final List<dynamic> servers;
+  final int selectedServer;
+  final List<dynamic> currentServerEps;
+  final List<dynamic> flatEps;
+  final dynamic currentEpId;
+  final int epPerPage;
+  final String Function(String) formatEpName;
+  final ValueChanged<int> onServerChanged;
+  final ValueChanged<dynamic> onEpisodeSelected;
+
+  const _EpisodeFullscreenSheet({
+    required this.movieTitle,
+    required this.servers,
+    required this.selectedServer,
+    required this.currentServerEps,
+    required this.flatEps,
+    required this.currentEpId,
+    required this.epPerPage,
+    required this.formatEpName,
+    required this.onServerChanged,
+    required this.onEpisodeSelected,
+  });
+
+  @override
+  State<_EpisodeFullscreenSheet> createState() => _EpisodeFullscreenSheetState();
+}
+
+class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
+  late int _selectedServer;
+  int _epPage = 1;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedServer = widget.selectedServer;
+  }
+
+  List<dynamic> get _eps => widget.currentServerEps.isNotEmpty ? widget.currentServerEps : widget.flatEps;
+
+  @override
+  Widget build(BuildContext context) {
+    final seen = <String>{};
+    final uniqueEps = _eps.where((e) {
+      final key = (e['ep_name'] ?? e['name'] ?? '').toString();
+      if (seen.contains(key)) return false;
+      seen.add(key);
+      return true;
+    }).toList();
+
+    final totalPages = uniqueEps.length > widget.epPerPage ? (uniqueEps.length / widget.epPerPage).ceil() : 1;
+    final currentPage = _epPage.clamp(1, totalPages);
+    final startIdx = (currentPage - 1) * widget.epPerPage;
+    final endIdx = (startIdx + widget.epPerPage).clamp(0, uniqueEps.length);
+    final pagedList = uniqueEps.sublist(startIdx, endIdx);
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: GestureDetector(
+        onTap: () => Navigator.pop(context),
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          color: Colors.transparent,
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: GestureDetector(
+              onTap: () {},
+              child: Container(
+                height: MediaQuery.of(context).size.height,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF1A1C21),
+                ),
+                child: Column(
+                  children: [
+                    // Header (safe area top)
+                    SizedBox(height: MediaQuery.of(context).padding.top + 16),
+                    // Header
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 16, 0),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Danh sách tập', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+                                const SizedBox(height: 4),
+                                Text(
+                                  widget.movieTitle,
+                                  style: const TextStyle(color: Colors.white54, fontSize: 14),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: () => Navigator.pop(context),
+                            child: Container(
+                              width: 36, height: 36,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.1),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.close, color: Colors.white70, size: 20),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Episode count
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 12, 16, 8),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.menu_rounded, color: AppTheme.accent, size: 18),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${uniqueEps.length} tập',
+                            style: const TextStyle(color: AppTheme.accent, fontSize: 15, fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Server tabs
+                    if (widget.servers.length > 1)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: widget.servers.asMap().entries.map((entry) {
+                              final idx = entry.key;
+                              final server = entry.value;
+                              final serverName = server['server_name']?.toString() ?? 'Server ${idx + 1}';
+                              final isActive = idx == _selectedServer;
+
+                              return GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    _selectedServer = idx;
+                                    _epPage = 1;
+                                  });
+                                  widget.onServerChanged(idx);
+                                },
+                                child: Container(
+                                  margin: const EdgeInsets.only(right: 8),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: isActive
+                                        ? AppTheme.accent.withValues(alpha: 0.15)
+                                        : Colors.white.withValues(alpha: 0.05),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: isActive ? AppTheme.accent : Colors.white24,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        width: 6, height: 6,
+                                        decoration: BoxDecoration(
+                                          color: isActive ? AppTheme.accent : Colors.green,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        serverName,
+                                        style: TextStyle(
+                                          color: isActive ? AppTheme.accent : Colors.white70,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ),
+                    const Divider(color: Colors.white12, height: 1),
+                    // Page chips
+                    if (totalPages > 1)
+                      SizedBox(
+                        height: 36,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          itemCount: totalPages,
+                          separatorBuilder: (_, __) => const SizedBox(width: 6),
+                          itemBuilder: (context, i) {
+                            final page = i + 1;
+                            final isActive = page == currentPage;
+                            return GestureDetector(
+                              onTap: () => setState(() => _epPage = page),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: isActive ? AppTheme.accent : Colors.white.withValues(alpha: 0.05),
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(color: isActive ? AppTheme.accent : Colors.white24),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    'Trang $page',
+                                    style: TextStyle(
+                                      color: isActive ? const Color(0xFF1A1100) : Colors.white70,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    // Episodes grid
+                    Expanded(
+                      child: GridView.builder(
+                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                          childAspectRatio: 3.2,
+                        ),
+                        itemCount: pagedList.length,
+                        itemBuilder: (ctx, i) {
+                          final ep = pagedList[i];
+                          final epId = ep['id'];
+                          final rawName = ep['ep_name']?.toString() ?? '';
+                          final displayName = widget.formatEpName(rawName);
+                          final isActive = epId == widget.currentEpId;
+                          final label = 'Tập $displayName';
+
+                          return GestureDetector(
+                            onTap: () => widget.onEpisodeSelected(ep),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 150),
+                              decoration: BoxDecoration(
+                                color: isActive ? AppTheme.accent : const Color(0xFF1E2130),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: isActive ? AppTheme.accent : const Color(0x33FFFFFF),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  label,
+                                  style: TextStyle(
+                                    color: isActive ? const Color(0xFF1A1100) : Colors.white70,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

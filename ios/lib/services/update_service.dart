@@ -60,7 +60,6 @@ class UpdateService {
         force: data['force'] == true,
       );
     } catch (e) {
-      debugPrint('[UpdateService] Error: $e');
       return UpdateInfo.noUpdate();
     }
   }
@@ -77,13 +76,8 @@ class UpdateService {
         final oldFiles = dir.listSync().where((f) => f.path.endsWith('.apk'));
         for (var f in oldFiles) {
           await f.delete();
-          debugPrint('[UpdateService] Deleted old APK: ${f.path}');
         }
       } catch (_) {}
-
-      debugPrint('[UpdateService] Downloading: $url');
-      debugPrint('[UpdateService] Saving to: $filePath');
-
       // Download APK
       await _dio.download(
         url,
@@ -99,8 +93,6 @@ class UpdateService {
       final file = File(filePath);
       final exists = await file.exists();
       final size = exists ? await file.length() : 0;
-      debugPrint('[UpdateService] Download complete. Exists: $exists, Size: $size bytes');
-
       // Mở APK để cài đặt
       if (Platform.isAndroid) {
         final installResult = await _installApk(filePath);
@@ -123,8 +115,6 @@ class UpdateService {
         }
       }
     } catch (e, stackTrace) {
-      debugPrint('[UpdateService] Download error: $e');
-      debugPrint('[UpdateService] Stack trace: $stackTrace');
       rethrow;
     }
   }
@@ -133,18 +123,14 @@ class UpdateService {
   /// Trả về: 'ok' nếu thành công, 'need_permission' nếu cần user cấp quyền, 'error' nếu lỗi
   Future<String> _installApk(String filePath) async {
     try {
-      debugPrint('[UpdateService] Calling installApk channel with path: $filePath');
       final result = await _channel.invokeMethod('installApk', {'path': filePath});
-      debugPrint('[UpdateService] Install result: $result');
       return 'ok';
     } on PlatformException catch (e) {
-      debugPrint('[UpdateService] PlatformException: ${e.code} - ${e.message}');
       if (e.code == 'NEED_PERMISSION') {
         return 'need_permission';
       }
       return 'error';
     } catch (e) {
-      debugPrint('[UpdateService] Unknown error: $e');
       return 'error';
     }
   }

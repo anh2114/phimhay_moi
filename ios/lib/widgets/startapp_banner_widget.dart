@@ -24,22 +24,17 @@ class _StartAppBannerWidgetState extends State<StartAppBannerWidget> {
 
   void _loadBanner() {
     final platform = Platform.isIOS ? 'iOS' : (Platform.isAndroid ? 'Android' : 'Unknown');
-    print('[StartAppBanner] Loading on $platform...');
     setState(() { _status = 'loading'; _error = null; });
 
     StartAppAdService.sdk.loadBannerAd(
       StartAppBannerType.BANNER,
       onAdImpression: () {
-        print('[StartAppBanner] Impression on $platform');
       },
       onAdClicked: () {
-        print('[StartAppBanner] Clicked on $platform');
       },
     ).then((ad) {
-      print('[StartAppBanner] Loaded OK on $platform, height=${ad.height}');
       if (mounted) setState(() { _bannerAd = ad; _status = 'loaded'; });
     }).catchError((err) {
-      print('[StartAppBanner] FAILED on $platform: $err');
       if (mounted) setState(() { _bannerAd = null; _status = 'failed'; _error = err.toString(); });
       return null;
     });
