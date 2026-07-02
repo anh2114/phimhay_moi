@@ -3903,30 +3903,23 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
               onTap: () {},
               child: Container(
                 height: MediaQuery.of(context).size.height,
-                decoration: const BoxDecoration(
-                  color: Color(0xFF1A1C21),
-                ),
+                decoration: const BoxDecoration(color: Color(0xFF1A1C21)),
                 child: Column(
                   children: [
-                    // Header (safe area top)
+                    // Safe area
                     SizedBox(height: MediaQuery.of(context).padding.top + 16),
                     // Header
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 16, 0),
+                      padding: const EdgeInsets.fromLTRB(24, 0, 20, 0),
                       child: Row(
                         children: [
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text('Danh sách tập', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+                                const Text('Danh sách tập', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
                                 const SizedBox(height: 4),
-                                Text(
-                                  widget.movieTitle,
-                                  style: const TextStyle(color: Colors.white54, fontSize: 14),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                                Text(widget.movieTitle, style: const TextStyle(color: Colors.white38, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
                               ],
                             ),
                           ),
@@ -3934,11 +3927,8 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
                             onTap: () => Navigator.pop(context),
                             child: Container(
                               width: 36, height: 36,
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.1),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(Icons.close, color: Colors.white70, size: 20),
+                              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.08), shape: BoxShape.circle),
+                              child: const Icon(Icons.close, color: Colors.white60, size: 20),
                             ),
                           ),
                         ],
@@ -3946,22 +3936,19 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
                     ),
                     // Episode count
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 12, 16, 8),
+                      padding: const EdgeInsets.fromLTRB(24, 14, 20, 0),
                       child: Row(
                         children: [
-                          const Icon(Icons.menu_rounded, color: AppTheme.accent, size: 18),
+                          const Icon(Icons.menu_rounded, color: Colors.white, size: 18),
                           const SizedBox(width: 8),
-                          Text(
-                            '${uniqueEps.length} tập',
-                            style: const TextStyle(color: AppTheme.accent, fontSize: 15, fontWeight: FontWeight.w700),
-                          ),
+                          Text('${uniqueEps.length} tập', style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
                         ],
                       ),
                     ),
                     // Server tabs
                     if (widget.servers.length > 1)
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                        padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
                         child: SingleChildScrollView(
                           scrollDirection: Axis.horizontal,
                           child: Row(
@@ -3973,43 +3960,26 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
 
                               return GestureDetector(
                                 onTap: () {
-                                  setState(() {
-                                    _selectedServer = idx;
-                                    _epPage = 1;
-                                  });
+                                  setState(() { _selectedServer = idx; _epPage = 1; });
                                   widget.onServerChanged(idx);
                                 },
                                 child: Container(
                                   margin: const EdgeInsets.only(right: 8),
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                                   decoration: BoxDecoration(
-                                    color: isActive
-                                        ? AppTheme.accent.withValues(alpha: 0.15)
-                                        : Colors.white.withValues(alpha: 0.05),
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(
-                                      color: isActive ? AppTheme.accent : Colors.white24,
-                                    ),
+                                    color: isActive ? Colors.white.withValues(alpha: 0.06) : Colors.white.withValues(alpha: 0.02),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: isActive ? Colors.white.withValues(alpha: 0.3) : Colors.white.withValues(alpha: 0.1)),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Container(
                                         width: 6, height: 6,
-                                        decoration: BoxDecoration(
-                                          color: isActive ? AppTheme.accent : Colors.green,
-                                          shape: BoxShape.circle,
-                                        ),
+                                        decoration: const BoxDecoration(color: Color(0xFF4CAF50), shape: BoxShape.circle),
                                       ),
                                       const SizedBox(width: 6),
-                                      Text(
-                                        serverName,
-                                        style: TextStyle(
-                                          color: isActive ? AppTheme.accent : Colors.white70,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
+                                      Text(serverName, style: TextStyle(color: isActive ? Colors.white.withValues(alpha: 0.85) : Colors.white.withValues(alpha: 0.5), fontSize: 12, fontWeight: FontWeight.w600)),
                                     ],
                                   ),
                                 ),
@@ -4018,14 +3988,17 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
                           ),
                         ),
                       ),
-                    const Divider(color: Colors.white12, height: 1),
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(24, 14, 24, 0),
+                      child: Divider(color: Colors.white12, height: 1),
+                    ),
                     // Page chips
                     if (totalPages > 1)
                       SizedBox(
                         height: 36,
                         child: ListView.separated(
                           scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
                           itemCount: totalPages,
                           separatorBuilder: (_, __) => const SizedBox(width: 6),
                           itemBuilder: (context, i) {
@@ -4036,20 +4009,11 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: isActive ? AppTheme.accent : Colors.white.withValues(alpha: 0.05),
-                                  borderRadius: BorderRadius.circular(999),
-                                  border: Border.all(color: isActive ? AppTheme.accent : Colors.white24),
+                                  color: isActive ? Colors.white.withValues(alpha: 0.1) : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: isActive ? Colors.white.withValues(alpha: 0.3) : Colors.white24),
                                 ),
-                                child: Center(
-                                  child: Text(
-                                    'Trang $page',
-                                    style: TextStyle(
-                                      color: isActive ? const Color(0xFF1A1100) : Colors.white70,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
+                                child: Center(child: Text('Trang $page', style: TextStyle(color: isActive ? Colors.white : Colors.white54, fontSize: 11, fontWeight: FontWeight.w600))),
                               ),
                             );
                           },
@@ -4058,7 +4022,7 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
                     // Episodes grid
                     Expanded(
                       child: GridView.builder(
-                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                        padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
                         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 3,
                           crossAxisSpacing: 12,
@@ -4079,25 +4043,13 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 150),
                               decoration: BoxDecoration(
-                                color: isActive ? AppTheme.accent : const Color(0xFF1E2130),
+                                gradient: isActive ? const LinearGradient(colors: [Color(0xFFFECF59), Color(0xFFF1E2B0)], begin: Alignment.centerLeft, end: Alignment.centerRight) : null,
+                                color: isActive ? null : const Color(0xFF1E2130),
                                 borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: isActive ? AppTheme.accent : const Color(0x33FFFFFF),
-                                  width: 1,
-                                ),
+                                border: Border.all(color: isActive ? const Color(0xFFFECF59) : const Color(0x22FFFFFF), width: 1),
                               ),
                               child: Center(
-                                child: Text(
-                                  label,
-                                  style: TextStyle(
-                                    color: isActive ? const Color(0xFF1A1100) : Colors.white70,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                                child: Text(label, style: TextStyle(color: isActive ? const Color(0xFF1A1100) : Colors.white54, fontSize: 14, fontWeight: isActive ? FontWeight.w600 : FontWeight.w500), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
                               ),
                             ),
                           );
