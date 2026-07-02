@@ -241,13 +241,13 @@ class _HeroCarouselState extends State<HeroCarousel> {
                   ),
                   if ((m.ageRating ?? '').isNotEmpty)
                     _HeroPill(
-                      label: m.ageRating!,
+                      label: _formatAgeRating(m.ageRating),
                       style: PillStyle.solid,
                     ),
                   if ((m.quality ?? '').isNotEmpty)
                     _HeroPill(
                       label: m.quality!.toUpperCase(),
-                      style: PillStyle.solid,
+                      style: PillStyle.gradient,
                     ),
                   if (m.year != null && m.year! > 0)
                     _HeroPill(
@@ -380,8 +380,15 @@ class _HeroBtn extends StatelessWidget {
   }
 }
 
+String _formatAgeRating(String? rating) {
+  if (rating == null || rating.isEmpty) return 'P';
+  final clean = rating.replaceAll(RegExp(r'^[TtPp]\.?\s*'), '');
+  if (RegExp(r'^\d+$').hasMatch(clean)) return 'T.$clean';
+  return rating;
+}
+
 // ── Pills ─────────────────────────────────────────────────────
-enum PillStyle { tmdb, outline, solid }
+enum PillStyle { tmdb, outline, solid, gradient }
 
 class _HeroPill extends StatelessWidget {
   final String label;
@@ -394,7 +401,12 @@ class _HeroPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: _bgColor,
+        gradient: style == PillStyle.gradient ? const LinearGradient(
+          colors: [Color(0xFEFCF559), Color(0xFFFFF1CC)],
+          begin: Alignment(-0.7, 0),
+          end: Alignment(1.0, 0),
+        ) : null,
+        color: style != PillStyle.gradient ? _bgColor : null,
         borderRadius: BorderRadius.circular(4),
         border: Border.all(color: _borderColor, width: 1),
       ),
@@ -417,6 +429,8 @@ class _HeroPill extends StatelessWidget {
         return Colors.transparent;
       case PillStyle.solid:
         return Colors.white;
+      case PillStyle.gradient:
+        return Colors.transparent;
     }
   }
 
@@ -428,6 +442,8 @@ class _HeroPill extends StatelessWidget {
         return Colors.white.withValues(alpha: 0.5);
       case PillStyle.solid:
         return Colors.white;
+      case PillStyle.gradient:
+        return const Color(0xFEFCF559);
     }
   }
 
@@ -439,6 +455,8 @@ class _HeroPill extends StatelessWidget {
         return Colors.white;
       case PillStyle.solid:
         return Colors.black;
+      case PillStyle.gradient:
+        return const Color(0xFF1A1100);
     }
   }
 }

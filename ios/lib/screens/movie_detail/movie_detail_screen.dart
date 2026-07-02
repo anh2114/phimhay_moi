@@ -1823,7 +1823,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                     runSpacing: 6,
                     children: [
                       _infoTag('TMDB ${(movie.tmdbRating ?? 0).toStringAsFixed(1)}', Colors.transparent, const Color(0xFFF5C518), border: const Color(0xFFF5C518)),
-                      _infoTag((movie.ageRating ?? '').isNotEmpty ? movie.ageRating! : 'P', Colors.white, Colors.black),
+                      _infoTag(_formatAgeRating(movie.ageRating), Colors.white, Colors.black),
                       if (movie.year != null && movie.year! > 0)
                         _infoTag('${movie.year}', Colors.transparent, Colors.white, border: Colors.white.withValues(alpha: 0.5)),
                       _infoTag(_episodeTagText(movie), Colors.transparent, Colors.white, border: Colors.white.withValues(alpha: 0.5)),
@@ -2085,6 +2085,13 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       return _episodeText(movie);
     }
     return 'Phần 1';
+  }
+
+  String _formatAgeRating(String? rating) {
+    if (rating == null || rating.isEmpty) return 'P';
+    final clean = rating.replaceAll(RegExp(r'^[TtPp]\.?\s*'), '');
+    if (RegExp(r'^\d+$').hasMatch(clean)) return 'T.$clean';
+    return rating;
   }
 
   String _countriesText() {
