@@ -175,10 +175,15 @@ class _ListScreenState extends State<ListScreen> with AutomaticKeepAliveClientMi
                   duration: const Duration(milliseconds: 180),
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                   decoration: BoxDecoration(
-                    color: isActive ? AppTheme.accent : Colors.transparent,
+                    gradient: isActive ? const LinearGradient(
+                      colors: [Color(0xFEFCF559), Color(0xFFFFF1CC)],
+                      begin: Alignment(-0.7, 0),
+                      end: Alignment(1.0, 0),
+                    ) : null,
+                    color: isActive ? null : Colors.transparent,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: isActive ? AppTheme.accent : AppTheme.border,
+                      color: isActive ? const Color(0xFEFCF559) : AppTheme.border,
                       width: 1.5,
                     ),
                   ),
@@ -208,10 +213,15 @@ class _ListScreenState extends State<ListScreen> with AutomaticKeepAliveClientMi
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                    color: _hasActiveFilters ? AppTheme.accent : Colors.transparent,
+                    gradient: _hasActiveFilters ? const LinearGradient(
+                      colors: [Color(0xFEFCF559), Color(0xFFFFF1CC)],
+                      begin: Alignment(-0.7, 0),
+                      end: Alignment(1.0, 0),
+                    ) : null,
+                    color: _hasActiveFilters ? null : Colors.transparent,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: _hasActiveFilters ? AppTheme.accent : AppTheme.border,
+                      color: _hasActiveFilters ? const Color(0xFEFCF559) : AppTheme.border,
                     ),
                   ),
                   child: Row(
@@ -237,93 +247,116 @@ class _ListScreenState extends State<ListScreen> with AutomaticKeepAliveClientMi
           ),
         ),
 
-        // Filter panel
-        if (_showFilters)
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E2130),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppTheme.border),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _filterRow('Thể loại:', [
-                  _filterOption('Tất cả', '', _selectedGenre, (v) => setState(() { _selectedGenre = v; _loadMovies(reset: true); })),
-                  ..._genres.map((g) => _filterOption(g['name'] ?? '', g['slug'] ?? '', _selectedGenre, (v) => setState(() { _selectedGenre = v; _loadMovies(reset: true); }))),
-                ]),
-                const SizedBox(height: 8),
-                _filterRow('Quốc gia:', [
-                  _filterOption('Tất cả', '', _selectedCountry, (v) => setState(() { _selectedCountry = v; _loadMovies(reset: true); })),
-                  ..._countries.map((c) => _filterOption(c['name'] ?? '', c['slug'] ?? '', _selectedCountry, (v) => setState(() { _selectedCountry = v; _loadMovies(reset: true); }))),
-                ]),
-                const SizedBox(height: 8),
-                _filterRow('Năm:', [
-                  _filterOption('Tất cả', '', _selectedYear, (v) => setState(() { _selectedYear = v; _loadMovies(reset: true); })),
-                  ..._years.map((y) => _filterOption('$y', '$y', _selectedYear, (v) => setState(() { _selectedYear = v; _loadMovies(reset: true); }))),
-                ]),
-                const SizedBox(height: 8),
-                _filterRow('Sắp xếp:', [
-                  _filterOption('Mặc định', '', _sortBy, (v) => setState(() { _sortBy = v; _loadMovies(reset: true); })),
-                  _filterOption('Mới nhất', 'newest', _sortBy, (v) => setState(() { _sortBy = v; _loadMovies(reset: true); })),
-                  _filterOption('Điểm cao', 'imdb', _sortBy, (v) => setState(() { _sortBy = v; _loadMovies(reset: true); })),
-                  _filterOption('Xem nhiều', 'views', _sortBy, (v) => setState(() { _sortBy = v; _loadMovies(reset: true); })),
-                ]),
-              ],
-            ),
-          ),
-
-        // Grid
+        // Grid + Filter panel overlay
         Expanded(
-          child: _error != null && _movies.isEmpty
-              ? Center(
-                  child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    const Icon(Icons.error_outline, size: 48, color: AppTheme.textMuted),
-                    const SizedBox(height: 12),
-                    Text(_error!, style: const TextStyle(color: AppTheme.textSub)),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: () => _loadMovies(reset: true),
-                      child: const Text('Thử lại'),
-                    ),
-                  ]),
-                )
-              : RefreshIndicator(
-                  onRefresh: () => _loadMovies(reset: true),
-                  color: AppTheme.accent,
-                  child: GridView.builder(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    controller: _scrollController,
-                    padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: Responsive.gridColumns(context),
-                      crossAxisSpacing: 10,
-                      mainAxisSpacing: 14,
-                      childAspectRatio: 132 / 248,
-                    ),
-                    itemCount: _movies.length + (_isLoading ? 3 : 0),
-                    itemBuilder: (context, index) {
-                      if (index >= _movies.length) {
-                        return Container(
-                          decoration: BoxDecoration(
-                            color: AppTheme.bgCard,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        );
-                      }
-                      final movie = _movies[index];
-                      return MovieCard(
-                        movie: movie,
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => MovieDetailScreen(movie: movie)),
+          child: Stack(
+            children: [
+              // Grid
+              _error != null && _movies.isEmpty
+                  ? Center(
+                      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        const Icon(Icons.error_outline, size: 48, color: AppTheme.textMuted),
+                        const SizedBox(height: 12),
+                        Text(_error!, style: const TextStyle(color: AppTheme.textSub)),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: () => _loadMovies(reset: true),
+                          child: const Text('Thử lại'),
                         ),
-                      );
-                    },
+                      ]),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: () => _loadMovies(reset: true),
+                      color: AppTheme.accent,
+                      child: GridView.builder(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        controller: _scrollController,
+                        padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: Responsive.gridColumns(context),
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 14,
+                          childAspectRatio: 132 / 248,
+                        ),
+                        itemCount: _movies.length + (_isLoading ? 3 : 0),
+                        itemBuilder: (context, index) {
+                          if (index >= _movies.length) {
+                            return Container(
+                              decoration: BoxDecoration(
+                                color: AppTheme.bgCard,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            );
+                          }
+                          final movie = _movies[index];
+                          return MovieCard(
+                            movie: movie,
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => MovieDetailScreen(movie: movie)),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+              // Filter panel overlay
+              if (_showFilters)
+                Positioned(
+                  top: 0,
+                  left: 16,
+                  right: 16,
+                  child: GestureDetector(
+                    onTap: () {}, // Prevent tap through
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E2130),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.border),
+                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 12, offset: const Offset(0, 4))],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('Bộ lọc', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+                              GestureDetector(
+                                onTap: () => setState(() => _showFilters = false),
+                                child: Icon(Icons.close, color: Colors.white54, size: 20),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          _filterRow('Thể loại:', [
+                            _filterOption('Tất cả', '', _selectedGenre, (v) => setState(() { _selectedGenre = v; _loadMovies(reset: true); })),
+                            ..._genres.map((g) => _filterOption(g['name'] ?? '', g['slug'] ?? '', _selectedGenre, (v) => setState(() { _selectedGenre = v; _loadMovies(reset: true); }))),
+                          ]),
+                          const SizedBox(height: 8),
+                          _filterRow('Quốc gia:', [
+                            _filterOption('Tất cả', '', _selectedCountry, (v) => setState(() { _selectedCountry = v; _loadMovies(reset: true); })),
+                            ..._countries.map((c) => _filterOption(c['name'] ?? '', c['slug'] ?? '', _selectedCountry, (v) => setState(() { _selectedCountry = v; _loadMovies(reset: true); }))),
+                          ]),
+                          const SizedBox(height: 8),
+                          _filterRow('Năm:', [
+                            _filterOption('Tất cả', '', _selectedYear, (v) => setState(() { _selectedYear = v; _loadMovies(reset: true); })),
+                            ..._years.map((y) => _filterOption('$y', '$y', _selectedYear, (v) => setState(() { _selectedYear = v; _loadMovies(reset: true); }))),
+                          ]),
+                          const SizedBox(height: 8),
+                          _filterRow('Sắp xếp:', [
+                            _filterOption('Mặc định', '', _sortBy, (v) => setState(() { _sortBy = v; _loadMovies(reset: true); })),
+                            _filterOption('Mới nhất', 'newest', _sortBy, (v) => setState(() { _sortBy = v; _loadMovies(reset: true); })),
+                            _filterOption('Điểm cao', 'imdb', _sortBy, (v) => setState(() { _sortBy = v; _loadMovies(reset: true); })),
+                            _filterOption('Xem nhiều', 'views', _sortBy, (v) => setState(() { _sortBy = v; _loadMovies(reset: true); })),
+                          ]),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
+            ],
+          ),
         ),
       ],
     );
@@ -356,16 +389,19 @@ class _ListScreenState extends State<ListScreen> with AutomaticKeepAliveClientMi
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: AppTheme.accentDim,
+            gradient: const LinearGradient(
+              colors: [Color(0xFEFCF559), Color(0xFFFFF1CC)],
+              begin: Alignment(-0.7, 0),
+              end: Alignment(1.0, 0),
+            ),
             borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: AppTheme.accent.withValues(alpha: 0.3)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(label, style: const TextStyle(color: AppTheme.accent, fontSize: 11, fontWeight: FontWeight.w600)),
+              Text(label, style: const TextStyle(color: Color(0xFF1A1100), fontSize: 11, fontWeight: FontWeight.w600)),
               const SizedBox(width: 4),
-              Icon(Icons.close, size: 12, color: AppTheme.accent),
+              const Icon(Icons.close, size: 12, color: Color(0xFF1A1100)),
             ],
           ),
         ),
