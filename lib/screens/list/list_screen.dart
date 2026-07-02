@@ -143,7 +143,7 @@ class _ListScreenState extends State<ListScreen> with AutomaticKeepAliveClientMi
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                   decoration: BoxDecoration(
                     color: isActive ? AppTheme.accent : Colors.transparent,
-                    borderRadius: BorderRadius.circular(999),
+                    borderRadius: BorderRadius.circular(8),
                     border: Border.all(
                       color: isActive ? AppTheme.accent : AppTheme.border,
                       width: 1.5,
