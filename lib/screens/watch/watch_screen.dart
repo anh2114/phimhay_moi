@@ -4022,12 +4022,12 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
                     // Episodes grid
                     Expanded(
                       child: GridView.builder(
-                        padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+                        padding: const EdgeInsets.fromLTRB(24, 10, 24, 24),
                         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 3,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                          childAspectRatio: 3.2,
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 10,
+                          childAspectRatio: 2.5,
                         ),
                         itemCount: pagedList.length,
                         itemBuilder: (ctx, i) {
@@ -4049,7 +4049,7 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
                                 border: Border.all(color: isActive ? const Color(0xFFFECF59) : const Color(0x22FFFFFF), width: 1),
                               ),
                               child: Center(
-                                child: Text(label, style: TextStyle(color: isActive ? const Color(0xFF1A1100) : Colors.white54, fontSize: 14, fontWeight: isActive ? FontWeight.w600 : FontWeight.w500), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                child: Text(label, style: TextStyle(color: isActive ? const Color(0xFF1A1100) : Colors.white54, fontSize: 13, fontWeight: isActive ? FontWeight.w600 : FontWeight.w500), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
                               ),
                             ),
                           );
