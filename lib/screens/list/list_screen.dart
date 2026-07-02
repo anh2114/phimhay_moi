@@ -308,6 +308,7 @@ class _ListScreenState extends State<ListScreen> with AutomaticKeepAliveClientMi
                   child: GestureDetector(
                     onTap: () {}, // Prevent tap through
                     child: Container(
+                      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.7),
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: const Color(0xFF1E2130),
@@ -316,6 +317,7 @@ class _ListScreenState extends State<ListScreen> with AutomaticKeepAliveClientMi
                         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 12, offset: const Offset(0, 4))],
                       ),
                       child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
@@ -329,27 +331,36 @@ class _ListScreenState extends State<ListScreen> with AutomaticKeepAliveClientMi
                             ],
                           ),
                           const SizedBox(height: 10),
-                          _filterRow('Thể loại:', [
-                            _filterOption('Tất cả', '', _selectedGenre, (v) => setState(() { _selectedGenre = v; _loadMovies(reset: true); })),
-                            ..._genres.map((g) => _filterOption(g['name'] ?? '', g['slug'] ?? '', _selectedGenre, (v) => setState(() { _selectedGenre = v; _loadMovies(reset: true); }))),
-                          ]),
-                          const SizedBox(height: 8),
-                          _filterRow('Quốc gia:', [
-                            _filterOption('Tất cả', '', _selectedCountry, (v) => setState(() { _selectedCountry = v; _loadMovies(reset: true); })),
-                            ..._countries.map((c) => _filterOption(c['name'] ?? '', c['slug'] ?? '', _selectedCountry, (v) => setState(() { _selectedCountry = v; _loadMovies(reset: true); }))),
-                          ]),
-                          const SizedBox(height: 8),
-                          _filterRow('Năm:', [
-                            _filterOption('Tất cả', '', _selectedYear, (v) => setState(() { _selectedYear = v; _loadMovies(reset: true); })),
-                            ..._years.map((y) => _filterOption('$y', '$y', _selectedYear, (v) => setState(() { _selectedYear = v; _loadMovies(reset: true); }))),
-                          ]),
-                          const SizedBox(height: 8),
-                          _filterRow('Sắp xếp:', [
-                            _filterOption('Mặc định', '', _sortBy, (v) => setState(() { _sortBy = v; _loadMovies(reset: true); })),
-                            _filterOption('Mới nhất', 'newest', _sortBy, (v) => setState(() { _sortBy = v; _loadMovies(reset: true); })),
-                            _filterOption('Điểm cao', 'imdb', _sortBy, (v) => setState(() { _sortBy = v; _loadMovies(reset: true); })),
-                            _filterOption('Xem nhiều', 'views', _sortBy, (v) => setState(() { _sortBy = v; _loadMovies(reset: true); })),
-                          ]),
+                          Flexible(
+                            child: SingleChildScrollView(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _filterRow('Thể loại:', [
+                                    _filterOption('Tất cả', '', _selectedGenre, (v) => setState(() { _selectedGenre = v; _loadMovies(reset: true); })),
+                                    ..._genres.map((g) => _filterOption(g['name'] ?? '', g['slug'] ?? '', _selectedGenre, (v) => setState(() { _selectedGenre = v; _loadMovies(reset: true); }))),
+                                  ]),
+                                  const SizedBox(height: 8),
+                                  _filterRow('Quốc gia:', [
+                                    _filterOption('Tất cả', '', _selectedCountry, (v) => setState(() { _selectedCountry = v; _loadMovies(reset: true); })),
+                                    ..._countries.map((c) => _filterOption(c['name'] ?? '', c['slug'] ?? '', _selectedCountry, (v) => setState(() { _selectedCountry = v; _loadMovies(reset: true); }))),
+                                  ]),
+                                  const SizedBox(height: 8),
+                                  _filterRow('Năm:', [
+                                    _filterOption('Tất cả', '', _selectedYear, (v) => setState(() { _selectedYear = v; _loadMovies(reset: true); })),
+                                    ..._years.map((y) => _filterOption('$y', '$y', _selectedYear, (v) => setState(() { _selectedYear = v; _loadMovies(reset: true); }))),
+                                  ]),
+                                  const SizedBox(height: 8),
+                                  _filterRow('Sắp xếp:', [
+                                    _filterOption('Mặc định', '', _sortBy, (v) => setState(() { _sortBy = v; _loadMovies(reset: true); })),
+                                    _filterOption('Mới nhất', 'newest', _sortBy, (v) => setState(() { _sortBy = v; _loadMovies(reset: true); })),
+                                    _filterOption('Điểm cao', 'imdb', _sortBy, (v) => setState(() { _sortBy = v; _loadMovies(reset: true); })),
+                                    _filterOption('Xem nhiều', 'views', _sortBy, (v) => setState(() { _sortBy = v; _loadMovies(reset: true); })),
+                                  ]),
+                                ],
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
