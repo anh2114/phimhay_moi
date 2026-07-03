@@ -5,7 +5,7 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:phimhay_app/config/theme.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-class BottomNav extends StatelessWidget {
+class BottomNav extends StatefulWidget {
   final int currentIndex;
   final ValueChanged<int> onTabSelected;
   final String? avatarUrl;
@@ -17,6 +17,11 @@ class BottomNav extends StatelessWidget {
     this.avatarUrl,
   });
 
+  @override
+  State<BottomNav> createState() => _BottomNavState();
+}
+
+class _BottomNavState extends State<BottomNav> {
   static const _tabs = [
     _TabItem(Icons.home_rounded, 'Trang chủ'),
     _TabItem(Icons.search_rounded, 'Tìm kiếm'),
@@ -27,9 +32,17 @@ class BottomNav extends StatelessWidget {
   static const _telegramUrl = 'https://t.me/xiaophimc';
   static const _discordUrl = 'https://discord.gg/77aBStuUXg';
 
-  void _showCommunityPopup(BuildContext context) {
-    final renderBox = context.findRenderObject() as RenderBox?;
-    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
+  final GlobalKey _groupBtnKey = GlobalKey();
+
+  void _showCommunityPopup() {
+    final ctx = _groupBtnKey.currentContext;
+    if (ctx == null) return;
+    final RenderBox? button = ctx.findRenderObject() as RenderBox?;
+    final RenderBox? overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (button == null || overlay == null) return;
+
+    final buttonPos = button.localToGlobal(Offset.zero, ancestor: overlay);
+    final buttonSize = button.size;
 
     showMenu(
       context: context,
@@ -39,18 +52,11 @@ class BottomNav extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
       ),
-      position: RelativeRect.fromRect(
-        Rect.fromCenter(
-          center: renderBox != null
-              ? renderBox.localToGlobal(
-                  Offset(renderBox.size.width / 2, -60),
-                  ancestor: overlay,
-                )
-              : Offset.zero,
-          width: 160,
-          height: 0,
-        ),
-        Offset.zero & (overlay?.size ?? Size.zero),
+      position: RelativeRect.fromLTRB(
+        buttonPos.dx - 40,
+        buttonPos.dy - 140,
+        buttonPos.dx + buttonSize.width + 40,
+        buttonPos.dy - 10,
       ),
       items: [
         PopupMenuItem(
@@ -60,8 +66,7 @@ class BottomNav extends StatelessWidget {
             children: [
               SvgPicture.asset(
                 'assets/svg_ui_controls/telegram-icon.svg',
-                width: 20,
-                height: 20,
+                width: 20, height: 20,
                 colorFilter: const ColorFilter.mode(Color(0xFF0088CC), BlendMode.srcIn),
               ),
               const SizedBox(width: 10),
@@ -76,8 +81,7 @@ class BottomNav extends StatelessWidget {
             children: [
               SvgPicture.asset(
                 'assets/svg_ui_controls/discord-icon-svgrepo-com.svg',
-                width: 20,
-                height: 20,
+                width: 20, height: 20,
                 colorFilter: const ColorFilter.mode(Color(0xFF5865F2), BlendMode.srcIn),
               ),
               const SizedBox(width: 10),
@@ -94,42 +98,39 @@ class BottomNav extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8, left: 10, right: 10),
       child: GlassBottomBar(
-        selectedIndex: currentIndex,
-        onTabSelected: onTabSelected,
+        selectedIndex: widget.currentIndex,
+        onTabSelected: widget.onTabSelected,
         tabs: List.generate(_tabs.length, (i) {
           final tab = _tabs[i];
           return GlassBottomBarTab(
-            icon: (i == 3 && avatarUrl != null && avatarUrl!.isNotEmpty)
+            icon: (i == 3 && widget.avatarUrl != null && widget.avatarUrl!.isNotEmpty)
                 ? ClipOval(
                     child: CachedNetworkImage(
-                      imageUrl: avatarUrl!,
-                      width: 32,
-                      height: 32,
-                      fit: BoxFit.cover,
+                      imageUrl: widget.avatarUrl!,
+                      width: 32, height: 32, fit: BoxFit.cover,
                       errorWidget: (_, __, ___) => Icon(
                         tab.icon,
-                        color: i == currentIndex
-                            ? AppTheme.accent
-                            : Colors.white,
+                        color: i == widget.currentIndex ? AppTheme.accent : Colors.white,
                         size: 30,
                       ),
                     ),
                   )
                 : Icon(
                     tab.icon,
-                    color: i == currentIndex
-                        ? AppTheme.accent
-                        : Colors.white,
+                    color: i == widget.currentIndex ? AppTheme.accent : Colors.white,
                     size: 30,
                   ),
           );
         }),
         extraButton: GlassBottomBarExtraButton(
-          icon: const Icon(Icons.groups_rounded, color: Colors.white, size: 28),
+          icon: KeyedSubtree(
+            key: _groupBtnKey,
+            child: const Icon(Icons.groups_rounded, color: Colors.white, size: 28),
+          ),
           label: 'Community',
           iconColor: Colors.white,
           size: 64,
-          onTap: () => _showCommunityPopup(context),
+          onTap: _showCommunityPopup,
         ),
       ),
     );

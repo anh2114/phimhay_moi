@@ -49,21 +49,35 @@ class _HeaderState extends State<Header> {
 
   void _showPopup() {
     _overlayEntry = OverlayEntry(
-      builder: (ctx) => Positioned(
-        top: MediaQuery.of(context).padding.top + 56,
-        right: 16,
-        width: 220,
-        child: Material(
-            color: Colors.transparent,
-            child: _PopupMenu(
-              onClose: _closePopup,
-              onSearch: () { _closePopup(); widget.onSearchTap?.call(); },
-              onWatchParty: () { _closePopup(); widget.onWatchPartyTap?.call(); },
-              onNotifications: () { _closePopup(); widget.onNotificationTap?.call(); },
-              onActors: () { _closePopup(); widget.onActorsTap?.call(); },
-              onAccount: () { _closePopup(); widget.onAccountTap?.call(); },
+      builder: (ctx) => GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: _closePopup,
+        child: Stack(
+          children: [
+            // Full screen tap to dismiss
+            Positioned.fill(child: Container(color: Colors.transparent)),
+            // Menu popup
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 56,
+              right: 16,
+              width: 220,
+              child: GestureDetector(
+                onTap: () {}, // Ngăn tap qua menu
+                child: Material(
+                  color: Colors.transparent,
+                  child: _PopupMenu(
+                    onClose: _closePopup,
+                    onSearch: () { _closePopup(); widget.onSearchTap?.call(); },
+                    onWatchParty: () { _closePopup(); widget.onWatchPartyTap?.call(); },
+                    onNotifications: () { _closePopup(); widget.onNotificationTap?.call(); },
+                    onActors: () { _closePopup(); widget.onActorsTap?.call(); },
+                    onAccount: () { _closePopup(); widget.onAccountTap?.call(); },
+                  ),
+                ),
+              ),
             ),
-          ),
+          ],
+        ),
       ),
     );
     Overlay.of(context).insert(_overlayEntry!);
