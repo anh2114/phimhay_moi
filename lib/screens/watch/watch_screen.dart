@@ -1332,7 +1332,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     // Parse m3u8 duration trước, truyền vào player
     _fetchM3u8Duration(playUrl, headers).then((_) {
-      if (!mounted || _bpController != null && _bpController!.isFullyInitialized) return;
+      if (!mounted) return;
 
       final dataSource = BetterPlayerDataSource(
         BetterPlayerDataSourceType.network,
