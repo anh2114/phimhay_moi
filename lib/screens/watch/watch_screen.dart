@@ -1335,7 +1335,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _bpController = null;
     _healthCheckTimer?.cancel();
     _playerReady = false;
-    _seekCompleted = _currentPosition <= 15;
+    // Không overwrite _seekCompleted ở đây — để caller quyết định
 
     // Proxy R2/Cloudflare links qua server để tránh CORS
     String playUrl = url;
@@ -1349,8 +1349,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       headers['User-Agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
     }
 
+    // Dùng startPosition để player start đúng vị trí ngay từ đầu
+    final startPos = _currentPosition > 0 ? Duration(seconds: _currentPosition) : Duration.zero;
+    // Nếu dùng startAt → đánh dấu seek completed để không seek lại
+    if (_currentPosition > 0) _seekCompleted = true;
+
     final config = BetterPlayerConfiguration(
       autoPlay: true,
+      startAt: startPos,
       handleLifecycle: false,
       allowedScreenSleep: false,
       aspectRatio: 16 / 9,
