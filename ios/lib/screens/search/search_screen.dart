@@ -44,6 +44,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
   String _year = '';
   String _sortBy = '';
   String _filterType = '';
+  String _serverType = '';
 
   // Filter data from API
   List<Map<String, dynamic>> _genres = [];
@@ -53,7 +54,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
   @override
   bool get wantKeepAlive => widget.isTab;
 
-  bool get _hasActiveFilters => _country.isNotEmpty || _genre.isNotEmpty || _year.isNotEmpty || _sortBy.isNotEmpty || _filterType.isNotEmpty;
+  bool get _hasActiveFilters => _country.isNotEmpty || _genre.isNotEmpty || _year.isNotEmpty || _sortBy.isNotEmpty || _filterType.isNotEmpty || _serverType.isNotEmpty;
 
   @override
   void initState() {
@@ -100,7 +101,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
   }
 
   String _cacheKey(String q) {
-    return '$q|$_filterType|$_country|$_genre|$_year|$_sortBy';
+    return '$q|$_filterType|$_country|$_genre|$_year|$_sortBy|$_serverType';
   }
 
   Future<void> _performSearch({bool loadMore = false}) async {
@@ -137,6 +138,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
       if (_year.isNotEmpty) params['year'] = _year;
       if (_sortBy.isNotEmpty) params['sort'] = _sortBy;
       if (_filterType.isNotEmpty) params['type'] = _filterType;
+      if (_serverType.isNotEmpty) params['server_type'] = _serverType;
 
       final res = await _dio.get('${AppConfig.apiUrl}/danh_sach.php', queryParameters: params, cancelToken: _pendingCancel);
 
@@ -200,6 +202,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
       _year = '';
       _sortBy = '';
       _filterType = '';
+      _serverType = '';
     });
     _currentPage = 1;
     _hasMore = true;
@@ -218,6 +221,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
         case 'year': _year = ''; break;
         case 'sort': _sortBy = ''; break;
         case 'type': _filterType = ''; break;
+        case 'server_type': _serverType = ''; break;
       }
     });
     _currentPage = 1;
@@ -311,6 +315,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
                   children: [
                     if (_country.isNotEmpty) _activeChip(_countryLabel(_country), () => _removeFilter('country')),
                     if (_genre.isNotEmpty) _activeChip(_genreLabel(_genre), () => _removeFilter('genre')),
+                    if (_serverType.isNotEmpty) _activeChip(_serverType == 'thuyetminh' ? 'Thuyết Minh' : 'Vietsub', () => _removeFilter('server_type')),
                     if (_year.isNotEmpty) _activeChip(_year, () => _removeFilter('year')),
                     if (_sortBy.isNotEmpty) _activeChip(_sortLabel(_sortBy), () => _removeFilter('sort')),
                     if (_filterType.isNotEmpty) _activeChip(_typeLabel(_filterType), () => _removeFilter('type')),
@@ -453,6 +458,11 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
             _filterRow('Quoc gia:', [
               _filterOption('Tat ca', '', _country, (v) => setState(() => _country = '')),
               ..._countries.map((c) => _filterOption(c['name'] ?? '', c['slug'] ?? '', _country, (v) => setState(() => _country = v))),
+            ]),
+            _filterRow('Server:', [
+              _filterOption('Tat ca', '', _serverType, (v) => setState(() => _serverType = '')),
+              _filterOption('Thuyet Minh', 'thuyetminh', _serverType, (v) => setState(() => _serverType = 'thuyetminh')),
+              _filterOption('Vietsub', 'vietsub', _serverType, (v) => setState(() => _serverType = 'vietsub')),
             ]),
             _filterRow('The loai:', [
               _filterOption('Tat ca', '', _genre, (v) => setState(() => _genre = '')),

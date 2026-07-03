@@ -42,13 +42,14 @@ class _ListScreenState extends State<ListScreen> with AutomaticKeepAliveClientMi
   String _selectedGenre = '';
   String _selectedCountry = '';
   String _selectedYear = '';
+  String _selectedServerType = '';
   String _sortBy = '';
   bool _showFilters = false;
   List<Map<String, dynamic>> _genres = [];
   List<Map<String, dynamic>> _countries = [];
   final List<int> _years = List.generate(21, (i) => DateTime.now().year - i);
 
-  bool get _hasActiveFilters => _selectedGenre.isNotEmpty || _selectedCountry.isNotEmpty || _selectedYear.isNotEmpty || _sortBy.isNotEmpty;
+  bool get _hasActiveFilters => _selectedGenre.isNotEmpty || _selectedCountry.isNotEmpty || _selectedYear.isNotEmpty || _selectedServerType.isNotEmpty || _sortBy.isNotEmpty;
 
   @override
   bool get wantKeepAlive => widget.isTab;
@@ -118,6 +119,7 @@ class _ListScreenState extends State<ListScreen> with AutomaticKeepAliveClientMi
       if (_selectedGenre.isNotEmpty) params['genre'] = _selectedGenre;
       if (_selectedCountry.isNotEmpty) params['country'] = _selectedCountry;
       if (_selectedYear.isNotEmpty) params['year'] = _selectedYear;
+      if (_selectedServerType.isNotEmpty) params['server_type'] = _selectedServerType;
       if (_sortBy.isNotEmpty) params['sort'] = _sortBy;
 
       final res = await _dio.get('/MovieList.php', queryParameters: params);
@@ -239,6 +241,8 @@ class _ListScreenState extends State<ListScreen> with AutomaticKeepAliveClientMi
                 _activeChip(_genreLabel(_selectedGenre), () => setState(() { _selectedGenre = ''; _loadMovies(reset: true); })),
               if (_selectedCountry.isNotEmpty)
                 _activeChip(_countryLabel(_selectedCountry), () => setState(() { _selectedCountry = ''; _loadMovies(reset: true); })),
+              if (_selectedServerType.isNotEmpty)
+                _activeChip(_selectedServerType == 'thuyetminh' ? 'Thuyết Minh' : 'Vietsub', () => setState(() { _selectedServerType = ''; _loadMovies(reset: true); })),
               if (_selectedYear.isNotEmpty)
                 _activeChip(_selectedYear, () => setState(() { _selectedYear = ''; _loadMovies(reset: true); })),
               if (_sortBy.isNotEmpty)
@@ -344,6 +348,12 @@ class _ListScreenState extends State<ListScreen> with AutomaticKeepAliveClientMi
                                   _filterRow('Quốc gia:', [
                                     _filterOption('Tất cả', '', _selectedCountry, (v) => setState(() { _selectedCountry = v; _loadMovies(reset: true); })),
                                     ..._countries.map((c) => _filterOption(c['name'] ?? '', c['slug'] ?? '', _selectedCountry, (v) => setState(() { _selectedCountry = v; _loadMovies(reset: true); }))),
+                                  ]),
+                                  const SizedBox(height: 8),
+                                  _filterRow('Server:', [
+                                    _filterOption('Tất cả', '', _selectedServerType, (v) => setState(() { _selectedServerType = v; _loadMovies(reset: true); })),
+                                    _filterOption('Thuyết Minh', 'thuyetminh', _selectedServerType, (v) => setState(() { _selectedServerType = v; _loadMovies(reset: true); })),
+                                    _filterOption('Vietsub', 'vietsub', _selectedServerType, (v) => setState(() { _selectedServerType = v; _loadMovies(reset: true); })),
                                   ]),
                                   const SizedBox(height: 8),
                                   _filterRow('Năm:', [
