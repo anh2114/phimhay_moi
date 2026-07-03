@@ -845,34 +845,33 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     });
   }
 
-  /// Setup PiP controller — gọi 1 lần khi video load xong (iOS cần AVPlayer sẵn)
-  Future<void> _setupPip() async {
+  /// Setup PiP controller — fire-and-forget
+  void _setupPip() {
     if (!_pipAvailable || _currentUrl.isEmpty) return;
     final position = _currentPos.inSeconds.toDouble();
-    try {
-      await _pipChannel.invokeMethod('setupPip', {
-        'url': _currentUrl,
-        'position': position,
-        'headers': {
-          'Referer': AppConfig.baseUrl,
-          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-        },
-      });
-    } catch (_) {}
+    _pipChannel.invokeMethod('setupPip', {
+      'url': _currentUrl,
+      'position': position,
+      'headers': {
+        'Referer': AppConfig.baseUrl,
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+      },
+    }).catchError((_) {});
   }
 
-  /// Bật PiP — pass vị trí hiện tại + bắt đầu poll position
-  Future<void> _startPip() async {
+  /// Bật PiP — fire-and-forget, không block UI
+  void _startPip() {
     final position = _currentPos.inSeconds.toDouble();
     _pipActive = true;
-    try {
-      final result = await _pipChannel.invokeMethod('startPip', {'position': position});
+    _startPipPoll();
+    // Fire-and-forget: không await để UI không bị đơ
+    _pipChannel.invokeMethod('startPip', {'position': position}).then((result) {
       debugPrint('PiP: startPip result=$result, position=$position');
-      _startPipPoll();
-    } catch (e) {
+    }).catchError((e) {
       debugPrint('PiP: startPip ERROR=$e');
       _pipActive = false;
-    }
+      _pipPollTimer?.cancel();
+    });
   }
 
   /// Update PiP URL khi chuyển tập
@@ -1236,6 +1235,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     switch (event.betterPlayerEventType) {
       case BetterPlayerEventType.initialized:
+        // Extract duration from initialized event
+        final initDur = event.parameters?['duration'] as Duration? ?? Duration.zero;
+        if (initDur.inSeconds > 0 && _currentDur.inSeconds == 0) {
+          _currentDur = initDur;
+          _currentDuration = initDur.inSeconds;
+        }
         setState(() {
           _playerReady = true;
           _isLoading = false;
@@ -1260,9 +1265,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         if (mounted) {
           setState(() {
             _currentPos = pos;
-            _currentDur = dur;
             _currentPosition = pos.inSeconds;
-            _currentDuration = dur.inSeconds;
+            // Only update duration if it's valid (> 0)
+            if (dur.inSeconds > 0) {
+              _currentDur = dur;
+              _currentDuration = dur.inSeconds;
+            }
           });
           // Auto-save progress every 5 seconds of movement
           final diff = (pos.inSeconds - _lastSavedPosition).abs();
@@ -1271,7 +1279,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             _saveCurrentProgress();
           }
           // Prefetch next episode when near end
-          if (dur.inSeconds > 0 && pos.inSeconds >= dur.inSeconds - 30) {
+          if (_currentDuration > 0 && pos.inSeconds >= _currentDuration - 30) {
             _startPrefetch();
           }
           // Skip intro button
@@ -1297,6 +1305,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _playerReady = false;
     _seekCompleted = _currentPosition <= 15;
 
+    // Proxy R2/Cloudflare links qua server để tránh CORS
+    String playUrl = url;
+    if (url.contains('r2.dev') || url.contains('cloudflarestorage.com')) {
+      playUrl = AppConfig.proxyHlsUrl(url);
+    }
+
     final headers = <String, String>{};
     if (!kIsWeb) {
       headers['Referer'] = AppConfig.baseUrl;
@@ -1315,39 +1329,79 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       eventListener: _onBetterPlayerEvent,
     );
 
-    final dataSource = BetterPlayerDataSource(
-      BetterPlayerDataSourceType.network,
-      url,
-      headers: headers,
-    );
+    // Parse m3u8 duration trước, truyền vào player
+    _fetchM3u8Duration(playUrl, headers).then((_) {
+      if (!mounted) return;
 
-    _bpController = BetterPlayerController(
-      config,
-      betterPlayerDataSource: dataSource,
-    );
+      final dataSource = BetterPlayerDataSource(
+        BetterPlayerDataSourceType.network,
+        playUrl,
+        headers: headers,
+        overriddenDuration: _currentDuration > 0 ? Duration(seconds: _currentDuration) : null,
+      );
 
-    setState(() {
-      _playerReady = false;
-      _isLoading = true;
-    });
+      _bpController = BetterPlayerController(
+        config,
+        betterPlayerDataSource: dataSource,
+      );
 
-    // Health check: nếu sau 8s player vẫn stuck ở 0 → fallback embed
-    _healthCheckTimer = Timer(const Duration(seconds: 8), () {
-      if (!mounted || _bpController == null) return;
-      if (_currentPosition == 0 && !_playerReady) {
-        _fallbackToEmbed();
+      setState(() {
+        _playerReady = false;
+        _isLoading = true;
+      });
+
+      // Health check
+      _healthCheckTimer = Timer(const Duration(seconds: 8), () {
+        if (!mounted || _bpController == null) return;
+        if (_currentPosition == 0 && !_playerReady) {
+          _fallbackToEmbed();
+        }
+      });
+
+      // Parse m3u8 for ad detection (async, non-blocking)
+      if (playUrl.contains('.m3u8')) {
+        _parseM3u8ForAds(playUrl);
       }
+
+      _startProgressTimer();
     });
 
-    // Parse m3u8 for ad detection (async, non-blocking)
-    if (url.contains('.m3u8')) {
-      _parseM3u8ForAds(url);
-    }
-
-    // Setup PiP controller (iOS) — tạo AVPlayer sẵn khi video load
+    // Setup PiP ngay lập tức (không chờ fetch duration)
     _setupPip();
+  }
 
-    _startProgressTimer();
+  /// Parse m3u8 to calculate total duration from #EXTINF tags
+  /// Used as fallback when native player doesn't report duration
+  Future<void> _fetchM3u8Duration(String url, Map<String, String> headers) async {
+    if (_currentDuration > 0) return; // already have duration
+    try {
+      final response = await _dio.get(
+        url,
+        options: Options(headers: headers, receiveTimeout: const Duration(seconds: 10)),
+      );
+      final content = response.data?.toString() ?? '';
+      if (content.isEmpty || !content.contains('#EXTINF')) return;
+
+      double totalSeconds = 0;
+      final lines = content.split('\n');
+      for (final line in lines) {
+        final trimmed = line.trim();
+        if (trimmed.startsWith('#EXTINF:')) {
+          // Parse #EXTINF:6.000000, or #EXTINF:6.000000,
+          final match = RegExp(r'#EXTINF:([\d.]+)').firstMatch(trimmed);
+          if (match != null) {
+            totalSeconds += double.parse(match.group(1)!);
+          }
+        }
+      }
+
+      if (totalSeconds > 0 && _currentDuration == 0 && mounted) {
+        setState(() {
+          _currentDur = Duration(seconds: totalSeconds.toInt());
+          _currentDuration = totalSeconds.toInt();
+        });
+      }
+    } catch (_) {}
   }
 
   /// Seek đến _currentPosition - gọi khi duration đã available
@@ -1668,6 +1722,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _createWatchParty() async {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    if (!auth.isLoggedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vui lòng đăng nhập để xem chung'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
     final movieId = widget.movieId;
     final epId = _currentEpId;
     if (movieId <= 0) return;
@@ -3476,33 +3537,38 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 shrinkWrap: true,
                 itemCount: _servers.length,
                 itemBuilder: (context, i) {
-                  final serverName =
-                      _servers[i]['server_name']?.toString() ??
-                          'Server ${i + 1}';
-                  final isActive = i == _selectedServer;
+                   final serverName =
+                       _servers[i]['server_name']?.toString() ??
+                           'Server ${i + 1}';
+                   final isActive = i == _selectedServer;
+                   final rawEps = (_servers[i]['episodes'] as List<dynamic>?) ?? [];
+                   final dedupedNames = <String>{};
+                   for (final e in rawEps) {
+                     dedupedNames.add((e['ep_name'] ?? e['name'] ?? '').toString());
+                   }
 
-                  return InkWell(
-                    onTap: () {
-                      if (i != _selectedServer) {
-                        _switchServer(i);
-                      }
-                      Navigator.pop(context);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isActive
-                            ? AppTheme.accent.withValues(alpha: 0.15)
-                            : Colors.transparent,
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              serverName,
+                   return InkWell(
+                     onTap: () {
+                       if (i != _selectedServer) {
+                         _switchServer(i);
+                       }
+                       Navigator.pop(context);
+                     },
+                     child: Container(
+                       padding: const EdgeInsets.symmetric(
+                         horizontal: 16,
+                         vertical: 14,
+                       ),
+                       decoration: BoxDecoration(
+                         color: isActive
+                             ? AppTheme.accent.withValues(alpha: 0.15)
+                             : Colors.transparent,
+                       ),
+                       child: Row(
+                         children: [
+                           Expanded(
+                             child: Text(
+                               '$serverName • ${dedupedNames.length} tập',
                               style: TextStyle(
                                 color: isActive
                                     ? AppTheme.accent
@@ -3569,6 +3635,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         itemBuilder: (context, i) {
           final s = _servers[i];
           final isActive = i == _selectedServer;
+          final rawEps = (s['episodes'] as List<dynamic>?) ?? [];
+          final dedupedNames = <String>{};
+          for (final e in rawEps) {
+            dedupedNames.add((e['ep_name'] ?? e['name'] ?? '').toString());
+          }
 
           return GestureDetector(
             onTap: () {
@@ -3596,6 +3667,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                     color: isActive ? Colors.white.withValues(alpha: 0.85) : Colors.white.withValues(alpha: 0.5),
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '${dedupedNames.length} tập',
+                  style: TextStyle(
+                    color: isActive ? Colors.white.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.3),
+                    fontSize: 10,
                   ),
                 ),
               ]),
@@ -3896,6 +3975,11 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
                               final server = entry.value;
                               final serverName = server['server_name']?.toString() ?? 'Server ${idx + 1}';
                               final isActive = idx == _selectedServer;
+                              final serverEps = (server['episodes'] as List<dynamic>?) ?? [];
+                              final serverEpCount = <String>{};
+                              for (final e in serverEps) {
+                                serverEpCount.add((e['ep_name'] ?? e['name'] ?? '').toString());
+                              }
 
                               return GestureDetector(
                                 onTap: () {
@@ -3919,6 +4003,8 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
                                       ),
                                       const SizedBox(width: 6),
                                       Text(serverName, style: TextStyle(color: isActive ? Colors.white.withValues(alpha: 0.85) : Colors.white.withValues(alpha: 0.5), fontSize: 12, fontWeight: FontWeight.w600)),
+                                      const SizedBox(width: 4),
+                                      Text('${serverEpCount.length} tập', style: TextStyle(color: isActive ? Colors.white.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.3), fontSize: 10)),
                                     ],
                                   ),
                                 ),
@@ -3958,10 +4044,10 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
                           },
                         ),
                       ),
-                    // Episodes grid
+                    // Episodes grid — compressed with margins
                     Expanded(
                       child: GridView.builder(
-                        padding: const EdgeInsets.fromLTRB(24, 10, 24, 24),
+                        padding: const EdgeInsets.fromLTRB(72, 10, 72, 24),
                         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 3,
                           crossAxisSpacing: 8,

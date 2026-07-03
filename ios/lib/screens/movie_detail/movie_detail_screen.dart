@@ -2213,6 +2213,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
               itemBuilder: (context, index) {
                 final isActive = index == _selectedServer;
                 final sName  = (_servers[index]['server_name'] ?? 'Server ${index + 1}').toString();
+                final serverEps = (_servers[index]['episodes'] as List<dynamic>?) ?? [];
+                final serverEpCount = <String>{};
+                for (final e in serverEps) {
+                  serverEpCount.add((e['ep_name'] ?? e['name'] ?? '').toString());
+                }
 
                 return GestureDetector(
                   onTap: () => setState(() {
@@ -2244,6 +2249,14 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                           color: isActive ? Colors.white.withValues(alpha: 0.85) : Colors.white.withValues(alpha: 0.5),
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${serverEpCount.length} tập',
+                        style: TextStyle(
+                          color: isActive ? Colors.white.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.3),
+                          fontSize: 10,
                         ),
                       ),
                     ]),

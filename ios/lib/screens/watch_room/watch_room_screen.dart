@@ -5,9 +5,11 @@ import 'package:flutter/services.dart';
 import 'package:better_player_plus/better_player_plus.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:dio/dio.dart';
 import '../../config/app_config.dart';
 import '../../config/theme.dart';
 import '../../models/watch_room.dart';
+import '../../services/api_client.dart';
 import '../../services/movie_service.dart';
 import '../../services/watch_party_service.dart';
 import '../../services/voice_service.dart';
@@ -254,6 +256,14 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
   void _onPlayerEvent(BetterPlayerEvent event) {
     if (!mounted) return;
     switch (event.betterPlayerEventType) {
+      case BetterPlayerEventType.initialized:
+        // Extract duration from initialized event
+        final initDur = event.parameters?['duration'] as Duration? ?? Duration.zero;
+        if (initDur.inSeconds > 0 && _lastDuration == 0) {
+          _lastDuration = initDur.inSeconds;
+        }
+        setState(() => _isPlayerReady = true);
+        break;
       case BetterPlayerEventType.play:
         setState(() => _isPlaying = true);
         if (!_isLocalAction && _isHost) {
@@ -271,7 +281,10 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
         final dur = event.parameters?['duration'] as Duration? ?? Duration.zero;
         final posSec = pos.inSeconds.toDouble();
         _currentPosition = posSec.toInt();
-        _lastDuration = dur.inSeconds;
+        // Only update duration if it's valid (> 0)
+        if (dur.inSeconds > 0) {
+          _lastDuration = dur.inSeconds;
+        }
         if (_isDragging) break;
 
         // ★ AD SKIP FIX
@@ -404,13 +417,25 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
     try {
       setState(() => _isLoading = true);
 
+      // Proxy R2/Cloudflare links qua server để tránh CORS
+      String playUrl = m3u8Url;
+      if (m3u8Url.contains('r2.dev') || m3u8Url.contains('cloudflarestorage.com')) {
+        playUrl = AppConfig.proxyHlsUrl(m3u8Url);
+      }
+
+      final headers = {
+        'Referer': AppConfig.baseUrl,
+        'User-Agent': 'Mozilla/5.0',
+      };
+
+      // Parse m3u8 duration trước khi setup player
+      await _fetchM3u8Duration(playUrl, headers);
+
       await _player?.setupDataSource(BetterPlayerDataSource(
         BetterPlayerDataSourceType.network,
-        m3u8Url,
-        headers: {
-          'Referer': AppConfig.baseUrl,
-          'User-Agent': 'Mozilla/5.0',
-        },
+        playUrl,
+        headers: headers,
+        overriddenDuration: _lastDuration > 0 ? Duration(seconds: _lastDuration) : null,
       ));
 
       setState(() {
@@ -447,6 +472,38 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
         _error = 'Không thể tải video';
       });
     }
+  }
+
+  /// Parse m3u8 to calculate total duration from #EXTINF tags
+  Future<void> _fetchM3u8Duration(String url, Map<String, String> headers) async {
+    if (_lastDuration > 0) return;
+    try {
+      final dio = ApiClient.dio;
+      final response = await dio.get(
+        url,
+        options: Options(headers: headers, receiveTimeout: const Duration(seconds: 10)),
+      );
+      final content = response.data?.toString() ?? '';
+      if (content.isEmpty || !content.contains('#EXTINF')) return;
+
+      double totalSeconds = 0;
+      final lines = content.split('\n');
+      for (final line in lines) {
+        final trimmed = line.trim();
+        if (trimmed.startsWith('#EXTINF:')) {
+          final match = RegExp(r'#EXTINF:([\d.]+)').firstMatch(trimmed);
+          if (match != null) {
+            totalSeconds += double.parse(match.group(1)!);
+          }
+        }
+      }
+
+      if (totalSeconds > 0 && _lastDuration == 0 && mounted) {
+        setState(() {
+          _lastDuration = totalSeconds.toInt();
+        });
+      }
+    } catch (_) {}
   }
 
   void _setLocalAction() {

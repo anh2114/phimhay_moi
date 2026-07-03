@@ -138,6 +138,12 @@ class ApiClient {
     }
   }
 
+  // Force refresh — dùng khi token đã hết hạn, trả về true nếu thành công
+  static Future<bool> forceRefresh() async {
+    if (_token == null || _token!.isEmpty) return false;
+    return await _refresh();
+  }
+
   // Lưu user data
   static Future<void> saveUser(Map<String, dynamic> user) async {
     await _storage.write(key: _keyUser, value: jsonEncode(user));

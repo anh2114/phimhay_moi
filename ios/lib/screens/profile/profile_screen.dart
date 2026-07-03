@@ -128,11 +128,9 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   Future<void> _openAdminWebView() async {
     if (!mounted) return;
 
-    // Inject auth token vào WebView
+    // Inject auth token vào WebView — dùng cookie thay vì query param
     final token = ApiClient.token;
-    final adminUrl = token != null && token.isNotEmpty
-        ? '${AppConfig.baseUrl}/admin/?auth_token=$token'
-        : '${AppConfig.baseUrl}/admin/';
+    final adminUrl = '${AppConfig.baseUrl}/admin/';
 
     Navigator.push(
       context,
@@ -150,6 +148,9 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           body: InAppWebView(
             initialUrlRequest: URLRequest(
               url: WebUri(adminUrl),
+              headers: token != null && token.isNotEmpty
+                  ? {'Authorization': 'Bearer $token'}
+                  : null,
             ),
             initialSettings: InAppWebViewSettings(
               javaScriptEnabled: true,
@@ -157,6 +158,14 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               useWideViewPort: true,
               loadWithOverviewMode: true,
             ),
+            onLoadStop: (controller, url) async {
+              // Inject cookie auth_token sau khi page load xong
+              if (token != null && token.isNotEmpty) {
+                await controller.evaluateJavascript(
+                  source: "document.cookie = 'auth_token=$token; path=/; max-age=86400';",
+                );
+              }
+            },
           ),
         ),
       ),
