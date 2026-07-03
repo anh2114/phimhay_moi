@@ -34,7 +34,7 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
   // Countdown
   int _countdown = 0;
   static const int _countdownDuration = 7;
-  static const int _skipDelay = 3;
+  static const int _skipDelay = 5;
   Timer? _countdownTimer;
 
   // Content check
@@ -151,6 +151,22 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
     if (_navigated) return;
     _navigated = true;
     debugPrint('SmartLink: Finished, viewDuration=${_adViewDuration}s');
+
+    // Fire tracking trước khi đóng — đảm bảo omg10 ghi nhận impression
+    if (_adViewDuration < _countdownDuration && _webController != null) {
+      _webController!.evaluateJavascript(source: '''
+        try {
+          // Trigger scroll/click event để omg10 track
+          window.dispatchEvent(new Event('scroll'));
+          document.dispatchEvent(new Event('visibilitychange'));
+          // Fire any tracking pixels
+          document.querySelectorAll('img[src*="track"], img[src*="pixel"], iframe[src*="track"]').forEach(function(el) {
+            if (el.src) { new Image().src = el.src; }
+          });
+        } catch(e) {}
+      ''').catchError((_) {});
+    }
+
     SmartlinkService.markAdShown();
     _countdownTimer?.cancel();
     Navigator.of(context).pop();
