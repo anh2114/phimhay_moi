@@ -3753,7 +3753,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         // Grid
         Expanded(
           child: GridView.builder(
-            padding: const EdgeInsets.fromLTRB(32, 4, 32, 16),
+            padding: const EdgeInsets.fromLTRB(48, 4, 48, 16),
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: Responsive.episodeColumns(context),
               crossAxisSpacing: 6,
@@ -4024,7 +4024,7 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
                     // Episodes grid — compressed with margins
                     Expanded(
                       child: GridView.builder(
-                        padding: const EdgeInsets.fromLTRB(56, 10, 56, 24),
+                        padding: const EdgeInsets.fromLTRB(72, 10, 72, 24),
                         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 3,
                           crossAxisSpacing: 8,
