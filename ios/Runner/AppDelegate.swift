@@ -339,13 +339,13 @@ import AVKit
             ) { [weak self, weak pip] finished in
                 guard finished else { return }
                 player.play()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     self?.tryStartPip(pip: pip, position: position, result: result)
                 }
             }
         } else {
             player.play()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
                 self?.tryStartPip(pip: pip, position: position, result: result)
             }
         }

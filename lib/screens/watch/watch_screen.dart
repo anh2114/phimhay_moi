@@ -845,34 +845,39 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     });
   }
 
-  /// Setup PiP controller — gọi 1 lần khi video load xong (iOS cần AVPlayer sẵn)
-  Future<void> _setupPip() async {
+  /// Setup PiP controller — fire-and-forget
+  void _setupPip() {
     if (!_pipAvailable || _currentUrl.isEmpty) return;
     final position = _currentPos.inSeconds.toDouble();
-    try {
-      await _pipChannel.invokeMethod('setupPip', {
-        'url': _currentUrl,
-        'position': position,
-        'headers': {
-          'Referer': AppConfig.baseUrl,
-          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-        },
-      });
-    } catch (_) {}
+    _pipChannel.invokeMethod('setupPip', {
+      'url': _currentUrl,
+      'position': position,
+      'headers': {
+        'Referer': AppConfig.baseUrl,
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+      },
+    }).catchError((_) {});
   }
 
-  /// Bật PiP — pass vị trí hiện tại + bắt đầu poll position
-  Future<void> _startPip() async {
+  /// Update PiP URL khi chuyển tập — fire-and-forget
+  void _updatePipUrl() {
+    if (!_pipAvailable || _currentUrl.isEmpty) return;
+    _pipChannel.invokeMethod('updatePipUrl', {'url': _currentUrl}).catchError((_) {});
+  }
+
+  /// Bật PiP — fire-and-forget, không block UI
+  void _startPip() {
     final position = _currentPos.inSeconds.toDouble();
     _pipActive = true;
-    try {
-      final result = await _pipChannel.invokeMethod('startPip', {'position': position});
+    _startPipPoll();
+    // Fire-and-forget: không await để UI không bị đơ
+    _pipChannel.invokeMethod('startPip', {'position': position}).then((result) {
       debugPrint('PiP: startPip result=$result, position=$position');
-      _startPipPoll();
-    } catch (e) {
+    }).catchError((e) {
       debugPrint('PiP: startPip ERROR=$e');
       _pipActive = false;
-    }
+      _pipPollTimer?.cancel();
+    });
   }
 
   /// Update PiP URL khi chuyển tập
@@ -1359,14 +1364,16 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         }
       });
 
-      _setupPip();
-      _startProgressTimer();
-
       // Parse m3u8 for ad detection (async, non-blocking)
       if (playUrl.contains('.m3u8')) {
         _parseM3u8ForAds(playUrl);
       }
+
+      _startProgressTimer();
     });
+
+    // Setup PiP ngay lập tức (không chờ fetch duration)
+    _setupPip();
   }
 
   /// Parse m3u8 to calculate total duration from #EXTINF tags
