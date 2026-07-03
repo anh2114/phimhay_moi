@@ -63,12 +63,16 @@ void main() async {
   // Initialize activity tracking
   ActivityService.init();
 
+  // Pre-init auth — ensure user data loaded BEFORE app starts
+  final authProvider = AuthProvider();
+  await authProvider.ready;
+
   runApp(
     LiquidGlassWidgets.wrap(
       child: MultiProvider(
         providers: [
           ChangeNotifierProvider(create: (_) => HomeProvider()),
-          ChangeNotifierProvider(create: (_) => AuthProvider()),
+          ChangeNotifierProvider.value(value: authProvider),
           ChangeNotifierProvider(create: (_) => FavoriteProvider()),
           ChangeNotifierProvider(create: (_) => WatchHistoryProvider()),
           ChangeNotifierProvider(create: (_) => ReminderProvider()),

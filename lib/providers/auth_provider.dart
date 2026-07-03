@@ -1,28 +1,56 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../services/api_client.dart';
 
 class AuthProvider extends ChangeNotifier {
   Map<String, dynamic>? _user;
   bool _loading = false;
+  bool _ready = false;
   String? _error;
+  final Completer<void> _readyCompleter = Completer<void>();
 
   Map<String, dynamic>? get user => _user;
   bool get isLoggedIn => _user != null && _user!['logged_in'] == true;
   bool get isLoading => _loading;
+  bool get isReady => _ready;
   String? get error => _error;
+  Future<void> get ready => _readyCompleter.future;
 
   AuthProvider() {
     _init();
   }
 
   Future<void> _init() async {
-    await ApiClient.init();
-    // Load user từ secure storage
-    final savedUser = await ApiClient.loadUser();
-    if (savedUser != null) {
-      _user = savedUser;
-      notifyListeners();
+    try {
+      await ApiClient.init();
+      final savedToken = ApiClient.token;
+      final savedUser = await ApiClient.loadUser();
+
+      if (savedToken != null && savedToken.isNotEmpty && savedUser != null) {
+        // Token còn hạn → load user bình thường
+        if (ApiClient.isTokenValid()) {
+          _user = savedUser;
+        } else {
+          // Token hết hạn → thử refresh
+          final refreshed = await ApiClient.forceRefresh();
+          if (refreshed) {
+            _user = savedUser;
+          } else {
+            // Refresh fail → xóa sạch auth
+            await ApiClient.clearToken();
+            await ApiClient.clearUser();
+            _user = null;
+          }
+        }
+      } else {
+        _user = null;
+      }
+    } catch (_) {
+      _user = null;
     }
+    _ready = true;
+    if (!_readyCompleter.isCompleted) _readyCompleter.complete();
+    notifyListeners();
   }
 
   Future<bool> login(String user, String pass) async {
