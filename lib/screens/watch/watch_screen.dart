@@ -1722,6 +1722,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _createWatchParty() async {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    if (!auth.isLoggedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vui lòng đăng nhập để xem chung'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
     final movieId = widget.movieId;
     final epId = _currentEpId;
     if (movieId <= 0) return;
