@@ -1361,18 +1361,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
       _setupPip();
       _startProgressTimer();
+
+      // Parse m3u8 for ad detection (async, non-blocking)
+      if (playUrl.contains('.m3u8')) {
+        _parseM3u8ForAds(playUrl);
+      }
     });
-  }
-
-    // Parse m3u8 for ad detection (async, non-blocking)
-    if (url.contains('.m3u8')) {
-      _parseM3u8ForAds(url);
-    }
-
-    // Setup PiP controller (iOS) — tạo AVPlayer sẵn khi video load
-    _setupPip();
-
-    _startProgressTimer();
   }
 
   /// Parse m3u8 to calculate total duration from #EXTINF tags
