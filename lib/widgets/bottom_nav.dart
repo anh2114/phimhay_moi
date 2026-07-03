@@ -24,7 +24,7 @@ class BottomNav extends StatelessWidget {
     _TabItem(Icons.person_outline, 'Tài khoản'),
   ];
 
-  static const _telegramUrl = 'https://t.me/xiaophim';
+  static const _telegramUrl = 'https://t.me/xiaophimc';
 
   @override
   Widget build(BuildContext context) {
