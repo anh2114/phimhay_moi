@@ -1236,6 +1236,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     switch (event.betterPlayerEventType) {
       case BetterPlayerEventType.initialized:
+        // Extract duration from initialized event
+        final initDur = event.parameters?['duration'] as Duration? ?? Duration.zero;
+        if (initDur.inSeconds > 0 && _currentDur.inSeconds == 0) {
+          _currentDur = initDur;
+          _currentDuration = initDur.inSeconds;
+        }
         setState(() {
           _playerReady = true;
           _isLoading = false;
@@ -1260,9 +1266,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         if (mounted) {
           setState(() {
             _currentPos = pos;
-            _currentDur = dur;
             _currentPosition = pos.inSeconds;
-            _currentDuration = dur.inSeconds;
+            // Only update duration if it's valid (> 0)
+            if (dur.inSeconds > 0) {
+              _currentDur = dur;
+              _currentDuration = dur.inSeconds;
+            }
           });
           // Auto-save progress every 5 seconds of movement
           final diff = (pos.inSeconds - _lastSavedPosition).abs();
@@ -1271,7 +1280,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             _saveCurrentProgress();
           }
           // Prefetch next episode when near end
-          if (dur.inSeconds > 0 && pos.inSeconds >= dur.inSeconds - 30) {
+          if (_currentDuration > 0 && pos.inSeconds >= _currentDuration - 30) {
             _startPrefetch();
           }
           // Skip intro button
@@ -1342,6 +1351,23 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (!mounted || _bpController == null) return;
       if (_currentPosition == 0 && !_playerReady) {
         _fallbackToEmbed();
+      }
+    });
+
+    // Duration check: if duration still 0 after 3s, try to get from controller
+    Timer(const Duration(seconds: 3), () {
+      if (!mounted || _bpController == null) return;
+      if (_currentDuration == 0) {
+        // Try to get duration from BetterPlayer controller
+        try {
+          final videoDuration = _bpController?.videoPlayerController?.value?.duration;
+          if (videoDuration != null && videoDuration.inSeconds > 0) {
+            setState(() {
+              _currentDur = videoDuration;
+              _currentDuration = videoDuration.inSeconds;
+            });
+          }
+        } catch (_) {}
       }
     });
 
