@@ -117,6 +117,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   dynamic _currentEpId;
   String _currentEpName = '';
   bool _hasSwitchedEp = false;
+  bool _switchingServer = false; // Đang chuyển server → skip smartlink
 
   // Controls overlay
   bool _showControls = true;
@@ -1501,6 +1502,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     if (newServerIdx == _selectedServer) return;
     if (newServerIdx < 0 || newServerIdx >= _servers.length) return;
 
+    // Đánh dấu đang chuyển server → skip smartlink
+    _switchingServer = true;
+
     // Lấy vị trí hiện tại TRƯỚC KHI chuyển server
     int currentPosition = 0;
     if (_playerMode == _PlayerMode.hls && _bpController != null) {
@@ -1510,26 +1514,32 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     }
     if (currentPosition <= 0) currentPosition = _currentPosition;
 
-    // Lưu progress ngay lập tức (bypass _seekCompleted check)
+    // Lưu progress ngay lập tức
     _saveProgressImmediate(currentPosition);
 
-    // Tìm tập tương ứng trên server mới (theo ep_slug hoặc index)
+    // Tìm tập tương ứng trên server mới
     final currentEps = _currentServerEps;
     Map<String, dynamic>? matchingEp;
 
     if (_currentEpId != null && currentEps.isNotEmpty) {
-      // Tìm tập đang xem trên server cũ
       final currentEp = currentEps.where((e) => e['id'] == _currentEpId).toList();
       if (currentEp.isNotEmpty) {
         final currentSlug = (currentEp.first['ep_slug'] ?? '').toString();
+        final currentName = (currentEp.first['ep_name'] ?? currentEp.first['name'] ?? '').toString();
         final currentIndex = currentEps.indexOf(currentEp.first);
 
-        // Tìm trên server mới theo ep_slug trước
         final newEps = (_servers[newServerIdx]['episodes'] as List<dynamic>?)
                 ?.cast<Map<String, dynamic>>() ?? [];
+
+        // Tìm theo ep_slug trước
         if (currentSlug.isNotEmpty) {
-          final bySlug = newEps.where((e) => e['ep_slug'] == currentSlug).toList();
+          final bySlug = newEps.where((e) => (e['ep_slug'] ?? '').toString() == currentSlug).toList();
           if (bySlug.isNotEmpty) matchingEp = bySlug.first;
+        }
+        // Fallback: tìm theo ep_name
+        if (matchingEp == null && currentName.isNotEmpty) {
+          final byName = newEps.where((e) => (e['ep_name'] ?? e['name'] ?? '').toString() == currentName).toList();
+          if (byName.isNotEmpty) matchingEp = byName.first;
         }
         // Fallback: tìm theo index
         if (matchingEp == null && currentIndex < newEps.length) {
@@ -1540,20 +1550,27 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     setState(() {
       _selectedServer = newServerIdx;
-      _currentPosition = currentPosition; // Giữ nguyên vị trí
-      _epPage = 1; // Reset page when switching server
+      _currentPosition = currentPosition;
+      _epPage = 1;
       _sheetEpPage = 1;
     });
 
-    // Nếu tìm thấy tập tương ứng → chuyển và giữ nguyên vị trí
     if (matchingEp != null) {
       _switchEpisode(matchingEp, keepPosition: true);
+    } else {
+      _switchingServer = false;
     }
   }
 
   // ── Chuyển tập ────────────────────────────────────
   void _switchEpisode(Map<String, dynamic> ep, {bool keepPosition = false}) {
-    // Show smartlink on episode switch
+    // Skip smartlink nếu đang chuyển server
+    if (_switchingServer) {
+      _doSwitchEpisode(ep, keepPosition: keepPosition);
+      return;
+    }
+
+    // Show smartlink on episode switch (chỉ khi bấm tập thủ công)
     SmartlinkService.showSmartlinkBeforeAction(
       context,
       onDone: () {
@@ -1564,6 +1581,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   void _doSwitchEpisode(Map<String, dynamic> ep, {bool keepPosition = false}) {
     _hasSwitchedEp = true;
+    _switchingServer = false; // Clear flag sau khi chuyển xong
     if (!keepPosition) _saveCurrentProgress();
 
     // Cancel prefetch if switching to different episode
