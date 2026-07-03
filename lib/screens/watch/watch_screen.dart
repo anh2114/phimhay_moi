@@ -3635,6 +3635,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         itemBuilder: (context, i) {
           final s = _servers[i];
           final isActive = i == _selectedServer;
+          final rawEps = (s['episodes'] as List<dynamic>?) ?? [];
+          final dedupedNames = <String>{};
+          for (final e in rawEps) {
+            dedupedNames.add((e['ep_name'] ?? e['name'] ?? '').toString());
+          }
 
           return GestureDetector(
             onTap: () {
@@ -3662,6 +3667,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                     color: isActive ? Colors.white.withValues(alpha: 0.85) : Colors.white.withValues(alpha: 0.5),
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '${dedupedNames.length} tập',
+                  style: TextStyle(
+                    color: isActive ? Colors.white.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.3),
+                    fontSize: 10,
                   ),
                 ),
               ]),
