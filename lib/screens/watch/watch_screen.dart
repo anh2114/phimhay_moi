@@ -148,6 +148,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   // Watch progress tracking
   Timer? _saveProgressTimer;
+  Timer? _pendingServerSave; // Debounce save khi chuyển server nhanh
   int _currentPosition = 0;
   int _currentDuration = 0;
   Map<String, dynamic>? _savedProgress;
@@ -691,6 +692,35 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   // ★ Fix B: State sync — no longer needed, handled by _onBetterPlayerEvent
 
+  // Lưu progress khi chuyển server — dùng giá trị đã capture (debounce-safe)
+  Future<void> _saveServerSwitchProgress(int position, int serverIdx, dynamic epId) async {
+    if (widget.movieId <= 0) return;
+    if (_watchRoomActive) return;
+
+    String? epSlug;
+    final eps = _servers.isNotEmpty && serverIdx < _servers.length
+        ? ((_servers[serverIdx]['episodes'] as List<dynamic>?) ?? [])
+        : [];
+    for (final ep in eps) {
+      if (ep['id'] == epId) {
+        epSlug = (ep['ep_slug'] ?? ep['slug'] ?? '').toString();
+        break;
+      }
+    }
+
+    await _movieService.saveWatchProgress(
+      movieId: widget.movieId,
+      episodeId: epId is int ? epId : null,
+      epSlug: epSlug,
+      serverIdx: serverIdx,
+      position: position,
+      duration: _currentDuration,
+      sourceType: _playerMode == _PlayerMode.hls ? 'hls' : 'embed',
+      sourceUrl: _currentUrl,
+    );
+    debugPrint('Watch: Saved server switch progress — pos=$position, server=$serverIdx');
+  }
+
   // Lưu progress ngay lập tức với position cho trước (dùng khi chuyển server)
   Future<void> _saveProgressImmediate(int position) async {
     if (widget.movieId <= 0) return;
@@ -961,6 +991,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _adUnmuteTimer?.cancel();
     _doubleTapTimer?.cancel();
     _brightnessTimer?.cancel();
+    _pendingServerSave?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _saveProgressOnExit();
     ActivityService.stopWatching();
@@ -1514,8 +1545,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     }
     if (currentPosition <= 0) currentPosition = _currentPosition;
 
-    // Lưu progress ngay lập tức
-    _saveProgressImmediate(currentPosition);
+    // Debounce save — hủy save cũ, lên lịch save mới sau 500ms
+    _pendingServerSave?.cancel();
+    final posToSave = currentPosition;
+    final serverToSave = _selectedServer;
+    final epToSave = _currentEpId;
+    _pendingServerSave = Timer(const Duration(milliseconds: 500), () {
+      _saveServerSwitchProgress(posToSave, serverToSave, epToSave);
+    });
 
     // Tìm tập tương ứng trên server mới
     final currentEps = _currentServerEps;
