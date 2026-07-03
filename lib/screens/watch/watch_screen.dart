@@ -859,12 +859,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     }).catchError((_) {});
   }
 
-  /// Update PiP URL khi chuyển tập — fire-and-forget
-  void _updatePipUrl() {
-    if (!_pipAvailable || _currentUrl.isEmpty) return;
-    _pipChannel.invokeMethod('updatePipUrl', {'url': _currentUrl}).catchError((_) {});
-  }
-
   /// Bật PiP — fire-and-forget, không block UI
   void _startPip() {
     final position = _currentPos.inSeconds.toDouble();
