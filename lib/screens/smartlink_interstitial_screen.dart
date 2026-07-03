@@ -17,16 +17,34 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
   static const String _primaryUrl = 'https://omg10.com/4/11224550';
   static const String _fallbackUrl = 'https://omg10.com/4/11224692';
 
+  // Tracking URLs — thay bằng URL thật từ SmartLink dashboard
+  static const String _impressionUrl = 'https://omg10.com/track/impression?ad=11224550';
+  static const String _clickUrl = 'https://omg10.com/track/click?ad=11224550';
+
   InAppWebViewController? _webController;
   String _currentUrl = _primaryUrl;
+
+  // States
   bool _isLoading = true;
-  bool _canProceed = false;
+  bool _adLoaded = false;       // Ads đã load xong + có nội dung
+  bool _canProceed = false;     // User có thể bấm "Xem phim"
   bool _navigated = false;
   bool _triedFallback = false;
-  int _countdown = 15;
+  bool _loadFailed = false;     // Ads load hoàn toàn thất bại
+
+  // Countdown — chỉ chạy SAU KHI ads load xong
+  int _countdown = 0;
+  static const int _countdownDuration = 15;
   Timer? _countdownTimer;
-  int _contentCheckAttempts = 0;
+
+  // Content check
   static const int _maxCheckAttempts = 10;
+
+  // Tracking
+  int _adViewDuration = 0;      // Thời gian user thực sự thấy ads (giây)
+  Timer? _viewDurationTimer;
+  bool _impressionFired = false;
+  bool _clickFired = false;
 
   @override
   void initState() {
@@ -35,26 +53,91 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
       statusBarColor: Colors.black,
       statusBarIconBrightness: Brightness.light,
     ));
-    _startCountdown();
   }
 
-  void _startCountdown() {
+  // ── Tracking ──────────────────────────────────────
+
+  /// Fire impression tracking khi ads load xong + có nội dung
+  void _fireImpressionTracking() {
+    if (_impressionFired) return;
+    _impressionFired = true;
+    debugPrint('SmartLink: Fired impression tracking');
+    _loadUrlSilently(_impressionUrl);
+  }
+
+  /// Fire click tracking khi user bấm "Xem phim"
+  void _fireClickTracking() {
+    if (_clickFired) return;
+    _clickFired = true;
+    debugPrint('SmartLink: Fired click tracking, viewDuration=${_adViewDuration}s');
+    _loadUrlSilently(_clickUrl);
+  }
+
+  /// Load URL trong background không ảnh hưởng UI
+  void _loadUrlSilently(String url) {
+    try {
+      final request = URLRequest(url: WebUri(url));
+      _webController?.loadUrl(urlRequest: request);
+    } catch (_) {}
+  }
+
+  // ── Countdown — chạy SAU KHI ads load xong ──────
+
+  void _startCountdownAfterAdLoaded() {
+    _countdown = _countdownDuration;
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) { timer.cancel(); return; }
-      setState(() => _countdown--);
+      setState(() {
+        _countdown--;
+        _adViewDuration++;
+      });
       if (_countdown <= 0) {
         timer.cancel();
-        if (!_canProceed) {
-          _tryFallback();
-        }
+        setState(() => _canProceed = true);
       }
     });
   }
 
+  // ── Ad lifecycle ─────────────────────────────────
+
+  void _onAdLoaded() {
+    if (_adLoaded || !mounted) return;
+    _adLoaded = true;
+    setState(() {
+      _isLoading = false;
+      _loadFailed = false;
+    });
+    _fireImpressionTracking();
+    _startCountdownAfterAdLoaded();
+  }
+
+  void _onAdLoadFailed() {
+    if (!mounted) return;
+    // Sau khi thử cả 2 URL đều fail → hiển thị nút retry
+    if (_triedFallback) {
+      setState(() {
+        _isLoading = false;
+        _loadFailed = true;
+      });
+    }
+  }
+
+  void _retryLoad() {
+    setState(() {
+      _loadFailed = false;
+      _isLoading = true;
+      _triedFallback = false;
+      _currentUrl = _primaryUrl;
+      _adLoaded = false;
+    });
+    _webController?.loadUrl(urlRequest: URLRequest(url: WebUri(_primaryUrl)));
+  }
+
+  // ── Fallback ─────────────────────────────────────
+
   void _tryFallback() {
     if (_triedFallback) return;
     _triedFallback = true;
-    _contentCheckAttempts = 0;
     setState(() {
       _currentUrl = _fallbackUrl;
       _isLoading = true;
@@ -62,17 +145,8 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
     _webController?.loadUrl(urlRequest: URLRequest(url: WebUri(_fallbackUrl)));
   }
 
-  void _markReady() {
-    if (mounted && !_canProceed) {
-      _countdownTimer?.cancel();
-      setState(() {
-        _canProceed = true;
-        _isLoading = false;
-      });
-    }
-  }
+  // ── Content check ────────────────────────────────
 
-  /// Kiểm tra trang ads có nội dung thực sự không
   Future<bool> _checkPageHasContent(InAppWebViewController controller) async {
     try {
       final result = await controller.evaluateJavascript(source: '''
@@ -108,27 +182,33 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
     }
   }
 
-  /// Poll kiểm tra nội dung sau khi page load xong
   Future<void> _verifyContent() async {
-    if (_webController == null) return;
+    if (_webController == null || _adLoaded) return;
     for (var i = 0; i < _maxCheckAttempts; i++) {
       await Future.delayed(const Duration(seconds: 2));
-      if (!mounted || _canProceed) return;
+      if (!mounted || _adLoaded) return;
       final hasContent = await _checkPageHasContent(_webController!);
-      _contentCheckAttempts++;
       if (hasContent) {
-        _markReady();
+        _onAdLoaded();
         return;
       }
     }
-    // Sau max attempts — bắt buộc cho proceed
-    _markReady();
+    // Sau max attempts — ads vẫn chưa có nội dung
+    if (!_triedFallback) {
+      _tryFallback();
+    } else {
+      _onAdLoadFailed();
+    }
   }
+
+  // ── Finish ───────────────────────────────────────
 
   void _finish() {
     if (_navigated) return;
     _navigated = true;
+    _fireClickTracking();
     _countdownTimer?.cancel();
+    _viewDurationTimer?.cancel();
     Navigator.of(context).pop();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.onComplete();
@@ -138,8 +218,11 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
   @override
   void dispose() {
     _countdownTimer?.cancel();
+    _viewDurationTimer?.cancel();
     super.dispose();
   }
+
+  // ── Build ────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -170,9 +253,11 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
                       child: Text(
                         _canProceed
                             ? 'Sẵn sàng xem phim'
-                            : _isLoading
-                                ? 'Đang tải quảng cáo... ($_countdown)s'
-                                : 'Đợi xác nhận...',
+                            : _adLoaded
+                                ? 'Đang tải quảng cáo... (${_countdown}s)'
+                                : _loadFailed
+                                    ? 'Quảng cáo không tải được'
+                                    : 'Đang tải quảng cáo...',
                         style: TextStyle(
                           color: _canProceed ? Colors.white : Colors.white70,
                           fontSize: 16,
@@ -188,7 +273,8 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
                 ),
               ),
 
-              if (_isLoading)
+              // Loading bar — chỉ hiện khi đang load, KHÔNG chạy countdown
+              if (_isLoading && !_loadFailed)
                 LinearProgressIndicator(
                   value: null,
                   backgroundColor: Colors.white12,
@@ -196,8 +282,8 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
                   minHeight: 3,
                 ),
 
-              // Countdown bar
-              if (!_canProceed)
+              // Countdown bar — chỉ hiện SAU KHI ads load xong
+              if (_adLoaded && !_canProceed)
                 Container(
                   height: 28,
                   color: const Color(0xFF1A1A2E),
@@ -205,7 +291,7 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
                     children: [
                       Expanded(
                         child: LinearProgressIndicator(
-                          value: _countdown / 15,
+                          value: _countdown / _countdownDuration,
                           backgroundColor: Colors.white10,
                           valueColor: const AlwaysStoppedAnimation(Color(0xFFF5921E)),
                           minHeight: 28,
@@ -222,6 +308,7 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
                   ),
                 ),
 
+              // WebView
               Expanded(
                 child: InAppWebView(
                   initialUrlRequest: URLRequest(url: WebUri(_currentUrl)),
@@ -261,28 +348,78 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
                   },
                   onLoadStop: (controller, url) async {
                     _webController = controller;
-                    if (!mounted || _canProceed) return;
+                    if (!mounted || _adLoaded) return;
                     // Chờ render rồi kiểm tra nội dung
                     await Future.delayed(const Duration(seconds: 2));
-                    if (!mounted || _canProceed) return;
+                    if (!mounted || _adLoaded) return;
                     final hasContent = await _checkPageHasContent(controller);
                     if (hasContent) {
-                      _markReady();
+                      _onAdLoaded();
                     } else {
-                      // Poll tiếp
                       _verifyContent();
                     }
                   },
                   onLoadError: (controller, url, code, message) {
-                    if (!mounted || _canProceed) return;
-                    // Lỗi load → thử fallback URL
+                    debugPrint('SmartLink: Load error $code — $message');
+                    if (!mounted || _adLoaded) return;
                     if (!_triedFallback && _currentUrl == _primaryUrl) {
                       Future.delayed(const Duration(seconds: 2), _tryFallback);
+                    } else {
+                      _onAdLoadFailed();
                     }
                   },
                 ),
               ),
 
+              // Error state — ads load fail hoàn toàn
+              if (_loadFailed)
+                SafeArea(
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    color: Colors.black,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.error_outline, color: Colors.white54, size: 48),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Không tải được quảng cáo',
+                          style: TextStyle(color: Colors.white70, fontSize: 16),
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.white70,
+                                  side: const BorderSide(color: Colors.white30),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                                onPressed: _finish,
+                                child: const Text('Bỏ qua'),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFF5921E),
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                                onPressed: _retryLoad,
+                                child: const Text('Thử lại'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+              // Button "Xem phim"
               if (_canProceed)
                 SafeArea(
                   child: Container(
