@@ -25,6 +25,69 @@ class BottomNav extends StatelessWidget {
   ];
 
   static const _telegramUrl = 'https://t.me/xiaophimc';
+  static const _discordUrl = 'https://discord.gg/77aBStuUXg';
+
+  void _showCommunityPopup(BuildContext context) {
+    final renderBox = context.findRenderObject() as RenderBox?;
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
+
+    showMenu(
+      context: context,
+      color: const Color(0xFF1E2026),
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+      ),
+      position: RelativeRect.fromRect(
+        Rect.fromCenter(
+          center: renderBox != null
+              ? renderBox.localToGlobal(
+                  Offset(renderBox.size.width / 2, -60),
+                  ancestor: overlay,
+                )
+              : Offset.zero,
+          width: 160,
+          height: 0,
+        ),
+        Offset.zero & (overlay?.size ?? Size.zero),
+      ),
+      items: [
+        PopupMenuItem(
+          height: 44,
+          onTap: () => launchUrl(Uri.parse(_telegramUrl), mode: LaunchMode.externalApplication),
+          child: Row(
+            children: [
+              SvgPicture.asset(
+                'assets/svg_ui_controls/telegram-icon.svg',
+                width: 20,
+                height: 20,
+                colorFilter: const ColorFilter.mode(Color(0xFF0088CC), BlendMode.srcIn),
+              ),
+              const SizedBox(width: 10),
+              const Text('Telegram', style: TextStyle(color: Colors.white, fontSize: 14)),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          height: 44,
+          onTap: () => launchUrl(Uri.parse(_discordUrl), mode: LaunchMode.externalApplication),
+          child: Row(
+            children: [
+              SvgPicture.asset(
+                'assets/svg_ui_controls/discord-icon-svgrepo-com.svg',
+                width: 20,
+                height: 20,
+                colorFilter: const ColorFilter.mode(Color(0xFF5865F2), BlendMode.srcIn),
+              ),
+              const SizedBox(width: 10),
+              const Text('Discord', style: TextStyle(color: Colors.white, fontSize: 14)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -62,20 +125,11 @@ class BottomNav extends StatelessWidget {
           );
         }),
         extraButton: GlassBottomBarExtraButton(
-          icon: SizedBox(
-            width: 28,
-            height: 28,
-            child: SvgPicture.asset(
-              'assets/svg_ui_controls/telegram-icon.svg',
-              width: 28,
-              height: 28,
-              colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
-            ),
-          ),
-          label: 'Telegram',
+          icon: const Icon(Icons.groups_rounded, color: Colors.white, size: 28),
+          label: 'Community',
           iconColor: Colors.white,
           size: 64,
-          onTap: () => launchUrl(Uri.parse(_telegramUrl), mode: LaunchMode.externalApplication),
+          onTap: () => _showCommunityPopup(context),
         ),
       ),
     );
