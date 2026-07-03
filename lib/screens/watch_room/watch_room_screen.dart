@@ -254,6 +254,14 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
   void _onPlayerEvent(BetterPlayerEvent event) {
     if (!mounted) return;
     switch (event.betterPlayerEventType) {
+      case BetterPlayerEventType.initialized:
+        // Extract duration from initialized event
+        final initDur = event.parameters?['duration'] as Duration? ?? Duration.zero;
+        if (initDur.inSeconds > 0 && _lastDuration == 0) {
+          _lastDuration = initDur.inSeconds;
+        }
+        setState(() => _isPlayerReady = true);
+        break;
       case BetterPlayerEventType.play:
         setState(() => _isPlaying = true);
         if (!_isLocalAction && _isHost) {
@@ -271,7 +279,10 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
         final dur = event.parameters?['duration'] as Duration? ?? Duration.zero;
         final posSec = pos.inSeconds.toDouble();
         _currentPosition = posSec.toInt();
-        _lastDuration = dur.inSeconds;
+        // Only update duration if it's valid (> 0)
+        if (dur.inSeconds > 0) {
+          _lastDuration = dur.inSeconds;
+        }
         if (_isDragging) break;
 
         // ★ AD SKIP FIX
@@ -422,6 +433,21 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
       setState(() {
         _isLoading = false;
         _isPlaying = false;
+      });
+
+      // Duration fallback: if duration still 0 after 3s, try to get from controller
+      Future.delayed(const Duration(seconds: 3), () {
+        if (!mounted || _player == null) return;
+        if (_lastDuration == 0) {
+          try {
+            final videoDuration = _player?.videoPlayerController?.value?.duration;
+            if (videoDuration != null && videoDuration.inSeconds > 0) {
+              setState(() {
+                _lastDuration = videoDuration.inSeconds;
+              });
+            }
+          } catch (_) {}
+        }
       });
 
       // Seek to initial position if needed
