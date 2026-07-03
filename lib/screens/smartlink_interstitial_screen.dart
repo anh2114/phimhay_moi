@@ -30,7 +30,7 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
 
   // Countdown — chỉ chạy SAU KHI ads load xong
   int _countdown = 0;
-  static const int _countdownDuration = 15;
+  static const int _countdownDuration = 7;
   Timer? _countdownTimer;
 
   // Content check
