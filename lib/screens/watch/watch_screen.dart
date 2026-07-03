@@ -3537,33 +3537,38 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 shrinkWrap: true,
                 itemCount: _servers.length,
                 itemBuilder: (context, i) {
-                  final serverName =
-                      _servers[i]['server_name']?.toString() ??
-                          'Server ${i + 1}';
-                  final isActive = i == _selectedServer;
+                   final serverName =
+                       _servers[i]['server_name']?.toString() ??
+                           'Server ${i + 1}';
+                   final isActive = i == _selectedServer;
+                   final rawEps = (_servers[i]['episodes'] as List<dynamic>?) ?? [];
+                   final dedupedNames = <String>{};
+                   for (final e in rawEps) {
+                     dedupedNames.add((e['ep_name'] ?? e['name'] ?? '').toString());
+                   }
 
-                  return InkWell(
-                    onTap: () {
-                      if (i != _selectedServer) {
-                        _switchServer(i);
-                      }
-                      Navigator.pop(context);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isActive
-                            ? AppTheme.accent.withValues(alpha: 0.15)
-                            : Colors.transparent,
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              '$serverName • ${((_servers[i]['episodes'] as List<dynamic>?)?.length ?? 0)} tập',
+                   return InkWell(
+                     onTap: () {
+                       if (i != _selectedServer) {
+                         _switchServer(i);
+                       }
+                       Navigator.pop(context);
+                     },
+                     child: Container(
+                       padding: const EdgeInsets.symmetric(
+                         horizontal: 16,
+                         vertical: 14,
+                       ),
+                       decoration: BoxDecoration(
+                         color: isActive
+                             ? AppTheme.accent.withValues(alpha: 0.15)
+                             : Colors.transparent,
+                       ),
+                       child: Row(
+                         children: [
+                           Expanded(
+                             child: Text(
+                               '$serverName • ${dedupedNames.length} tập',
                               style: TextStyle(
                                 color: isActive
                                     ? AppTheme.accent
@@ -3957,6 +3962,11 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
                               final server = entry.value;
                               final serverName = server['server_name']?.toString() ?? 'Server ${idx + 1}';
                               final isActive = idx == _selectedServer;
+                              final serverEps = (server['episodes'] as List<dynamic>?) ?? [];
+                              final serverEpCount = <String>{};
+                              for (final e in serverEps) {
+                                serverEpCount.add((e['ep_name'] ?? e['name'] ?? '').toString());
+                              }
 
                               return GestureDetector(
                                 onTap: () {
@@ -3981,7 +3991,7 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
                                       const SizedBox(width: 6),
                                       Text(serverName, style: TextStyle(color: isActive ? Colors.white.withValues(alpha: 0.85) : Colors.white.withValues(alpha: 0.5), fontSize: 12, fontWeight: FontWeight.w600)),
                                       const SizedBox(width: 4),
-                                      Text('${_eps.length} tập', style: TextStyle(color: isActive ? Colors.white.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.3), fontSize: 10)),
+                                      Text('${serverEpCount.length} tập', style: TextStyle(color: isActive ? Colors.white.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.3), fontSize: 10)),
                                     ],
                                   ),
                                 ),
