@@ -3,7 +3,7 @@ import 'package:phimhay_app/screens/smartlink_interstitial_screen.dart';
 
 class SmartlinkService {
   static DateTime? _lastAdShownAt;
-  static const Duration _cooldown = Duration(minutes: 5);
+  static const Duration _cooldown = Duration(seconds: 30);
 
   /// Kiểm tra xem có đang trong cooldown không
   static bool get isCooldownActive {
