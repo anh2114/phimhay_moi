@@ -1620,20 +1620,22 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   void _doSwitchEpisode(Map<String, dynamic> ep, {bool keepPosition = false}) {
     _hasSwitchedEp = true;
-    _switchingServer = false; // Clear flag sau khi chuyển xong
-    // Restart periodic save timer sau khi switch xong
+    _switchingServer = false;
     _startProgressTimer();
+
+    // Capture position TRƯỚC khi reset state
+    final savedPosition = keepPosition ? _currentPosition : 0;
+
     if (!keepPosition) _saveCurrentProgress();
 
-    // Cancel prefetch if switching to different episode
+    // Cancel prefetch
     if (_prefetchEpId != ep['id']) _cancelPrefetch();
 
     final epId = ep['id'];
     final m3u8 = (ep['link_m3u8'] ?? '').toString().trim();
     final embed = (ep['link_embed'] ?? '').toString().trim();
-    _currentEmbedUrl = embed; // lưu để fallback
+    _currentEmbedUrl = embed;
 
-    // Ưu tiên HLS cho tất cả (mobile chạy được hết)
     final bool useHls = m3u8.isNotEmpty;
     final String url = m3u8.isNotEmpty ? m3u8 : embed;
 
@@ -1649,26 +1651,23 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       _currentUrl = url;
       _playerReady = false;
       _playerMode = useHls ? _PlayerMode.hls : _PlayerMode.embed;
-      if (!keepPosition) {
-        _currentPosition = 0;
-        _lastSavedPosition = 0;
-        _seekTargetTime = 0;
-        _seekCompleted = false;
-        _lastPositionForJump = -1; // Reset ad tracking
-        _adMarkers = [];
-        _m3u8Result = null;
-        _adMuted = false;
-        _adSkipping = false;
-        _subtitles = []; // Reset subtitles for new episode
-      }
+      // LUÔN reset position, sẽ seek lại sau khi player ready
+      _currentPosition = savedPosition;
+      _lastSavedPosition = savedPosition;
+      _seekTargetTime = savedPosition;
+      _seekCompleted = false; // Luôn cần seek lại
+      _lastPositionForJump = -1;
+      _adMarkers = [];
+      _m3u8Result = null;
+      _adMuted = false;
+      _adSkipping = false;
+      _subtitles = [];
     });
 
-    // Load subtitles for new episode
     _loadSubtitles(ep);
 
     if (useHls) {
       _adMarkers = [];
-      // Try using prefetched player first (instant switch)
       if (!_tryUsePrefetched(ep)) {
         _initPlayer(url);
       }
@@ -1676,8 +1675,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       _updatePipUrl();
     }
 
-    // Hide loading when player becomes ready (via _playerReady listener)
-    // Fallback: hide after 3s max
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted && _isLoading) setState(() => _isLoading = false);
     });
