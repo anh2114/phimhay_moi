@@ -1545,14 +1545,16 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     }
     if (currentPosition <= 0) currentPosition = _currentPosition;
 
-    // Debounce save — hủy save cũ, lên lịch save mới sau 500ms
-    _pendingServerSave?.cancel();
+    // Lưu NGAY position + server cũ trước khi setState thay đổi giá trị
     final posToSave = currentPosition;
     final serverToSave = _selectedServer;
     final epToSave = _currentEpId;
-    _pendingServerSave = Timer(const Duration(milliseconds: 500), () {
-      _saveServerSwitchProgress(posToSave, serverToSave, epToSave);
-    });
+
+    // Cancel periodic save để tránh overwrite position mới
+    _saveProgressTimer?.cancel();
+
+    // Save IMMEDIATELY
+    _saveServerSwitchProgress(posToSave, serverToSave, epToSave);
 
     // Tìm tập tương ứng trên server mới
     final currentEps = _currentServerEps;
@@ -1619,6 +1621,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   void _doSwitchEpisode(Map<String, dynamic> ep, {bool keepPosition = false}) {
     _hasSwitchedEp = true;
     _switchingServer = false; // Clear flag sau khi chuyển xong
+    // Restart periodic save timer sau khi switch xong
+    _startProgressTimer();
     if (!keepPosition) _saveCurrentProgress();
 
     // Cancel prefetch if switching to different episode
