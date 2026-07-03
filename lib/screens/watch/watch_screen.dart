@@ -1354,21 +1354,24 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       }
     });
 
-    // Duration check: if duration still 0 after 3s, try to get from controller
-    Timer(const Duration(seconds: 3), () {
-      if (!mounted || _bpController == null) return;
-      if (_currentDuration == 0) {
-        // Try to get duration from BetterPlayer controller
-        try {
-          final videoDuration = _bpController?.videoPlayerController?.value?.duration;
-          if (videoDuration != null && videoDuration.inSeconds > 0) {
-            setState(() {
-              _currentDur = videoDuration;
-              _currentDuration = videoDuration.inSeconds;
-            });
-          }
-        } catch (_) {}
+    // Duration check: poll every 1s until duration detected (max 15s)
+    int durationPollCount = 0;
+    Timer.periodic(const Duration(seconds: 1), (timer) {
+      durationPollCount++;
+      if (durationPollCount > 15 || _currentDuration > 0 || !mounted || _bpController == null) {
+        timer.cancel();
+        return;
       }
+      try {
+        final videoDuration = _bpController?.videoPlayerController?.value?.duration;
+        if (videoDuration != null && videoDuration.inSeconds > 0) {
+          setState(() {
+            _currentDur = videoDuration;
+            _currentDuration = videoDuration.inSeconds;
+          });
+          timer.cancel();
+        }
+      } catch (_) {}
     });
 
     // Parse m3u8 for ad detection (async, non-blocking)

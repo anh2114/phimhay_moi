@@ -435,19 +435,23 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
         _isPlaying = false;
       });
 
-      // Duration fallback: if duration still 0 after 3s, try to get from controller
-      Future.delayed(const Duration(seconds: 3), () {
-        if (!mounted || _player == null) return;
-        if (_lastDuration == 0) {
-          try {
-            final videoDuration = _player?.videoPlayerController?.value?.duration;
-            if (videoDuration != null && videoDuration.inSeconds > 0) {
-              setState(() {
-                _lastDuration = videoDuration.inSeconds;
-              });
-            }
-          } catch (_) {}
+      // Duration fallback: poll every 1s until duration detected (max 15s)
+      int durationPollCount = 0;
+      Timer.periodic(const Duration(seconds: 1), (timer) {
+        durationPollCount++;
+        if (durationPollCount > 15 || _lastDuration > 0 || !mounted || _player == null) {
+          timer.cancel();
+          return;
         }
+        try {
+          final videoDuration = _player?.videoPlayerController?.value?.duration;
+          if (videoDuration != null && videoDuration.inSeconds > 0) {
+            setState(() {
+              _lastDuration = videoDuration.inSeconds;
+            });
+            timer.cancel();
+          }
+        } catch (_) {}
       });
 
       // Seek to initial position if needed
