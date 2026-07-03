@@ -404,9 +404,15 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
     try {
       setState(() => _isLoading = true);
 
+      // Proxy R2/Cloudflare links qua server để tránh CORS
+      String playUrl = m3u8Url;
+      if (m3u8Url.contains('r2.dev') || m3u8Url.contains('cloudflarestorage.com')) {
+        playUrl = AppConfig.proxyHlsUrl(m3u8Url);
+      }
+
       await _player?.setupDataSource(BetterPlayerDataSource(
         BetterPlayerDataSourceType.network,
-        m3u8Url,
+        playUrl,
         headers: {
           'Referer': AppConfig.baseUrl,
           'User-Agent': 'Mozilla/5.0',

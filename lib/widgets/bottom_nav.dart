@@ -24,7 +24,7 @@ class BottomNav extends StatelessWidget {
     _TabItem(Icons.person_outline, 'Tài khoản'),
   ];
 
-  static const _discordUrl = 'https://discord.com/invite/77aBStuUXg';
+  static const _telegramUrl = 'https://t.me/xiaophim';
 
   @override
   Widget build(BuildContext context) {
@@ -66,16 +66,16 @@ class BottomNav extends StatelessWidget {
             width: 28,
             height: 28,
             child: SvgPicture.asset(
-              'assets/svg_ui_controls/discord-icon-svgrepo-com.svg',
+              'assets/svg_ui_controls/telegram-icon.svg',
               width: 28,
               height: 28,
               colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
             ),
           ),
-          label: 'Discord',
+          label: 'Telegram',
           iconColor: Colors.white,
           size: 64,
-          onTap: () => launchUrl(Uri.parse(_discordUrl), mode: LaunchMode.externalApplication),
+          onTap: () => launchUrl(Uri.parse(_telegramUrl), mode: LaunchMode.externalApplication),
         ),
       ),
     );

@@ -1297,6 +1297,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _playerReady = false;
     _seekCompleted = _currentPosition <= 15;
 
+    // Proxy R2/Cloudflare links qua server để tránh CORS
+    String playUrl = url;
+    if (url.contains('r2.dev') || url.contains('cloudflarestorage.com')) {
+      playUrl = AppConfig.proxyHlsUrl(url);
+    }
+
     final headers = <String, String>{};
     if (!kIsWeb) {
       headers['Referer'] = AppConfig.baseUrl;
@@ -1317,7 +1323,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     final dataSource = BetterPlayerDataSource(
       BetterPlayerDataSourceType.network,
-      url,
+      playUrl,
       headers: headers,
     );
 
