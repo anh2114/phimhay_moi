@@ -5,9 +5,11 @@ import 'package:flutter/services.dart';
 import 'package:better_player_plus/better_player_plus.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:dio/dio.dart';
 import '../../config/app_config.dart';
 import '../../config/theme.dart';
 import '../../models/watch_room.dart';
+import '../../services/api_client.dart';
 import '../../services/movie_service.dart';
 import '../../services/watch_party_service.dart';
 import '../../services/voice_service.dart';
@@ -454,6 +456,12 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
         } catch (_) {}
       });
 
+      // Parse m3u8 to get duration if native player doesn't report it
+      _fetchM3u8Duration(playUrl, {
+        'Referer': AppConfig.baseUrl,
+        'User-Agent': 'Mozilla/5.0',
+      });
+
       // Seek to initial position if needed
       final seekTo = widget.initialPosition > 3
           ? widget.initialPosition
@@ -483,6 +491,38 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
         _error = 'Không thể tải video';
       });
     }
+  }
+
+  /// Parse m3u8 to calculate total duration from #EXTINF tags
+  Future<void> _fetchM3u8Duration(String url, Map<String, String> headers) async {
+    if (_lastDuration > 0) return;
+    try {
+      final dio = ApiClient.dio;
+      final response = await dio.get(
+        url,
+        options: Options(headers: headers, receiveTimeout: const Duration(seconds: 10)),
+      );
+      final content = response.data?.toString() ?? '';
+      if (content.isEmpty || !content.contains('#EXTINF')) return;
+
+      double totalSeconds = 0;
+      final lines = content.split('\n');
+      for (final line in lines) {
+        final trimmed = line.trim();
+        if (trimmed.startsWith('#EXTINF:')) {
+          final match = RegExp(r'#EXTINF:([\d.]+)').firstMatch(trimmed);
+          if (match != null) {
+            totalSeconds += double.parse(match.group(1)!);
+          }
+        }
+      }
+
+      if (totalSeconds > 0 && _lastDuration == 0 && mounted) {
+        setState(() {
+          _lastDuration = totalSeconds.toInt();
+        });
+      }
+    } catch (_) {}
   }
 
   void _setLocalAction() {

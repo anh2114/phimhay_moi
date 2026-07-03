@@ -1341,6 +1341,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       betterPlayerDataSource: dataSource,
     );
 
+    // Parse m3u8 to get duration if native player doesn't report it
+    _fetchM3u8Duration(playUrl, headers);
+
     setState(() {
       _playerReady = false;
       _isLoading = true;
@@ -1383,6 +1386,40 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _setupPip();
 
     _startProgressTimer();
+  }
+
+  /// Parse m3u8 to calculate total duration from #EXTINF tags
+  /// Used as fallback when native player doesn't report duration
+  Future<void> _fetchM3u8Duration(String url, Map<String, String> headers) async {
+    if (_currentDuration > 0) return; // already have duration
+    try {
+      final response = await _dio.get(
+        url,
+        options: Options(headers: headers, receiveTimeout: const Duration(seconds: 10)),
+      );
+      final content = response.data?.toString() ?? '';
+      if (content.isEmpty || !content.contains('#EXTINF')) return;
+
+      double totalSeconds = 0;
+      final lines = content.split('\n');
+      for (final line in lines) {
+        final trimmed = line.trim();
+        if (trimmed.startsWith('#EXTINF:')) {
+          // Parse #EXTINF:6.000000, or #EXTINF:6.000000,
+          final match = RegExp(r'#EXTINF:([\d.]+)').firstMatch(trimmed);
+          if (match != null) {
+            totalSeconds += double.parse(match.group(1)!);
+          }
+        }
+      }
+
+      if (totalSeconds > 0 && _currentDuration == 0 && mounted) {
+        setState(() {
+          _currentDur = Duration(seconds: totalSeconds.toInt());
+          _currentDuration = totalSeconds.toInt();
+        });
+      }
+    } catch (_) {}
   }
 
   /// Seek đến _currentPosition - gọi khi duration đã available
