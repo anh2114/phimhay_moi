@@ -2246,6 +2246,14 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                           fontWeight: FontWeight.w600,
                         ),
                       ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${(_servers[index]['episodes'] as List<dynamic>?)?.length ?? 0} tập',
+                        style: TextStyle(
+                          color: isActive ? Colors.white.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.3),
+                          fontSize: 10,
+                        ),
+                      ),
                     ]),
                   ),
                 );

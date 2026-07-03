@@ -3563,7 +3563,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                         children: [
                           Expanded(
                             child: Text(
-                              serverName,
+                              '$serverName • ${((_servers[i]['episodes'] as List<dynamic>?)?.length ?? 0)} tập',
                               style: TextStyle(
                                 color: isActive
                                     ? AppTheme.accent
@@ -3980,6 +3980,8 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
                                       ),
                                       const SizedBox(width: 6),
                                       Text(serverName, style: TextStyle(color: isActive ? Colors.white.withValues(alpha: 0.85) : Colors.white.withValues(alpha: 0.5), fontSize: 12, fontWeight: FontWeight.w600)),
+                                      const SizedBox(width: 4),
+                                      Text('${_eps.length} tập', style: TextStyle(color: isActive ? Colors.white.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.3), fontSize: 10)),
                                     ],
                                   ),
                                 ),
@@ -4019,10 +4021,10 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
                           },
                         ),
                       ),
-                    // Episodes grid
+                    // Episodes grid — compressed with margins
                     Expanded(
                       child: GridView.builder(
-                        padding: const EdgeInsets.fromLTRB(24, 10, 24, 24),
+                        padding: const EdgeInsets.fromLTRB(40, 10, 40, 24),
                         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 3,
                           crossAxisSpacing: 8,
