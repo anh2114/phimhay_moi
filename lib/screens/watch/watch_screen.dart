@@ -3753,7 +3753,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         // Grid
         Expanded(
           child: GridView.builder(
-            padding: const EdgeInsets.fromLTRB(48, 4, 48, 16),
+            padding: const EdgeInsets.fromLTRB(14, 4, 14, 16),
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: Responsive.episodeColumns(context),
               crossAxisSpacing: 6,
