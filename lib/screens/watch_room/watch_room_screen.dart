@@ -423,43 +423,24 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
         playUrl = AppConfig.proxyHlsUrl(m3u8Url);
       }
 
+      final headers = {
+        'Referer': AppConfig.baseUrl,
+        'User-Agent': 'Mozilla/5.0',
+      };
+
+      // Parse m3u8 duration trước khi setup player
+      await _fetchM3u8Duration(playUrl, headers);
+
       await _player?.setupDataSource(BetterPlayerDataSource(
         BetterPlayerDataSourceType.network,
         playUrl,
-        headers: {
-          'Referer': AppConfig.baseUrl,
-          'User-Agent': 'Mozilla/5.0',
-        },
+        headers: headers,
+        overriddenDuration: _lastDuration > 0 ? Duration(seconds: _lastDuration) : null,
       ));
 
       setState(() {
         _isLoading = false;
         _isPlaying = false;
-      });
-
-      // Duration fallback: poll every 1s until duration detected (max 15s)
-      int durationPollCount = 0;
-      Timer.periodic(const Duration(seconds: 1), (timer) {
-        durationPollCount++;
-        if (durationPollCount > 15 || _lastDuration > 0 || !mounted || _player == null) {
-          timer.cancel();
-          return;
-        }
-        try {
-          final videoDuration = _player?.videoPlayerController?.value?.duration;
-          if (videoDuration != null && videoDuration.inSeconds > 0) {
-            setState(() {
-              _lastDuration = videoDuration.inSeconds;
-            });
-            timer.cancel();
-          }
-        } catch (_) {}
-      });
-
-      // Parse m3u8 to get duration if native player doesn't report it
-      _fetchM3u8Duration(playUrl, {
-        'Referer': AppConfig.baseUrl,
-        'User-Agent': 'Mozilla/5.0',
       });
 
       // Seek to initial position if needed

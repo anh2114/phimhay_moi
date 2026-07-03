@@ -1330,52 +1330,39 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       eventListener: _onBetterPlayerEvent,
     );
 
-    final dataSource = BetterPlayerDataSource(
-      BetterPlayerDataSourceType.network,
-      playUrl,
-      headers: headers,
-    );
+    // Parse m3u8 duration trước, truyền vào player
+    _fetchM3u8Duration(playUrl, headers).then((_) {
+      if (!mounted || _bpController != null && _bpController!.isFullyInitialized) return;
 
-    _bpController = BetterPlayerController(
-      config,
-      betterPlayerDataSource: dataSource,
-    );
+      final dataSource = BetterPlayerDataSource(
+        BetterPlayerDataSourceType.network,
+        playUrl,
+        headers: headers,
+        overriddenDuration: _currentDuration > 0 ? Duration(seconds: _currentDuration) : null,
+      );
 
-    // Parse m3u8 to get duration if native player doesn't report it
-    _fetchM3u8Duration(playUrl, headers);
+      _bpController = BetterPlayerController(
+        config,
+        betterPlayerDataSource: dataSource,
+      );
 
-    setState(() {
-      _playerReady = false;
-      _isLoading = true;
-    });
+      setState(() {
+        _playerReady = false;
+        _isLoading = true;
+      });
 
-    // Health check: nếu sau 8s player vẫn stuck ở 0 → fallback embed
-    _healthCheckTimer = Timer(const Duration(seconds: 8), () {
-      if (!mounted || _bpController == null) return;
-      if (_currentPosition == 0 && !_playerReady) {
-        _fallbackToEmbed();
-      }
-    });
-
-    // Duration check: poll every 1s until duration detected (max 15s)
-    int durationPollCount = 0;
-    Timer.periodic(const Duration(seconds: 1), (timer) {
-      durationPollCount++;
-      if (durationPollCount > 15 || _currentDuration > 0 || !mounted || _bpController == null) {
-        timer.cancel();
-        return;
-      }
-      try {
-        final videoDuration = _bpController?.videoPlayerController?.value?.duration;
-        if (videoDuration != null && videoDuration.inSeconds > 0) {
-          setState(() {
-            _currentDur = videoDuration;
-            _currentDuration = videoDuration.inSeconds;
-          });
-          timer.cancel();
+      // Health check
+      _healthCheckTimer = Timer(const Duration(seconds: 8), () {
+        if (!mounted || _bpController == null) return;
+        if (_currentPosition == 0 && !_playerReady) {
+          _fallbackToEmbed();
         }
-      } catch (_) {}
+      });
+
+      _setupPip();
+      _startProgressTimer();
     });
+  }
 
     // Parse m3u8 for ad detection (async, non-blocking)
     if (url.contains('.m3u8')) {
