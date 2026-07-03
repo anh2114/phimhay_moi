@@ -17,20 +17,16 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
   static const String _primaryUrl = 'https://omg10.com/4/11224550';
   static const String _fallbackUrl = 'https://omg10.com/4/11224692';
 
-  // Tracking URLs — thay bằng URL thật từ SmartLink dashboard
-  static const String _impressionUrl = 'https://omg10.com/track/impression?ad=11224550';
-  static const String _clickUrl = 'https://omg10.com/track/click?ad=11224550';
-
   InAppWebViewController? _webController;
   String _currentUrl = _primaryUrl;
 
   // States
   bool _isLoading = true;
-  bool _adLoaded = false;       // Ads đã load xong + có nội dung
-  bool _canProceed = false;     // User có thể bấm "Xem phim"
+  bool _adLoaded = false;
+  bool _canProceed = false;
   bool _navigated = false;
   bool _triedFallback = false;
-  bool _loadFailed = false;     // Ads load hoàn toàn thất bại
+  bool _loadFailed = false;
 
   // Countdown — chỉ chạy SAU KHI ads load xong
   int _countdown = 0;
@@ -39,12 +35,7 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
 
   // Content check
   static const int _maxCheckAttempts = 10;
-
-  // Tracking
-  int _adViewDuration = 0;      // Thời gian user thực sự thấy ads (giây)
-  Timer? _viewDurationTimer;
-  bool _impressionFired = false;
-  bool _clickFired = false;
+  int _adViewDuration = 0;
 
   @override
   void initState() {
@@ -55,33 +46,7 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
     ));
   }
 
-  // ── Tracking ──────────────────────────────────────
-
-  /// Fire impression tracking khi ads load xong + có nội dung
-  void _fireImpressionTracking() {
-    if (_impressionFired) return;
-    _impressionFired = true;
-    debugPrint('SmartLink: Fired impression tracking');
-    _loadUrlSilently(_impressionUrl);
-  }
-
-  /// Fire click tracking khi user bấm "Xem phim"
-  void _fireClickTracking() {
-    if (_clickFired) return;
-    _clickFired = true;
-    debugPrint('SmartLink: Fired click tracking, viewDuration=${_adViewDuration}s');
-    _loadUrlSilently(_clickUrl);
-  }
-
-  /// Load URL trong background không ảnh hưởng UI
-  void _loadUrlSilently(String url) {
-    try {
-      final request = URLRequest(url: WebUri(url));
-      _webController?.loadUrl(urlRequest: request);
-    } catch (_) {}
-  }
-
-  // ── Countdown — chạy SAU KHI ads load xong ──────
+  // ── Countdown ────────────────────────────────────
 
   void _startCountdownAfterAdLoaded() {
     _countdown = _countdownDuration;
@@ -107,13 +72,12 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
       _isLoading = false;
       _loadFailed = false;
     });
-    _fireImpressionTracking();
+    debugPrint('SmartLink: Ad loaded successfully — tracking will fire via omg10.com');
     _startCountdownAfterAdLoaded();
   }
 
   void _onAdLoadFailed() {
     if (!mounted) return;
-    // Sau khi thử cả 2 URL đều fail → hiển thị nút retry
     if (_triedFallback) {
       setState(() {
         _isLoading = false;
@@ -132,8 +96,6 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
     });
     _webController?.loadUrl(urlRequest: URLRequest(url: WebUri(_primaryUrl)));
   }
-
-  // ── Fallback ─────────────────────────────────────
 
   void _tryFallback() {
     if (_triedFallback) return;
@@ -193,7 +155,6 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
         return;
       }
     }
-    // Sau max attempts — ads vẫn chưa có nội dung
     if (!_triedFallback) {
       _tryFallback();
     } else {
@@ -206,9 +167,8 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
   void _finish() {
     if (_navigated) return;
     _navigated = true;
-    _fireClickTracking();
+    debugPrint('SmartLink: User finished, viewDuration=${_adViewDuration}s');
     _countdownTimer?.cancel();
-    _viewDurationTimer?.cancel();
     Navigator.of(context).pop();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.onComplete();
@@ -218,7 +178,6 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
   @override
   void dispose() {
     _countdownTimer?.cancel();
-    _viewDurationTimer?.cancel();
     super.dispose();
   }
 
@@ -273,7 +232,7 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
                 ),
               ),
 
-              // Loading bar — chỉ hiện khi đang load, KHÔNG chạy countdown
+              // Loading bar
               if (_isLoading && !_loadFailed)
                 LinearProgressIndicator(
                   value: null,
@@ -308,22 +267,30 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
                   ),
                 ),
 
-              // WebView
+              // WebView — cấu hình để omg10 tracking hoạt động đúng
               Expanded(
                 child: InAppWebView(
                   initialUrlRequest: URLRequest(url: WebUri(_currentUrl)),
                   initialSettings: InAppWebViewSettings(
+                    // Bật JS + storage cho tracking scripts
                     javaScriptEnabled: true,
                     domStorageEnabled: true,
                     databaseEnabled: true,
+
+                    // Media
                     mediaPlaybackRequiresUserGesture: false,
                     allowsInlineMediaPlayback: true,
+
+                    // Viewport
                     supportZoom: false,
                     transparentBackground: defaultTargetPlatform == TargetPlatform.iOS,
                     useWideViewPort: true,
                     loadWithOverviewMode: true,
+
+                    // Content
                     mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
-                    userAgent: 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+
+                    // Cache — load fresh mỗi lần để tracking chính xác
                     cacheMode: CacheMode.LOAD_DEFAULT,
                   ),
                   onWebViewCreated: (controller) {
@@ -332,11 +299,15 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
                   shouldOverrideUrlLoading: (controller, navigationAction) async {
                     final uri = navigationAction.request.url;
                     if (uri != null) {
+                      final url = uri.toString();
+                      debugPrint('SmartLink: Navigating to $url');
                       final scheme = uri.scheme.toLowerCase();
+                      // Chỉ block scheme không phải http/https
                       if (scheme != 'http' && scheme != 'https' && scheme != 'data') {
                         return NavigationActionPolicy.CANCEL;
                       }
                     }
+                    // Cho phép TẤT CẢ redirect — omg10 cần redirect để track
                     return NavigationActionPolicy.ALLOW;
                   },
                   onProgressChanged: (controller, progress) {
@@ -348,10 +319,15 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
                   },
                   onLoadStop: (controller, url) async {
                     _webController = controller;
+                    final currentUrl = url?.toString() ?? '';
+                    debugPrint('SmartLink: Page loaded: $currentUrl');
+
                     if (!mounted || _adLoaded) return;
+
                     // Chờ render rồi kiểm tra nội dung
                     await Future.delayed(const Duration(seconds: 2));
                     if (!mounted || _adLoaded) return;
+
                     final hasContent = await _checkPageHasContent(controller);
                     if (hasContent) {
                       _onAdLoaded();
@@ -360,7 +336,7 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
                     }
                   },
                   onLoadError: (controller, url, code, message) {
-                    debugPrint('SmartLink: Load error $code — $message');
+                    debugPrint('SmartLink: Load error $code — $message for $url');
                     if (!mounted || _adLoaded) return;
                     if (!_triedFallback && _currentUrl == _primaryUrl) {
                       Future.delayed(const Duration(seconds: 2), _tryFallback);
@@ -371,7 +347,7 @@ class _SmartlinkInterstitialScreenState extends State<SmartlinkInterstitialScree
                 ),
               ),
 
-              // Error state — ads load fail hoàn toàn
+              // Error state
               if (_loadFailed)
                 SafeArea(
                   child: Container(
