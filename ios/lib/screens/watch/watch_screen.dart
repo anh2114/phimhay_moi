@@ -282,12 +282,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       return;
     }
 
-    // 1. Try subtitles.php API first (most reliable — lists all available SRT files)
+    // 1. Try subtitles.php API — chỉ lấy SRT tập hiện tại
     try {
-      final res = await ApiClient.get('/subtitles.php', params: {'slug': slug});
+      final epSlug = (episode['ep_slug'] ?? episode['ep_name'] ?? '').toString();
+      final res = await ApiClient.get('/subtitles.php', params: {'slug': slug, 'episode': epSlug});
       final data = res.data;
       if (data is Map<String, dynamic> && data['success'] == true) {
         final list = data['subtitles'] as List<dynamic>? ?? [];
+        // Chỉ lấy SRT movie-level hoặc đúng tập, bỏ qua SRT tập khác
         for (final item in list) {
           final srtUrl = (item['url'] ?? '').toString();
           if (srtUrl.isEmpty) continue;
@@ -1251,11 +1253,16 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       _currentPos = pos;
       _currentPosition = pos.inSeconds;
 
-      // ★ Throttle setState — chỉ update UI mỗi 500ms để tránh stutter
-      final now = DateTime.now().millisecondsSinceEpoch;
-      if (now - _lastUiUpdate > 500) {
-        _lastUiUpdate = now;
+      // ★ Subtitle cần update nhanh (mỗi frame) để ẩn đúng lúc khi cue kết thúc
+      if (_subtitleEnabled && _subtitles.isNotEmpty) {
         setState(() {});
+      } else {
+        // ★ Throttle UI khác mỗi 500ms — progress bar, time display
+        final now = DateTime.now().millisecondsSinceEpoch;
+        if (now - _lastUiUpdate > 500) {
+          _lastUiUpdate = now;
+          setState(() {});
+        }
       }
 
       // Auto-save progress mỗi 10s
