@@ -336,8 +336,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     return null;
   }
 
-  /// Build subtitle zone — below video, not overlapping content
-  Widget _buildSubtitleZone({bool isLandscape = false}) {
+  /// Build subtitle zone — overlay trên video
+  Widget _buildSubtitleZone() {
     if (!_subtitleEnabled || _subtitles.isEmpty || _playerMode != _PlayerMode.hls) {
       return const SizedBox.shrink();
     }
@@ -348,9 +348,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     final bgAlpha = (_selectedSubtitleBgOpacity * 255).toInt();
 
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      color: bgAlpha > 0 ? Colors.black.withOpacity(_selectedSubtitleBgOpacity) : null,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: bgAlpha > 0 ? BoxDecoration(
+        color: Colors.black.withOpacity(_selectedSubtitleBgOpacity),
+        borderRadius: BorderRadius.circular(4),
+      ) : null,
       child: Text(
         text,
         textAlign: TextAlign.center,
@@ -1733,13 +1735,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         child: isLandscape
             ? Stack(children: [
                 Positioned.fill(child: _buildPlayer()),
-                // SRT subtitle zone — below video, above controls
-                Positioned(
-                  bottom: 50,
-                  left: 0,
-                  right: 0,
-                  child: _buildSubtitleZone(isLandscape: true),
-                ),
               ])
             : Column(children: [
                 // Header
@@ -1750,10 +1745,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   onActorsTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ActorsListScreen())),
                   onAccountTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 3))),
                 ),
-                // Player
-                AspectRatio(aspectRatio: 16 / 9, child: _buildPlayer()),
-                // SRT subtitle zone — below video, above info
-                _buildSubtitleZone(),
+                // Player — Auto: video tự fill width, video 16:9 vẫn giữ ratio
+                _aspectRatioIndex == 0
+                    ? SizedBox(
+                        width: double.infinity,
+                        height: MediaQuery.of(context).size.width * 9 / 16,
+                        child: _buildPlayer(),
+                      )
+                    : AspectRatio(aspectRatio: _aspectRatios[_aspectRatioIndex]!, child: _buildPlayer()),
                 // Info + Episodes (padding đáy cho BottomNav)
                 Expanded(
                   child: Stack(
@@ -1989,6 +1988,15 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                       ),
                     )
                   : Video(controller: _videoController!, key: _bpGlobalKey, controls: NoVideoControls),
+            ),
+
+          // ── Subtitle overlay — đặt TRONG player stack ──
+          if (_subtitleEnabled && _subtitles.isNotEmpty && _playerMode == _PlayerMode.hls)
+            Positioned(
+              bottom: 16,
+              left: 16,
+              right: 16,
+              child: _buildSubtitleZone(),
             ),
 
           // ── Black overlay khi PiP active — CHỈ iOS (Android dùng Flutter surface → video tự hiện) ──
