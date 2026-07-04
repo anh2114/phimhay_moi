@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:better_player_plus/better_player_plus.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:dio/dio.dart';
@@ -60,7 +61,8 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
   final ScrollController _chatScrollController = ScrollController();
 
   // Video player
-  BetterPlayerController? _player;
+  Player? _player;
+  VideoController? _videoController;
   final GlobalKey _playerGlobalKey = GlobalKey();
   bool _isPlayerReady = false;
   bool _isLoading = true;
@@ -208,7 +210,7 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && _player != null) {
       // Restore volume
-      _player?.setVolume(_isMuted ? 0.0 : (_volume > 0 ? _volume / 100.0 : 1.0));
+      _player?.setVolume(_isMuted ? 0.0 : (_volume > 0 ? _volume : 100.0));
     }
   }
 
@@ -237,93 +239,32 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
   }
 
   void _initPlayer() {
-    final config = BetterPlayerConfiguration(
-      autoPlay: true,
-      handleLifecycle: false,
-      allowedScreenSleep: false,
-      aspectRatio: 16 / 9,
-      fit: BoxFit.contain,
-      controlsConfiguration: const BetterPlayerControlsConfiguration(
-        showControls: false,
-      ),
-      eventListener: _onPlayerEvent,
-    );
+    _player = Player();
+    _videoController = VideoController(_player!);
 
-    _player = BetterPlayerController(config);
-    setState(() => _isLoading = false);
-  }
-
-  void _onPlayerEvent(BetterPlayerEvent event) {
-    if (!mounted) return;
-    switch (event.betterPlayerEventType) {
-      case BetterPlayerEventType.initialized:
-        // Extract duration from initialized event
-        final initDur = event.parameters?['duration'] as Duration? ?? Duration.zero;
-        if (initDur.inSeconds > 0 && _lastDuration == 0) {
-          _lastDuration = initDur.inSeconds;
-        }
-        setState(() => _isPlayerReady = true);
-        break;
-      case BetterPlayerEventType.play:
-        setState(() => _isPlaying = true);
-        if (!_isLocalAction && _isHost) {
-          _updateHostState('playing');
-        }
-        break;
-      case BetterPlayerEventType.pause:
-        setState(() => _isPlaying = false);
-        if (!_isLocalAction && _isHost) {
-          _updateHostState('paused');
-        }
-        break;
-      case BetterPlayerEventType.progress:
-        final pos = event.parameters?['progress'] as Duration? ?? Duration.zero;
-        final dur = event.parameters?['duration'] as Duration? ?? Duration.zero;
-        final posSec = pos.inSeconds.toDouble();
-        _currentPosition = posSec.toInt();
-        // Only update duration if it's valid (> 0)
-        if (dur.inSeconds > 0) {
-          _lastDuration = dur.inSeconds;
-        }
-        if (_isDragging) break;
-
-        // ★ AD SKIP FIX
-        if (posSec < 10 && _lastKnownPosition > 300 && _adSkipRecoverCount < _adSkipMaxRecover) {
-          final recoverTo = _lastKnownPosition;
-          _adSkipRecoverCount++;
-          _setLocalAction();
-          _player?.seekTo(Duration(seconds: recoverTo.toInt()));
-          break;
-        }
-
-        if (posSec > 100) _adSkipRecoverCount = 0;
-        if (posSec > _lastKnownPosition) _lastKnownPosition = posSec;
-
-        // ★ REALTIME HOST SYNC
-        if (_isHost && _isPlaying) {
-          final nowMs = DateTime.now().millisecondsSinceEpoch;
-          if (nowMs - _lastHostSyncMs > 1000) {
-            _lastHostSyncMs = nowMs;
-            _updateHostState('playing');
-          }
-        }
-
-        // Throttle UI
-        final now = DateTime.now().millisecondsSinceEpoch;
-        if (now - _lastPositionUpdate > 500) {
-          _lastPositionUpdate = now;
-          setState(() {});
-        }
-        break;
-      case BetterPlayerEventType.bufferingEnd:
-        setState(() => _isPlayerReady = true);
-        break;
-      case BetterPlayerEventType.finished:
+    _player!.stream.position.listen((pos) {
+      if (!mounted) return;
+      _currentPosition = pos.inSeconds;
+    });
+    _player!.stream.playing.listen((playing) {
+      if (!mounted) return;
+      setState(() => _isPlaying = playing);
+      if (!_isLocalAction && _isHost) {
+        _updateHostState(playing ? 'playing' : 'paused');
+      }
+    });
+    _player!.stream.duration.listen((dur) {
+      if (mounted && dur.inSeconds > 0) {
+        _lastDuration = dur.inSeconds;
+      }
+    });
+    _player!.stream.completed.listen((completed) {
+      if (completed && mounted) {
         setState(() => _videoState = 'paused');
-        break;
-      default:
-        break;
-    }
+      }
+    });
+
+    setState(() => _isLoading = false);
   }
 
   /// Bắt đầu timer lưu thời lượng mỗi 5 giây
@@ -354,7 +295,7 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
             if (!mounted || _player == null) return;
             final newPos = _currentPosition;
             if (playing && newPos == pos) {
-              _player?.seekTo(Duration(seconds: pos + 1));
+              _player?.seek(Duration(seconds: pos + 1));
               Future.delayed(const Duration(milliseconds: 500), () {
                 if (mounted) _player?.play();
               });
@@ -431,12 +372,10 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
       // Parse m3u8 duration trước khi setup player
       await _fetchM3u8Duration(playUrl, headers);
 
-      await _player?.setupDataSource(BetterPlayerDataSource(
-        BetterPlayerDataSourceType.network,
-        playUrl,
-        headers: headers,
-        overriddenDuration: _lastDuration > 0 ? Duration(seconds: _lastDuration) : null,
-      ));
+      await _player?.open(
+        Media(playUrl, httpHeaders: headers),
+        play: true,
+      );
 
       setState(() {
         _isLoading = false;
@@ -629,7 +568,7 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
       final diff = (_currentPosition - mobileTime).abs();
       if (diff > 1) {
         _setLocalAction();
-        _player?.seekTo(Duration(seconds: mobileTime.toInt()));
+        _player?.seek(Duration(seconds: mobileTime.toInt()));
       }
     }
   }
@@ -651,12 +590,12 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
     // Fallback: restore volume sau 3s nếu seek callback fail
     _seekRetryTimer = Timer(const Duration(seconds: 3), () {
       if (mounted && _player != null) {
-        _player?.setVolume(_isMuted ? 0.0 : (_volume > 0 ? _volume / 100.0 : 1.0));
+        _player?.setVolume(_isMuted ? 0.0 : (_volume > 0 ? _volume : 100.0));
       }
     });
 
     // Seek — +0.5s offset để tránh keyframe trễ
-    _player?.seekTo(Duration(milliseconds: (targetTime * 1000 + 500).toInt()));
+    _player?.seek(Duration(milliseconds: (targetTime * 1000 + 500).toInt()));
     // Đợi 300ms
     Future.delayed(const Duration(milliseconds: 300), () {
       _seekRetryTimer?.cancel();
@@ -664,12 +603,12 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
       final actual = _currentPosition;
       final diff = (actual - targetTime).abs();
       if (diff > 5) {
-        _player?.seekTo(Duration(milliseconds: (targetTime * 1000 + 500).toInt()));
+        _player?.seek(Duration(milliseconds: (targetTime * 1000 + 500).toInt()));
       }
       // Restore volume + play
       Future.delayed(const Duration(milliseconds: 200), () {
         if (mounted && _player != null) {
-          _player?.setVolume(_isMuted ? 0.0 : (_volume > 0 ? _volume / 100.0 : 1.0));
+          _player?.setVolume(_isMuted ? 0.0 : (_volume > 0 ? _volume : 100.0));
           _player?.play();
           _setLocalAction();
           _updateHostState('playing');
@@ -919,7 +858,7 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
             // Restore video volume sau khi audio mode đổi
             Future.delayed(const Duration(milliseconds: 300), () {
               if (mounted && _player != null) {
-                final vol = _isMuted ? 0.0 : (_volume > 0 ? _volume / 100.0 : 1.0);
+                final vol = _isMuted ? 0.0 : (_volume > 0 ? _volume : 100.0);
                 _player?.setVolume(vol);
               }
             });
@@ -939,7 +878,7 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
 
       // Restore video volume — audio mode change có thể đã giảm volume
       if (success && mounted && _player != null) {
-        final vol = _isMuted ? 0.0 : (_volume > 0 ? _volume / 100.0 : 1.0);
+        final vol = _isMuted ? 0.0 : (_volume > 0 ? _volume : 100.0);
         _player?.setVolume(vol);
       }
 
@@ -1396,9 +1335,9 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
             alignment: Alignment.center,
             children: [
               // Video (không hiện controls mặc định)
-              if (_player != null && _isPlayerReady)
-                BetterPlayer(
-                  controller: _player!,
+              if (_videoController != null && _isPlayerReady)
+                Video(
+                  controller: _videoController!,
                   key: _playerGlobalKey,
                 ),
               // Loading
@@ -1464,7 +1403,7 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
                           _setLocalAction();
 
 
-                          _player?.seekTo(newPos);
+                          _player?.seek(newPos);
                           _updateHostState(_videoState, position: newPos.inSeconds.toDouble());
                           _saveWatchtime();
                         },
@@ -1496,7 +1435,7 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
                           _setLocalAction();
 
 
-                          _player?.seekTo(newPos);
+                          _player?.seek(newPos);
                           _updateHostState(_videoState, position: newPos.inSeconds.toDouble());
                           _saveWatchtime();
                         },
@@ -1520,7 +1459,7 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
                             _setLocalAction();
 
 
-                            _player?.seekTo(newPos);
+                            _player?.seek(newPos);
                             _updateHostState(_videoState, position: newPos.inSeconds.toDouble());
                             _saveWatchtime();
                           },
@@ -1547,7 +1486,7 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
                             _setLocalAction();
 
 
-                            _player?.seekTo(newPos);
+                            _player?.seek(newPos);
                             _updateHostState(_videoState, position: newPos.inSeconds.toDouble());
                             _saveWatchtime();
                           },
@@ -1796,7 +1735,7 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
                         _setLocalAction();
 
 
-                        _player?.seekTo(newPos);
+                        _player?.seek(newPos);
                         _updateHostState(_videoState, position: newPos.inSeconds.toDouble());
                         _saveWatchtime();
                       }
@@ -1886,7 +1825,7 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
                                 setState(() {
                                   _volume = val;
                                   _isMuted = val == 0;
-                                  _player?.setVolume(val / 100.0);
+                                  _player?.setVolume(val);
                                 });
                               },
                             ),
@@ -1938,7 +1877,7 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
     final nextIdx = (idx + 1) % _speeds.length;
     setState(() {
       _playbackSpeed = _speeds[nextIdx];
-      _player?.setSpeed(_playbackSpeed);
+      _player?.setRate(_playbackSpeed);
     });
 
     // Auto reset to x1 when caught up with host
@@ -1958,7 +1897,7 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
       if (diff <= 1.0) {
         setState(() {
           _playbackSpeed = 1.0;
-          _player?.setSpeed(1.0);
+          _player?.setRate(1.0);
         });
         timer.cancel();
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1993,7 +1932,7 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
     } else {
       // Đang mute → unmute
       _isMuted = false;
-      _player?.setVolume(_volume > 0 ? _volume / 100.0 : 1.0);
+      _player?.setVolume(_volume > 0 ? _volume : 100.0);
     }
     setState(() {});
   }
@@ -2153,7 +2092,7 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
                                     setDialogState(() => _volume = val);
                                     setState(() {
                                       _isMuted = val == 0;
-                                      _player?.setVolume(val / 100.0);
+                                      _player?.setVolume(val);
                                     });
                                   },
                                   ),

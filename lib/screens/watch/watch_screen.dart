@@ -8,7 +8,8 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:dio/dio.dart';
-import 'package:better_player_plus/better_player_plus.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 import 'package:phimhay_app/config/app_config.dart';
 import 'package:phimhay_app/config/theme.dart';
 import 'package:phimhay_app/config/responsive.dart';
@@ -96,7 +97,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   final Dio _dio = Dio();
   final MovieService _movieService = MovieService();
   InAppWebViewController? _webController;
-  BetterPlayerController? _bpController;
+  Player? _player;
+  VideoController? _videoController;
   final GlobalKey _bpGlobalKey = GlobalKey();
   // Prefetch — giữ đơn giản ban đầu
   String _prefetchUrl = '';
@@ -483,7 +485,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   void _muteForAdSkip() {
     if (_adMuted) return;
     _adMuted = true;
-    _bpController?.setVolume(0.0);
+    _player?.setVolume(0.0);
     debugPrint('AD SKIP: muted');
   }
 
@@ -493,42 +495,26 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _adUnmuteTimer = Timer(const Duration(milliseconds: 800), () {
       if (!mounted) return;
       _adMuted = false;
-      final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0) / 100.0);
-      _bpController?.setVolume(restoreVol);
+      final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
+      _player?.setVolume(restoreVol);
       debugPrint('AD SKIP: unmuted, volume=$restoreVol');
     });
   }
 
-  /// ★ Skip ad zone: Mute → Pause → Re-setup → Wait ready → Seek → Unmute
+  /// ★ Skip ad zone: Mute → Pause → Seek → Unmute
   void _skipAdZone(int seekToSec) {
     _adSkipping = true;
     final wasPlaying = _isPlaying;
 
-    // Step 1: MUTE ngay lập tức → zero audio leak
     _muteForAdSkip();
+    _player?.pause();
 
-    // Step 2: Pause player → stop playback
-    _bpController?.pause();
-
-    // Step 3: Re-setup data source
-    final headers = <String, String>{};
-    if (!kIsWeb) {
-      headers['Referer'] = AppConfig.baseUrl;
-      headers['User-Agent'] = 'Mozilla/5.0';
-    }
-    final dataSource = BetterPlayerDataSource(
-      BetterPlayerDataSourceType.network,
-      _currentUrl,
-      headers: headers,
-    );
-    _bpController?.setupDataSource(dataSource);
-
-    // Step 4: Wait for initialized event then seek
-    Future.delayed(const Duration(seconds: 2), () {
+    // media_kit: seek trực tiếp, không cần re-setup data source
+    Future.delayed(const Duration(milliseconds: 500), () {
       if (!mounted) return;
-      _bpController!.seekTo(Duration(seconds: seekToSec)).then((_) {
+      _player!.seek(Duration(seconds: seekToSec)).then((_) {
         Future.delayed(const Duration(milliseconds: 500), () {
-          if (mounted && wasPlaying) _bpController?.play();
+          if (mounted && wasPlaying) _player?.play();
           _unmuteAfterAdSkip();
           Future.delayed(const Duration(seconds: 3), () {
             _adSkipping = false;
@@ -546,7 +532,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     // ★ MUTE + Pause để zero audio leak
     _muteForAdSkip();
-    _bpController?.pause();
+    _player?.pause();
 
     // Start countdown
     _adCountdownTimer?.cancel();
@@ -655,39 +641,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     });
   }
 
-  // ★ Fix A: Stuck detector — simplified for better_player_plus (event listener handles state)
+  // ★ Stuck detector — disabled cho media_kit (libmpv tự handle)
   void _startStuckDetector() {
     _stuckDetector?.cancel();
-    _stuckTickCount = 0;
-    _lastPositionForStuckCheck = 0;
-    _stuckDetector = Timer.periodic(const Duration(seconds: 2), (_) {
-      if (!mounted || _bpController == null) return;
-      final pos = _currentPosition;
-      final playing = _isPlaying;
-
-      // Nếu đang "play" nhưng position không thay đổi > 6s
-      if (playing && pos > 0 && pos == _lastPositionForStuckCheck) {
-        _stuckTickCount++;
-        if (_stuckTickCount >= 3) { // 3 ticks x 2s = 6s stuck
-          debugPrint('★ STUCK DETECTED: pos=$pos, trying recovery...');
-          _stuckTickCount = 0;
-          _bpController!.play();
-          Future.delayed(const Duration(seconds: 2), () {
-            if (!mounted || _bpController == null) return;
-            if (playing && _currentPosition == pos) {
-              debugPrint('★ STUCK RECOVERY: seek+play');
-              _bpController!.seekTo(Duration(seconds: pos + 1));
-              Future.delayed(const Duration(milliseconds: 500), () {
-                if (mounted) _bpController?.play();
-              });
-            }
-          });
-        }
-      } else {
-        _stuckTickCount = 0;
-      }
-      _lastPositionForStuckCheck = pos;
-    });
+    // Media_kit/libmpv tự quản lý playback state, không cần stuck detector
   }
 
   // ★ Fix B: State sync — no longer needed, handled by _onBetterPlayerEvent
@@ -758,7 +715,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     try {
     int pos = 0;
     int dur = 0;
-    if (_playerMode == _PlayerMode.hls && _bpController != null) {
+    if (_playerMode == _PlayerMode.hls && _player != null) {
       pos = _currentPosition;
       dur = _currentDuration;
     } else if (_playerMode == _PlayerMode.embed && _webController != null) {
@@ -834,7 +791,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         // iOS: pause vì PiP dùng AVPlayer riêng
         // Android: KHÔNG pause vì PiP dùng Flutter surface
         if (Platform.isIOS) {
-          _bpController?.pause();
+          _player?.pause();
         }
       }
     });
@@ -858,18 +815,18 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           if (Platform.isIOS) {
             // iOS: PiP dùng AVPlayer riêng → seek video chính về position PiP
             final position = await _pipChannel.invokeMethod('getPipPosition') ?? 0.0;
-            if (position > 0 && _bpController != null) {
-              await _bpController!.seekTo(Duration(seconds: (position as double).toInt()));
-              _bpController!.play();
-              final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0) / 100.0);
+            if (position > 0 && _player != null) {
+              await _player!.seek(Duration(seconds: (position as double).toInt()));
+              _player!.play();
+              final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
               await Future.delayed(const Duration(milliseconds: 200));
-              _bpController!.setVolume(restoreVol);
+              _player!.setVolume(restoreVol);
               debugPrint('PiP: seeked to ${position}s');
             }
           } else {
             // Android: video vẫn chạy trong PiP → chỉ restore volume
-            final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0) / 100.0);
-            _bpController?.setVolume(restoreVol);
+            final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
+            _player?.setVolume(restoreVol);
           }
         }
       } catch (_) {}
@@ -923,7 +880,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
       // Lưu vị trí hiện tại trước khi app vào background
-      if (_bpController != null) {
+      if (_player != null) {
         _positionBeforePause = _currentPos.inSeconds;
         _saveCurrentProgress();
       }
@@ -933,18 +890,23 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       // Re-lock brightness (OS có thể reset về auto khi app background)
       _lockBrightness();
 
+      // ★ FIX: Re-configure audio session khi resume — OS có thể reset về silent mode
+      if (Platform.isIOS && _playerMode == _PlayerMode.hls) {
+        _audioChannel.invokeMethod('configureForPlayback').catchError((_) {});
+      }
+
       // Quay lại app → restore audio session + volume
-      if (_bpController != null) {
+      if (_player != null) {
         // Restore volume theo user setting
-        final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0) / 100.0);
-        _bpController!.setVolume(restoreVol);
+        final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
+        _player!.setVolume(restoreVol);
 
         // ★ FIX: Nếu position bị reset về 0 → seek lại vị trí trước đó
         if (_positionBeforePause > 15 && _currentPosition < 5) {
-          _bpController!.seekTo(Duration(seconds: _positionBeforePause)).then((_) {
-            final restoreVol2 = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0) / 100.0);
-            _bpController!.setVolume(restoreVol2);
-            _bpController!.play();
+          _player!.seek(Duration(seconds: _positionBeforePause)).then((_) {
+            final restoreVol2 = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
+            _player!.setVolume(restoreVol2);
+            _player!.play();
           });
         }
       }
@@ -957,19 +919,19 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           // iOS: PiP dùng AVPlayer riêng → cần seek Flutter player về vị trí PiP
           _pipChannel.invokeMethod('getPipPosition').then((pos) {
             final position = (pos as double?) ?? 0;
-            if (position > 0 && _bpController != null) {
-              _bpController!.seekTo(Duration(seconds: position.toInt())).then((_) {
-                final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0) / 100.0);
-                _bpController!.setVolume(restoreVol);
-                _bpController!.play();
+            if (position > 0 && _player != null) {
+              _player!.seek(Duration(seconds: position.toInt())).then((_) {
+                final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
+                _player!.setVolume(restoreVol);
+                _player!.play();
               });
             }
           });
         } else {
           // Android: video vẫn chạy trong Flutter surface → chỉ restore volume
-          final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0) / 100.0);
-          _bpController?.setVolume(restoreVol);
-          _bpController?.play();
+          final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
+          _player?.setVolume(restoreVol);
+          _player?.play();
         }
       }
 
@@ -992,12 +954,17 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _doubleTapTimer?.cancel();
     _brightnessTimer?.cancel();
     _pendingServerSave?.cancel();
+    _seekRetryTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _saveProgressOnExit();
     ActivityService.stopWatching();
     _restoreOrientations();
     _cancelPrefetch();
-    _bpController?.dispose();
+    _subPosition?.cancel();
+    _subPlaying?.cancel();
+    _subDuration?.cancel();
+    _subCompleted?.cancel();
+    _player?.dispose();
     _webController?.dispose();
     super.dispose();
   }
@@ -1082,13 +1049,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   void _onLongPressStart() {
     _speedBeforeLongPress = _playbackSpeed;
     _isLongPressSpeedUp = true;
-    _bpController?.setSpeed(2.0);
+    _player?.setRate(2.0);
     setState(() {});
   }
 
   void _onLongPressEnd() {
     _isLongPressSpeedUp = false;
-    _bpController?.setSpeed(_speedBeforeLongPress);
+    _player?.setRate(_speedBeforeLongPress);
     setState(() {});
   }
 
@@ -1146,7 +1113,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (isM3u8) {
         _adMarkers = [];
         _initPlayer(url);
-        _fetchAdMarkers(url, _currentServerName);
+        // _fetchAdMarkers(url, _currentServerName);
       }
       if (mounted) setState(() { _playerMode = isM3u8 ? _PlayerMode.hls : _PlayerMode.embed; _isLoading = false; });
     } else {
@@ -1181,10 +1148,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
       // Ưu tiên HLS cho tất cả (mobile chạy được hết)
       if (m3u8.isNotEmpty) {
+
         _currentUrl = m3u8;
         _adMarkers = []; // Reset ad markers cho tap moi
         _initPlayer(m3u8);
-        _fetchAdMarkers(m3u8, _currentServerName);
+        // ★ TẠM TẮT: fetch ad markers gây conflict network với media_kit
+        //         // ★ TẠM TẮT: fetch ad markers gây conflict network với media_kit
+        // _fetchAdMarkers(m3u8, _currentServerName);
         if (mounted) setState(() { _playerMode = _PlayerMode.hls; _isLoading = false; });
       } else if (embed.isNotEmpty) {
         _currentUrl = embed;
@@ -1201,7 +1171,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   String _currentEmbedUrl = ''; // fallback embed URL cho episode hiện tại
 
   int _lastSavedPosition = 0; // Track vị trí đã lưu để detect seek
+  int _lastUiUpdate = 0; // Throttle UI updates
   bool _seekCompleted = false; // Flag để track seek đã hoàn thành
+  Timer? _seekRetryTimer;
   bool _watchRoomActive = false; // Watch room đang mở → chặn save
   int _positionBeforePause = 0; // Vị trí trước khi app vào background
   int _seekTargetTime = 0; // Thời gian seek đang nhắm tới (chống position nhảy)
@@ -1262,86 +1234,87 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   // _setupPlayerSubscriptions() removed — replaced by _onBetterPlayerEvent in BetterPlayerConfiguration
 
-  void _onBetterPlayerEvent(BetterPlayerEvent event) {
-    if (!mounted) return;
+  StreamSubscription? _subPosition;
+  StreamSubscription? _subPlaying;
+  StreamSubscription? _subDuration;
+  StreamSubscription? _subCompleted;
 
-    switch (event.betterPlayerEventType) {
-      case BetterPlayerEventType.initialized:
-        // Extract duration from initialized event
-        final initDur = event.parameters?['duration'] as Duration? ?? Duration.zero;
-        if (initDur.inSeconds > 0 && _currentDur.inSeconds == 0) {
-          _currentDur = initDur;
-          _currentDuration = initDur.inSeconds;
-        }
+  void _initPlayerStreams() {
+    _subPosition?.cancel();
+    _subPlaying?.cancel();
+    _subDuration?.cancel();
+    _subCompleted?.cancel();
+
+    _subPosition = _player!.stream.position.listen((pos) {
+      if (!mounted) return;
+
+      _currentPos = pos;
+      _currentPosition = pos.inSeconds;
+
+      // ★ Throttle setState — chỉ update UI mỗi 500ms để tránh stutter
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (now - _lastUiUpdate > 500) {
+        _lastUiUpdate = now;
+        setState(() {});
+      }
+
+      // Auto-save progress mỗi 10s
+      final diff = (_currentPosition - _lastSavedPosition).abs();
+      if (diff > 10 && _currentPosition > 0) {
+        _lastSavedPosition = _currentPosition;
+        _saveCurrentProgress();
+      }
+      if (_currentDuration > 0 && _currentPosition >= _currentDuration - 30) {
+        _startPrefetch();
+      }
+      _showSkipIntro = _currentPosition >= 10 && _currentPosition <= 120;
+      // ★ TẠM TẮT: _checkAdZone gây mute nhầm trên R2 HLS streams
+      // _checkAdZone(_currentPosition);
+    });
+
+    _subPlaying = _player!.stream.playing.listen((playing) {
+
+      if (mounted) setState(() => _isPlaying = playing);
+    });
+
+    _subDuration = _player!.stream.duration.listen((dur) {
+      if (mounted && dur.inSeconds > 0) {
         setState(() {
-          _playerReady = true;
-          _isLoading = false;
+          _currentDur = dur;
+          _currentDuration = dur.inSeconds;
         });
-        // Seek to saved position
-        if (_currentPosition > 0 && !_seekCompleted) {
-          _bpController?.seekTo(Duration(seconds: _currentPosition)).then((_) {
-            _seekCompleted = true;
-            _bpController?.play();
-          });
-        }
-        break;
-      case BetterPlayerEventType.play:
-        if (mounted) setState(() => _isPlaying = true);
-        break;
-      case BetterPlayerEventType.pause:
-        if (mounted) setState(() => _isPlaying = false);
-        break;
-      case BetterPlayerEventType.progress:
-        final pos = event.parameters?['progress'] as Duration? ?? Duration.zero;
-        final dur = event.parameters?['duration'] as Duration? ?? Duration.zero;
-        if (mounted) {
-          setState(() {
-            _currentPos = pos;
-            _currentPosition = pos.inSeconds;
-            // Only update duration if it's valid (> 0)
-            if (dur.inSeconds > 0) {
-              _currentDur = dur;
-              _currentDuration = dur.inSeconds;
-            }
-          });
-          // Auto-save progress every 5 seconds of movement
-          final diff = (pos.inSeconds - _lastSavedPosition).abs();
-          if (diff > 5 && pos.inSeconds > 0) {
-            _lastSavedPosition = pos.inSeconds;
-            _saveCurrentProgress();
-          }
-          // Prefetch next episode when near end
-          if (_currentDuration > 0 && pos.inSeconds >= _currentDuration - 30) {
-            _startPrefetch();
-          }
-          // Skip intro button
-          _showSkipIntro = pos.inSeconds >= 10 && pos.inSeconds <= 120;
-          _checkAdZone(pos.inSeconds);
-        }
-        break;
-      case BetterPlayerEventType.finished:
-        // Video ended - auto play next episode or loop
-        break;
-      case BetterPlayerEventType.exception:
-        _fallbackToEmbed();
-        break;
-      default:
-        break;
-    }
+      }
+    });
+
+    _subCompleted = _player!.stream.completed.listen((completed) {
+      if (completed) {
+
+      }
+    });
   }
 
+  static const _audioChannel = MethodChannel('phimhay_app/audio');
+
   void _initPlayer(String url) {
-    _bpController?.dispose();
-    _bpController = null;
+    // ★ FIX: Cancel streams TRƯỚC dispose — dispose có thể emit position=0
+    _subPosition?.cancel();
+    _subPlaying?.cancel();
+    _subDuration?.cancel();
+    _subCompleted?.cancel();
+    _seekRetryTimer?.cancel();
+
+    // ★ FIX: Capture target position NGAY SAU khi cancel streams
+    // mà TRƯỚC KHI dispose player (dispose có thể emit event cuối = 0)
+    final targetPosition = _currentPosition;
+
+
+    _player?.dispose();
+    _player = null;
     _healthCheckTimer?.cancel();
     _playerReady = false;
-    // Không overwrite _seekCompleted ở đây — để caller quyết định
+    _adMuted = false;
 
-    // Proxy R2/Cloudflare links qua server để tránh CORS
     String playUrl = url;
-    if (url.contains('r2.dev') || url.contains('cloudflarestorage.com')) {
-      playUrl = AppConfig.proxyHlsUrl(url);
-    }
 
     final headers = <String, String>{};
     if (!kIsWeb) {
@@ -1349,63 +1322,85 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       headers['User-Agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
     }
 
-    // Dùng startPosition để player start đúng vị trí ngay từ đầu
+    // ★ FIX: Configure iOS audio session cho video playback TRƯỚC KHI tạo player
+    // Nếu không set → silent switch mute audio, hoặc audio không phát
+    if (Platform.isIOS) {
+      _audioChannel.invokeMethod('configureForPlayback').catchError((_) {});
+    }
+
     final startPos = _currentPosition > 0 ? Duration(seconds: _currentPosition) : Duration.zero;
-    // Nếu dùng startAt → đánh dấu seek completed để không seek lại
-    if (_currentPosition > 0) _seekCompleted = true;
 
-    final config = BetterPlayerConfiguration(
-      autoPlay: true,
-      startAt: startPos,
-      handleLifecycle: false,
-      allowedScreenSleep: false,
-      aspectRatio: 16 / 9,
-      fit: BoxFit.contain,
-      controlsConfiguration: const BetterPlayerControlsConfiguration(
-        showControls: false,
-      ),
-      eventListener: _onBetterPlayerEvent,
-    );
+    // Tạo media_kit Player
+    _player = Player();
+    _videoController = VideoController(_player!);
 
-    // Parse m3u8 duration trước, truyền vào player
-    _fetchM3u8Duration(playUrl, headers).then((_) {
-      if (!mounted) return;
+    // Lắng nghe state changes
+    _initPlayerStreams();
 
-      final dataSource = BetterPlayerDataSource(
-        BetterPlayerDataSourceType.network,
-        playUrl,
-        headers: headers,
-        overriddenDuration: _currentDuration > 0 ? Duration(seconds: _currentDuration) : null,
-      );
-
-      _bpController = BetterPlayerController(
-        config,
-        betterPlayerDataSource: dataSource,
-      );
-
-      setState(() {
-        _playerReady = false;
-        _isLoading = true;
-      });
-
-      // Health check
-      _healthCheckTimer = Timer(const Duration(seconds: 8), () {
-        if (!mounted || _bpController == null) return;
-        if (_currentPosition == 0 && !_playerReady) {
-          _fallbackToEmbed();
-        }
-      });
-
-      // Parse m3u8 for ad detection (async, non-blocking)
-      if (playUrl.contains('.m3u8')) {
-        _parseM3u8ForAds(playUrl);
-      }
-
-      _startProgressTimer();
+    setState(() {
+      _playerReady = false;
+      _isLoading = true;
     });
 
-    // Setup PiP ngay lập tức (không chờ fetch duration)
+    // Open (play) URL
+    _player!.open(
+      Media(playUrl, httpHeaders: headers),
+      play: true,
+    ).then((_) {
+      if (!mounted) return;
+      setState(() {
+        _playerReady = true;
+        _isLoading = false;
+      });
+
+      final userVol = _isMuted ? 0.0 : (_volume > 0 ? _volume : 100.0);
+      _player!.setVolume(userVol);
+
+
+      if (targetPosition > 0 && !_seekCompleted) {
+        // ★ FIX: HLS seek có thể bị player ignore nếu chưa buffer đủ
+        // → Retry seek cho đến khi position thực sự nhảy tới target
+        _performSeekRetry(targetPosition);
+      }
+    }).catchError((e) {
+
+      _fallbackToEmbed();
+    });
+
+    // Health check
+    _healthCheckTimer = Timer(const Duration(seconds: 8), () {
+      if (!mounted || _player == null) return;
+      if (_currentPosition == 0 && !_playerReady) {
+
+        _fallbackToEmbed();
+      }
+    });
+
+    // ★ TẠM TẮT: _parseM3u8ForAds fetch cùng URL qua Dio → conflict network với media_kit
+    // if (playUrl.contains('.m3u8')) {
+    //   _parseM3u8ForAds(playUrl);
+    // }
+
+    _startProgressTimer();
     _setupPip();
+  }
+
+  /// ★ Seek — 1 lần ngay + 1 lần retry sau 2s nếu chưa tới target
+  void _performSeekRetry(int targetSec) {
+    _seekRetryTimer?.cancel();
+    if (_seekCompleted || !mounted || _player == null) return;
+
+    // Seek lần đầu
+    _player!.seek(Duration(seconds: targetSec));
+
+    // Retry 1 lần sau 2s — nếu player đã buffer đủ thì seek sẽ work
+    _seekRetryTimer = Timer(const Duration(seconds: 2), () {
+      if (!mounted || _player == null || _seekCompleted) return;
+      if ((_currentPosition - targetSec).abs() > 5) {
+        _player!.seek(Duration(seconds: targetSec));
+      }
+      _seekCompleted = true;
+    });
   }
 
   /// Parse m3u8 to calculate total duration from #EXTINF tags
@@ -1450,8 +1445,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _seekCompleted = true;
 
     // Fire seek immediately — position stream sẽ confirm arrival
-    _bpController!.seekTo(Duration(seconds: _currentPosition)).then((_) {
-      if (mounted) _bpController!.play();
+    _player!.seek(Duration(seconds: _currentPosition)).then((_) {
+      if (mounted) _player!.play();
     });
   }
 
@@ -1539,12 +1534,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     if (newServerIdx == _selectedServer) return;
     if (newServerIdx < 0 || newServerIdx >= _servers.length) return;
 
+
+
     // Đánh dấu đang chuyển server → skip smartlink
     _switchingServer = true;
 
     // Lấy vị trí hiện tại TRƯỚC KHI chuyển server
     int currentPosition = 0;
-    if (_playerMode == _PlayerMode.hls && _bpController != null) {
+    if (_playerMode == _PlayerMode.hls && _player != null) {
       currentPosition = _currentPosition;
     } else if (_playerMode == _PlayerMode.embed && _webController != null) {
       currentPosition = _currentPosition;
@@ -1632,6 +1629,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     // Capture position TRƯỚC khi reset state
     final savedPosition = keepPosition ? _currentPosition : 0;
 
+
     if (!keepPosition) _saveCurrentProgress();
 
     // Cancel prefetch
@@ -1677,7 +1675,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (!_tryUsePrefetched(ep)) {
         _initPlayer(url);
       }
-      _fetchAdMarkers(url, _currentServerName);
+      // _fetchAdMarkers(url, _currentServerName);
       _updatePipUrl();
     }
 
@@ -1796,8 +1794,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     if (movieId <= 0) return;
 
     // DỪNG video trước, rồi lấy position
-    if (_playerMode == _PlayerMode.hls && _bpController != null) {
-      _bpController!.pause();
+    if (_playerMode == _PlayerMode.hls && _player != null) {
+      _player!.pause();
       await Future.delayed(const Duration(milliseconds: 200));
     } else if (_playerMode == _PlayerMode.embed && _webController != null) {
       try {
@@ -1810,7 +1808,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     // Lấy position SAU khi pause
     int pos = 0;
-    if (_playerMode == _PlayerMode.hls && _bpController != null) {
+    if (_playerMode == _PlayerMode.hls && _player != null) {
       pos = _currentPosition;
     } else if (_playerMode == _PlayerMode.embed && _webController != null) {
       try {
@@ -1847,7 +1845,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         await _saveCurrentProgress();
 
         // Pause player NGAY
-        _bpController?.pause();
+        _player?.pause();
         _webController?.evaluateJavascript(
           source: "document.querySelector('video')?.pause();",
         );
@@ -1867,9 +1865,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             _startProgressTimer();
             _startStuckDetector();
             await _loadWatchProgress();
-            if (_bpController != null && _currentPosition > 3) {
+            if (_player != null && _currentPosition > 3) {
               _seekCompleted = false;
-              await _bpController!.seekTo(Duration(seconds: _currentPosition));
+              await _player!.seek(Duration(seconds: _currentPosition));
               _seekCompleted = true;
               _lastSavedPosition = _currentPosition;
             }
@@ -1926,8 +1924,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   ]),
                 ),
               ),
-              // Badge player mode (debug only)
-              if (kDebugMode)
+              // Badge player mode — luôn hiện để biết đang chạy HLS hay Embed
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
@@ -1972,8 +1969,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     return Stack(
         fit: StackFit.expand,
         children: [
-          // ── HLS native player ──
-          if (_playerMode == _PlayerMode.hls && _bpController != null)
+          // ── HLS native player (media_kit) ──
+          if (_playerMode == _PlayerMode.hls && _videoController != null)
             AnimatedOpacity(
               opacity: _playerReady ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 300),
@@ -1981,10 +1978,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   ? Center(
                       child: AspectRatio(
                         aspectRatio: _aspectRatios[_aspectRatioIndex]!,
-                        child: BetterPlayer(controller: _bpController!, key: _bpGlobalKey),
+                        child: Video(controller: _videoController!, key: _bpGlobalKey, controls: NoVideoControls),
                       ),
                     )
-                  : BetterPlayer(controller: _bpController!, key: _bpGlobalKey),
+                  : Video(controller: _videoController!, key: _bpGlobalKey, controls: NoVideoControls),
             ),
 
           // ── Black overlay khi PiP active — CHỈ iOS (Android dùng Flutter surface → video tự hiện) ──
@@ -2001,7 +1998,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             ),
 
           // ── Buffering indicator (hiện khi HLS đang load nhưng chưa phát) ──
-          if (_playerMode == _PlayerMode.hls && _bpController != null && !_playerReady && !_isLoading)
+          if (_playerMode == _PlayerMode.hls && _player != null && !_playerReady && !_isLoading)
             const Center(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 CircularProgressIndicator(color: AppTheme.accent, strokeWidth: 3),
@@ -2065,7 +2062,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                           _seekTargetTime = target;
                           _lastSeekByUser = DateTime.now().millisecondsSinceEpoch;
                           if (mounted) setState(() => _currentPos = Duration(seconds: target));
-                          _bpController?.seekTo(Duration(seconds: target));
+                          _player?.seek(Duration(seconds: target));
                           _showDoubleTapFeedback(false);
                         },
                         onLongPressStart: (_) => _onLongPressStart(),
@@ -2093,7 +2090,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                           _seekTargetTime = target;
                           _lastSeekByUser = DateTime.now().millisecondsSinceEpoch;
                           if (mounted) setState(() => _currentPos = Duration(seconds: target));
-                          _bpController?.seekTo(Duration(seconds: target));
+                          _player?.seek(Duration(seconds: target));
                           _showDoubleTapFeedback(true);
                         },
                         onLongPressStart: (_) => _onLongPressStart(),
@@ -2304,12 +2301,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
-        if (_bpController == null) return;
+        if (_player == null) return;
         final current = _currentPosition;
         final target = current + 120;
         _seekTargetTime = target;
         if (mounted) setState(() => _currentPos = Duration(seconds: target));
-        _bpController!.seekTo(Duration(seconds: target));
+        _player!.seek(Duration(seconds: target));
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -2744,7 +2741,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               _seekTargetTime = target;
               _lastSeekByUser = DateTime.now().millisecondsSinceEpoch;
               if (mounted) setState(() => _currentPos = Duration(seconds: target));
-              _bpController?.seekTo(Duration(seconds: target));
+              _player?.seek(Duration(seconds: target));
               _showDoubleTapFeedback(false);
             },
             onLongPressStart: (_) => _onLongPressStart(),
@@ -2782,7 +2779,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   final target = max(0, pos.inSeconds - 10);
                   _seekTargetTime = target;
                   if (mounted) setState(() => _currentPos = Duration(seconds: target));
-                  _bpController?.seekTo(Duration(seconds: target));
+                  _player?.seek(Duration(seconds: target));
                 },
                 child: const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 12),
@@ -2795,7 +2792,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 onTapUp: (_) => setState(() => _playPressed = false),
                 onTapCancel: () => setState(() => _playPressed = false),
                 onTap: () {
-                  if (_isPlaying) { _bpController?.pause(); } else { _bpController?.play(); }
+                  if (_isPlaying) { _player?.pause(); } else { _player?.play(); }
                 },
                 child: AnimatedScale(
                   scale: _playPressed ? 0.88 : 1.0,
@@ -2821,7 +2818,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   final target = pos.inSeconds + 10;
                   _seekTargetTime = target;
                   if (mounted) setState(() => _currentPos = Duration(seconds: target));
-                  _bpController?.seekTo(Duration(seconds: target));
+                  _player?.seek(Duration(seconds: target));
                 },
                 child: const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 12),
@@ -2851,7 +2848,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               _seekTargetTime = target;
               _lastSeekByUser = DateTime.now().millisecondsSinceEpoch;
               if (mounted) setState(() => _currentPos = Duration(seconds: target));
-              _bpController?.seekTo(Duration(seconds: target));
+              _player?.seek(Duration(seconds: target));
               _showDoubleTapFeedback(true);
             },
             onLongPressStart: (_) => _onLongPressStart(),
@@ -2922,7 +2919,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                       _seekTargetTime = targetSec;
                       _lastSeekByUser = DateTime.now().millisecondsSinceEpoch;
                       if (mounted) setState(() => _currentPos = Duration(seconds: targetSec));
-                      _bpController?.seekTo(Duration(seconds: targetSec));
+                      _player?.seek(Duration(seconds: targetSec)).then((_) {
+                        Future.delayed(const Duration(milliseconds: 300), () {
+                          if (mounted && !_isPlaying) {
+                            _player?.play();
+                          }
+                        });
+                      });
                     },
                   ),
                 ),
@@ -3000,7 +3003,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                       value: (_currentDur.inSeconds > 0 ? _currentPos.inSeconds / _currentDur.inSeconds : 0.0).clamp(0.0, 1.0),
                       onChanged: (v) {
                         final t = (v * _currentDur.inSeconds).toInt();
-                        _bpController?.seekTo(Duration(seconds: t));
+                        _player?.seek(Duration(seconds: t));
                         if (mounted) setState(() => _currentPos = Duration(seconds: t));
                       },
                     ),
@@ -3016,7 +3019,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 // Play/Pause
                 GestureDetector(
                   onTap: () {
-                    if (_isPlaying) { _bpController?.pause(); } else { _bpController?.play(); }
+                    if (_isPlaying) { _player?.pause(); } else { _player?.play(); }
                   },
                   child: Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 28),
                 ),
@@ -3025,7 +3028,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   onTap: () {
                     final pos = _currentPos;
                     final target = max(0, pos.inSeconds - 10);
-                    _bpController?.seekTo(Duration(seconds: target));
+                    _player?.seek(Duration(seconds: target));
                   },
                   child: const AppSvgIcon('rewind.svg', size: 22, color: Colors.white),
                 ),
@@ -3034,7 +3037,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   onTap: () {
                     final pos = _currentPos;
                     final target = pos.inSeconds + 10;
-                    _bpController?.seekTo(Duration(seconds: target));
+                    _player?.seek(Duration(seconds: target));
                   },
                   child: const AppSvgIcon('fast-forward.svg', size: 22, color: Colors.white),
                 ),
@@ -3123,7 +3126,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                             _currentPos = Duration(seconds: targetSec);
                           });
                         }
-                        _bpController?.seekTo(Duration(seconds: targetSec));
+                        _player?.seek(Duration(seconds: targetSec)).then((_) {
+                          // ★ FIX: Đảm bảo play tiếp sau seek
+                          Future.delayed(const Duration(milliseconds: 300), () {
+                            if (mounted && !_isPlaying) {
+                              _player?.play();
+                            }
+                          });
+                        });
                       },
                     ),
                   ),
@@ -3143,9 +3153,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               GestureDetector(
                 onTap: () {
                   if (_isPlaying) {
-                    _bpController?.pause();
+                    _player?.pause();
                   } else {
-                    _bpController?.play();
+                    _player?.play();
                   }
                 },
                 child: Padding(
@@ -3164,7 +3174,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   final target = max(0, pos.inSeconds - 10);
                   _seekTargetTime = target;
                   if (mounted) setState(() => _currentPos = Duration(seconds: target));
-                  _bpController?.seekTo(Duration(seconds: target));
+                  _player?.seek(Duration(seconds: target));
                 },
                 child: const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 6),
@@ -3178,7 +3188,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   final target = pos.inSeconds + 10;
                   _seekTargetTime = target;
                   if (mounted) setState(() => _currentPos = Duration(seconds: target));
-                  _bpController?.seekTo(Duration(seconds: target));
+                  _player?.seek(Duration(seconds: target));
                 },
                 child: const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 6),
@@ -3226,7 +3236,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                               setState(() {
                                 _volume = val;
                                 _isMuted = val == 0;
-                                _bpController?.setVolume(val / 100.0);
+                                _player?.setVolume(val);
                               });
                             },
                           ),
@@ -3269,7 +3279,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                     child: AppSvgIcon('airplay.svg', size: 20, color: Colors.white),
                   ),
                 ),
-              // Mic button → server popup
+              // Server (mic icon → server popup)
               if (_servers.isNotEmpty)
                 GestureDetector(
                   onTap: _showServerPopup,
@@ -3318,7 +3328,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     final nextIdx = (idx + 1) % _speeds.length;
     setState(() {
       _playbackSpeed = _speeds[nextIdx];
-      _bpController?.setSpeed(_playbackSpeed);
+      _player?.setRate(_playbackSpeed);
     });
   }
 
@@ -3446,7 +3456,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     return speeds.map((s) => _buildOptionRow('${s}x', _playbackSpeed == s, () {
       setState(() {
         _playbackSpeed = s;
-        _bpController?.setSpeed(s);
+        _player?.setRate(s);
       });
       setModalState(() => _settingsPanel = 'main');
     })).toList();
@@ -3514,10 +3524,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     final currentVol = _volume;
     if (currentVol > 0) {
       _isMuted = true;
-      _bpController?.setVolume(0.0);
+
+      _player?.setVolume(0.0);
     } else {
       _isMuted = false;
-      _bpController?.setVolume((_volume > 0 ? _volume : 100.0) / 100.0);
+      final vol = _volume > 0 ? _volume : 100.0;
+
+      _player?.setVolume(vol);
     }
     setState(() {});
   }
@@ -3677,7 +3690,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   void _retry() {
     setState(() { _error = null; _isLoading = true; _playerReady = false; });
-    if (_playerMode == _PlayerMode.hls && _bpController != null) {
+    if (_playerMode == _PlayerMode.hls && _player != null) {
       final retryUrl = kIsWeb ? AppConfig.proxyHlsUrl(_currentUrl) : _currentUrl;
       _initPlayer(retryUrl);
     } else if (_currentUrl.isNotEmpty) {

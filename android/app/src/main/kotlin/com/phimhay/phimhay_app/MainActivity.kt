@@ -2,6 +2,9 @@ package com.phimhay.phimhay_app
 
 import android.app.PictureInPictureParams
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -16,9 +19,12 @@ import java.io.File
 class MainActivity : FlutterActivity() {
     private val CHANNEL_PIP = "phimhay/pip"
     private val CHANNEL_INSTALL = "phimhay/install_apk"
+    private val CHANNEL_AUDIO = "phimhay_app/audio"
     private var pipChannel: MethodChannel? = null
     private var installChannel: MethodChannel? = null
+    private var audioChannel: MethodChannel? = null
     private var pipPosition: Double = 0.0
+    private var audioFocusRequest: AudioFocusRequest? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -96,6 +102,31 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        // ★ Audio channel — configure audio focus cho video playback
+        audioChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL_AUDIO)
+        audioChannel?.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "configureForPlayback" -> {
+                    requestAudioFocus()
+                    result.success(true)
+                }
+                "setSpeaker" -> {
+                    result.success(true)
+                }
+                "configAVSession" -> {
+                    requestAudioFocus()
+                    result.success(true)
+                }
+                "activateAudioSession" -> {
+                    result.success(true)
+                }
+                "checkMicPermission" -> {
+                    result.success(true)
+                }
+                else -> result.notImplemented()
+            }
+        }
     }
 
     private fun installApk(file: File) {
@@ -123,6 +154,28 @@ class MainActivity : FlutterActivity() {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         startActivity(intent)
+    }
+
+    // ★ Request audio focus cho video playback — đảm bảo audio không bị interrupted
+    private fun requestAudioFocus() {
+        val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
+        val attrs = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
+            .build()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(attrs)
+                .setOnAudioFocusChangeListener { }
+                .build()
+            audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+            audioManager.requestAudioFocus(focusRequest)
+            audioFocusRequest = focusRequest
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager.requestAudioFocus({ }, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN)
+        }
     }
 
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean) {

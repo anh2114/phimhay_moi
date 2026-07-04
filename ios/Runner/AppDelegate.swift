@@ -201,6 +201,19 @@ import AVKit
                     result(FlutterError(code: "SESSION_ERROR", message: error.localizedDescription, details: nil))
                 }
 
+            case "configureForPlayback":
+                // ★ FIX: Set audio session cho video playback — BẮT BUỘC trên iOS
+                // Nếu không set → silent switch sẽ mute audio, hoặc audio không phát
+                let session = AVAudioSession.sharedInstance()
+                do {
+                    try session.setCategory(.playback, mode: .moviePlayback,
+                        options: [.allowBluetooth, .allowBluetoothA2DP])
+                    try session.setActive(true)
+                    result(true)
+                } catch {
+                    result(FlutterError(code: "PLAYBACK_ERROR", message: error.localizedDescription, details: nil))
+                }
+
             case "checkMicPermission":
                 let session = AVAudioSession.sharedInstance()
                 switch session.recordPermission {

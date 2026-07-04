@@ -1,7 +1,7 @@
 name: phimhay_app
 description: "Xiao Phim - Xem phim online"
 publish_to: 'none'
-version: 3.5.0+27
+version: 3.5.3+31
 
 environment:
   sdk: ^3.6.2
@@ -17,35 +17,37 @@ dependencies:
   carousel_slider: ^5.0.0
   flutter_cache_manager: ^3.4.1
   shared_preferences: ^2.3.4
-  share_plus: ^7.2.2
-  google_fonts: ^6.3.0
+  share_plus: ^13.2.0
+  google_fonts: ^8.1.0
   shimmer: ^3.0.0
   flutter_inappwebview: ^6.1.5
-  toastification: ^2.3.0
-  better_player_plus: ^1.2.1
+  toastification: ^3.2.0
+  media_kit: ^1.2.6
+  media_kit_video: ^1.2.5
+  media_kit_libs_android_video: ^1.3.8
   dio_cookie_manager: ^3.4.0
   cookie_jar: ^4.0.9
   url_launcher: ^6.2.5
   wakelock_plus: ^1.1.6
-  screen_brightness: ^0.2.2+1
-  firebase_core: ^3.13.0
-  firebase_messaging: ^15.2.6
+  screen_brightness: ^2.1.11
+  firebase_core: ^4.11.0
+  firebase_messaging: ^16.4.1
   image_picker: ^1.1.2
   path_provider: ^2.1.4
-  flutter_webrtc: ^0.12.1
-  permission_handler: ^11.3.1
-  package_info_plus: ^9.0.1
-  device_info_plus: ^10.1.0
+  flutter_webrtc: ^1.5.2
+  permission_handler: ^12.0.3
+  package_info_plus: ^10.1.0
+  device_info_plus: ^13.2.0
   qr_flutter: ^4.1.0
-  liquid_glass_widgets: ^0.17.1
+  liquid_glass_widgets: ^0.21.0
   startapp_sdk: ^1.0.1
   stack_appodeal_flutter: ^4.2.0
-  flutter_secure_storage: ^9.2.4
+  flutter_secure_storage: ^10.3.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^5.0.0
+  flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.3
 
 flutter_launcher_icons:
