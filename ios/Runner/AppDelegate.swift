@@ -85,6 +85,27 @@ import AVKit
                 self?.pipPlayer?.replaceCurrentItem(with: AVPlayerItem(url: url))
                 result(true)
 
+            case "updatePipPosition":
+                guard let args = call.arguments as? [String: Any],
+                      let position = args["position"] as? Double else {
+                    result(false)
+                    return
+                }
+                self?.lastPipPosition = position
+                // ★ FIX: Seek PiP player đến position mới nhất khi Flutter gọi update
+                if let player = self?.pipPlayer, position > 0 {
+                    player.seek(
+                        to: CMTime(seconds: position, preferredTimescale: 600),
+                        toleranceBefore: .zero,
+                        toleranceAfter: .zero
+                    )
+                }
+                result(true)
+
+            case "setAutoPip":
+                // iOS không cần auto-PiP (iOS PiP là manual button tap)
+                result(true)
+
             default:
                 result(FlutterMethodNotImplemented)
             }
@@ -427,6 +448,8 @@ extension AppDelegate: AVPictureInPictureControllerDelegate {
 
     func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
         pipPlayer?.pause()
+        // ★ FIX: Gửi callback onPipStopped về Flutter để restore video playback
+        pipChannel?.invokeMethod("onPipStopped", arguments: nil)
         // ★ FIX: restore audio session về .playback (video) thay vì .voiceChat
         // .voiceChat có AGC tự giảm volume → âm thanh bị nhỏ
         do {

@@ -2,6 +2,7 @@ package com.phimhay.phimhay_app
 
 import android.app.PictureInPictureParams
 import android.content.Intent
+import android.content.res.Configuration
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
@@ -25,6 +26,7 @@ class MainActivity : FlutterActivity() {
     private var audioChannel: MethodChannel? = null
     private var pipPosition: Double = 0.0
     private var audioFocusRequest: AudioFocusRequest? = null
+    private var autoPipEnabled: Boolean = false // Flutter controlling auto-PiP
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -62,10 +64,21 @@ class MainActivity : FlutterActivity() {
                         result.error("ERROR", e.message, null)
                     }
                 }
+                "setAutoPip" -> {
+                    autoPipEnabled = call.argument<Boolean>("enabled") ?: false
+                    result.success(true)
+                }
+                "updatePipPosition" -> {
+                    pipPosition = (call.argument<Number>("position") ?: 0).toDouble()
+                    result.success(true)
+                }
                 "isPipActive" -> {
                     result.success(isInPictureInPictureMode)
                 }
                 "stopPip" -> {
+                    if (isInPictureInPictureMode && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        // Exit PiP
+                    }
                     result.success(true)
                 }
                 "getPipPosition" -> {
@@ -178,10 +191,25 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean) {
-        super.onPictureInPictureModeChanged(isInPictureInPictureMode)
+    // ★ Auto-enter PiP khi user bấm Home hoặc chuyển app (giống YouTube)
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (autoPipEnabled && !isInPictureInPictureMode && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                val params = PictureInPictureParams.Builder()
+                    .setAspectRatio(Rational(16, 9))
+                    .build()
+                enterPictureInPictureMode(params)
+            } catch (_: Exception) {}
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration?) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         if (isInPictureInPictureMode) {
             pipChannel?.invokeMethod("onPipStarted", null)
+        } else {
+            pipChannel?.invokeMethod("onPipStopped", null)
         }
     }
 }
