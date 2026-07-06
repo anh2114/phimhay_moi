@@ -235,7 +235,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   // ── Load subtitles for current episode ──────────────────
-  // Chỉ load phụ đề khi server có "4K" trong tên
+  // Không load phụ đề cho server 4K (server 4K đã có phụ đề cứng)
   bool get _isCurrentServer4K {
     if (_servers.isEmpty || _selectedServer >= _servers.length) return false;
     final name = (_servers[_selectedServer]['server_name'] ?? '').toString();
@@ -244,7 +244,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   Future<void> _loadSubtitles(Map<String, dynamic> episode) async {
     final slug = widget.movieSlug ?? '';
-    if (slug.isEmpty || !_isCurrentServer4K) {
+    if (slug.isEmpty || _isCurrentServer4K) {
       setState(() { _subtitles = []; _subtitleEnabled = false; });
       return;
     }
@@ -2791,8 +2791,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               const SizedBox(width: 40),
               // Server (mic icon → server popup)
               _buildToolbarItem(Icons.mic_none_rounded, _servers.isNotEmpty ? (_servers[_selectedServer]['server_name']?.toString() ?? 'Server') : 'Server', _showServerPopup),
-              // Phụ đề — chỉ hiện khi server 4K
-              if (_isCurrentServer4K) ...[
+              // Phụ đề — KHÔNG hiện cho server 4K
+              if (!_isCurrentServer4K) ...[
                 const SizedBox(width: 40),
                 _buildToolbarItem(Icons.subtitles_rounded, 'Phụ đề', _showSettingsPopup),
               ],
