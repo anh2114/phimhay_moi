@@ -255,14 +255,28 @@ import AVKit
     // MARK: - PiP Setup
 
     private func setupPipController(url: URL, position: Double = 0, headers: [String: String] = [:]) {
-        // Huỷ observer cũ trước
+        // ★ FIX: Dọn dẹp hoàn toàn player cũ trước khi tạo mới
         playerItemObserver?.invalidate()
         playerItemObserver = nil
         pendingStartResult = nil
 
         pipController?.delegate = nil
+        pipController?.stopPictureInPicture()
+        pipPlayer?.pause()
         pipPlayerLayer?.removeFromSuperlayer()
+        pipPlayer = nil
+        pipPlayerLayer = nil
+        pipController = nil
         stopPositionTimer()
+
+        // ★ FIX: Configure audio session TRƯỚC KHI tạo player (bắt buộc cho PiP)
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback,
+                options: [.allowBluetooth, .allowBluetoothA2DP])
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            print("PiP: audio session setup error: \(error)")
+        }
 
         // Dùng AVURLAsset với custom headers nếu có
         let asset: AVURLAsset
@@ -275,11 +289,13 @@ import AVKit
         let player = AVPlayer(playerItem: playerItem)
         player.preventsDisplaySleepDuringVideoPlayback = true
 
-        // AVPlayerLayer phải visible + có size để PiP render
+        // ★ FIX: AVPlayerLayer PHẢI visible + có size hợp lý để PiP render
+        // KHÔNG được set opacity = 0 hoặc.isHidden = true — iOS sẽ crash PiP
         let playerLayer = AVPlayerLayer(player: player)
-        playerLayer.frame = CGRect(x: 0, y: 0, width: 100, height: 100)
+        playerLayer.frame = CGRect(x: 0, y: 0, width: 1, height: 1) // 1x1 pixel, gần như ẩn
         playerLayer.isHidden = false
-        playerLayer.opacity = 0
+        playerLayer.opacity = 0.001 // Gần như 0 nhưng KHÔNG phải 0
+        playerLayer.videoGravity = .resizeAspect
 
         if let rootView = window?.rootViewController?.view {
             rootView.layer.addSublayer(playerLayer)
@@ -365,43 +381,67 @@ import AVKit
 
     /// Thực sự seek + play + startPictureInPicture sau khi biết player đã ready
     private func performStartPip(player: AVPlayer, pip: AVPictureInPictureController, position: Double, result: @escaping FlutterResult) {
+        // ★ FIX: Ensure audio session configured trước khi play
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback,
+                options: [.allowBluetooth, .allowBluetoothA2DP])
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            print("PiP: audio session error in performStartPip: \(error)")
+        }
+
+        let startPlayAndPip = {
+            player.play()
+            // ★ FIX: Đợi 0.3s để player thực sự开始playing trước khi start PiP
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                self?.tryStartPip(pip: pip, position: position, result: result)
+            }
+        }
+
         if position > 0 {
             player.seek(
                 to: CMTime(seconds: position, preferredTimescale: 600),
                 toleranceBefore: .zero,
                 toleranceAfter: .zero
-            ) { [weak self, weak pip] finished in
+            ) { finished in
                 guard finished else { return }
-                player.play()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    self?.tryStartPip(pip: pip, position: position, result: result)
-                }
+                startPlayAndPip()
             }
         } else {
-            player.play()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                self?.tryStartPip(pip: pip, position: position, result: result)
-            }
+            startPlayAndPip()
         }
     }
 
     private func tryStartPip(pip: AVPictureInPictureController?, position: Double, result: @escaping FlutterResult) {
-        guard let pip = pip else { result(false); return }
+        guard let pip = pip else {
+            print("PiP: tryStartPip — pip controller is nil")
+            result(false)
+            return
+        }
 
         if pip.isPictureInPicturePossible {
             pip.startPictureInPicture()
             print("PiP: started at \(position)s ✓")
             result(true)
         } else {
-            // Thử lại sau 0.5s thêm
+            // ★ FIX: Thử lại nhiều lần hơn (3 lần, mỗi lần 0.5s)
+            print("PiP: not possible yet, retrying...")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 if pip.isPictureInPicturePossible {
                     pip.startPictureInPicture()
-                    print("PiP: started at \(position)s (retry) ✓")
+                    print("PiP: started at \(position)s (retry 1) ✓")
                     result(true)
                 } else {
-                    print("PiP: not possible even after retry")
-                    result(false)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        if pip.isPictureInPicturePossible {
+                            pip.startPictureInPicture()
+                            print("PiP: started at \(position)s (retry 2) ✓")
+                            result(true)
+                        } else {
+                            print("PiP: not possible after 3 attempts")
+                            result(false)
+                        }
+                    }
                 }
             }
         }
@@ -459,8 +499,10 @@ extension AppDelegate: AVPictureInPictureControllerDelegate {
     }
 
     func pictureInPictureController(_ controller: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
-        print("PiP: failed — \(error.localizedDescription)")
+        print("PiP: FAILED to start — \(error.localizedDescription)")
         stopPositionTimer()
+        // ★ FIX: Gửi onPipStopped về Flutter để cleanup overlay + restore video
+        pipChannel?.invokeMethod("onPipStopped", arguments: nil)
     }
 
     func pictureInPictureControllerRestoreUserInterfaceForPictureInPictureStop(_ controller: AVPictureInPictureController, completionHandler: @escaping (Bool) -> Void) {

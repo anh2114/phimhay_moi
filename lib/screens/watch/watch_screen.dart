@@ -801,14 +801,29 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         }
       } else if (call.method == 'onPipStopped') {
         debugPrint('PiP: native callback — PiP stopped');
-        // Android: PiP exited → player vẫn chạy, chỉ cần restore state
-        if (Platform.isAndroid && _pipActive) {
+        if (_pipActive) {
           _pipActive = false;
           _pipPollTimer?.cancel();
           _isResumingFromPip = true;
-          final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
-          _player?.setVolume(restoreVol);
-          _player?.play();
+
+          if (Platform.isIOS) {
+            // ★ FIX: iOS PiP dùng AVPlayer riêng → seek Flutter player về position PiP
+            final position = await _pipChannel.invokeMethod('getPipPosition') ?? 0.0;
+            if (position > 0 && _player != null) {
+              await Future.delayed(const Duration(milliseconds: 300));
+              await _player!.seek(Duration(seconds: (position as double).toInt()));
+              final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
+              _player!.setVolume(restoreVol);
+              _player!.play();
+              debugPrint('PiP: iOS resumed, seeked to ${position}s');
+            }
+          } else {
+            // Android: player vẫn chạy trong Flutter surface → chỉ restore volume
+            final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
+            _player?.setVolume(restoreVol);
+            _player?.play();
+          }
+
           Future.delayed(const Duration(milliseconds: 500), () {
             _isResumingFromPip = false;
           });
@@ -880,15 +895,24 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     }).catchError((_) {});
   }
 
-  /// Bật PiP — fire-and-forget, không block UI
+  /// Bật PiP — KHÔNG set _pipActive ngay, chờ onPipStarted callback từ native
   void _startPip() {
     final position = _currentPos.inSeconds.toDouble();
-    _pipActive = true;
-    _startPipPoll();
-    // Cập nhật position lên native trước khi start
+    // ★ FIX: KHÔNG set _pipActive = true ở đây — chờ onPipStarted từ native
+    // Nếu set ngay mà PiP fail → overlay hiện mà PiP không active
     _pipChannel.invokeMethod('updatePipPosition', {'position': position}).catchError((_) {});
     _pipChannel.invokeMethod('startPip', {'position': position}).then((result) {
       debugPrint('PiP: startPip result=$result, position=$position');
+      if (result == true) {
+        // ★ FIX: Chỉ set _pipActive khi native confirm PiP started
+        _pipActive = true;
+        _startPipPoll();
+      } else {
+        // PiP failed to start
+        _pipActive = false;
+        _pipPollTimer?.cancel();
+        debugPrint('PiP: startPip returned false');
+      }
     }).catchError((e) {
       debugPrint('PiP: startPip ERROR=$e');
       _pipActive = false;
