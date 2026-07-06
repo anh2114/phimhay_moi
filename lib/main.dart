@@ -96,9 +96,7 @@ class XiaoPhimApp extends StatelessWidget {
       theme: AppTheme.darkTheme,
       debugShowCheckedModeBanner: false,
       home: SplashScreen(child: const HomeScreen()),
-      routes: {
-        '/debug/ads': (_) => const Scaffold(body: Center(child: Text('Ad debug removed'))),
-      },
+      routes: {},
     );
   }
 }

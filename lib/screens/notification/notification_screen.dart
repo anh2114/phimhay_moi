@@ -11,7 +11,7 @@ import '../../widgets/bottom_nav.dart';
 import '../home/home_screen.dart';
 import '../auth/auth_screen.dart';
 import '../actors/actors_list_screen.dart';
-import '../../services/smartlink_service.dart';
+
 
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});
