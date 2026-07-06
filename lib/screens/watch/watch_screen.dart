@@ -235,28 +235,34 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   // ── Load subtitles for current episode ──────────────────
+  // Chỉ load phụ đề khi server có "4K" trong tên
+  bool get _isCurrentServer4K {
+    if (_servers.isEmpty || _selectedServer >= _servers.length) return false;
+    final name = (_servers[_selectedServer]['server_name'] ?? '').toString();
+    return name.toUpperCase().contains('4K');
+  }
+
   Future<void> _loadSubtitles(Map<String, dynamic> episode) async {
     final slug = widget.movieSlug ?? '';
-    if (slug.isEmpty) {
+    if (slug.isEmpty || !_isCurrentServer4K) {
       setState(() { _subtitles = []; _subtitleEnabled = false; });
       return;
     }
 
-    // 1. Try subtitles.php API — chỉ lấy SRT tập hiện tại
+    // 1. Try subtitles.php API — hỗ trợ cả SRT và ASS
     try {
       final epSlug = (episode['ep_slug'] ?? episode['ep_name'] ?? '').toString();
       final res = await ApiClient.get('/subtitles.php', params: {'slug': slug, 'episode': epSlug});
       final data = res.data;
       if (data is Map<String, dynamic> && data['success'] == true) {
         final list = data['subtitles'] as List<dynamic>? ?? [];
-        // Chỉ lấy SRT movie-level hoặc đúng tập, bỏ qua SRT tập khác
         for (final item in list) {
-          final srtUrl = (item['url'] ?? '').toString();
-          if (srtUrl.isEmpty) continue;
+          final subUrl = (item['url'] ?? '').toString();
+          if (subUrl.isEmpty) continue;
           try {
-            final subs = await _srtParser.fetchAndParse(srtUrl);
+            final subs = await _fetchSubtitleUrl(subUrl);
             if (mounted && subs.isNotEmpty) {
-              _currentSubtitleUrl = srtUrl;
+              _currentSubtitleUrl = subUrl;
               setState(() { _subtitles = subs; _subtitleEnabled = true; });
               return;
             }
@@ -265,15 +271,19 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       }
     } catch (_) {}
 
-    // 2. Fallback: try convention URLs
+    // 2. Fallback: try convention URLs (SRT + ASS + VTT)
     final urlsToTry = <String>[
       '${AppConfig.baseUrl}/art/$slug/${slug}_vi.srt',
       '${AppConfig.baseUrl}/art/$slug/${slug}.srt',
+      '${AppConfig.baseUrl}/art/$slug/${slug}_vi.ass',
+      '${AppConfig.baseUrl}/art/$slug/${slug}.ass',
+      '${AppConfig.baseUrl}/art/$slug/${slug}_vi.vtt',
+      '${AppConfig.baseUrl}/art/$slug/${slug}.vtt',
     ];
 
     for (final url in urlsToTry) {
       try {
-        final subs = await _srtParser.fetchAndParse(url);
+        final subs = await _fetchSubtitleUrl(url);
         if (mounted && subs.isNotEmpty) {
           _currentSubtitleUrl = url;
           setState(() { _subtitles = subs; _subtitleEnabled = true; });
@@ -283,6 +293,18 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     }
     // No subtitles found
     setState(() { _subtitles = []; _subtitleEnabled = false; });
+  }
+
+  /// Fetch subtitle file and auto-detect format from URL extension
+  Future<List<SubtitleEntry>> _fetchSubtitleUrl(String url) async {
+    final lower = url.toLowerCase();
+    if (lower.endsWith('.ass') || lower.endsWith('.ssa')) {
+      return _assParser.fetchAndParse(url);
+    }
+    if (lower.endsWith('.vtt')) {
+      return _vttParser.fetchAndParse(url);
+    }
+    return _srtParser.fetchAndParse(url);
   }
 
   /// Get subtitle text for current position
@@ -1039,6 +1061,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   // ── Subtitles ──
   final SrtParser _srtParser = SrtParser();
+  final AssParser _assParser = AssParser();
+  final VttParser _vttParser = VttParser();
   List<SubtitleEntry> _subtitles = [];
   bool _subtitleEnabled = false;
   String? _currentSubtitleUrl;
@@ -2767,9 +2791,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               const SizedBox(width: 40),
               // Server (mic icon → server popup)
               _buildToolbarItem(Icons.mic_none_rounded, _servers.isNotEmpty ? (_servers[_selectedServer]['server_name']?.toString() ?? 'Server') : 'Server', _showServerPopup),
-              const SizedBox(width: 40),
-              // Phụ đề
-              _buildToolbarItem(Icons.subtitles_rounded, 'Phụ đề', _showSettingsPopup),
+              // Phụ đề — chỉ hiện khi server 4K
+              if (_isCurrentServer4K) ...[
+                const SizedBox(width: 40),
+                _buildToolbarItem(Icons.subtitles_rounded, 'Phụ đề', _showSettingsPopup),
+              ],
             ],
           ),
         ],
