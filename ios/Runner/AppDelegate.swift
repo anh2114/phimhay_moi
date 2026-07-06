@@ -53,9 +53,10 @@ import AVKit
                 let args = call.arguments as? [String: Any]
                 let position = args?["position"] as? Double ?? 0
 
-                // Config audio session cho PiP
+                // ★ FIX: Config audio session đầy đủ options trước khi PiP
                 do {
-                    try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+                    try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback,
+                        options: [.allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
                     try AVAudioSession.sharedInstance().setActive(true)
                 } catch {
                     print("PiP: audio session error: \(error)")
@@ -258,6 +259,8 @@ import AVKit
         // ★ FIX: Dọn dẹp hoàn toàn player cũ trước khi tạo mới
         playerItemObserver?.invalidate()
         playerItemObserver = nil
+        rateObservation?.invalidate()
+        rateObservation = nil
         pendingStartResult = nil
 
         pipController?.delegate = nil
@@ -390,12 +393,12 @@ import AVKit
             print("PiP: audio session error in performStartPip: \(error)")
         }
 
-        let startPlayAndPip = {
+        let seekThenPlay: () -> Void = { [weak self] in
             player.play()
-            // ★ FIX: Đợi 0.3s để player thực sự开始playing trước khi start PiP
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                self?.tryStartPip(pip: pip, position: position, result: result)
-            }
+            print("PiP: player.play() called, waiting for rate > 0...")
+            // ★ FIX: Dùng KVO observe player.rate thay vì delay cố định
+            // Khi player.rate > 0 → player đang play → PiP possible
+            self?.observePlayerRateAndStartPip(player: player, pip: pip, position: position, result: result)
         }
 
         if position > 0 {
@@ -405,45 +408,81 @@ import AVKit
                 toleranceAfter: .zero
             ) { finished in
                 guard finished else { return }
-                startPlayAndPip()
+                seekThenPlay()
             }
         } else {
-            startPlayAndPip()
+            seekThenPlay()
         }
     }
 
-    private func tryStartPip(pip: AVPictureInPictureController?, position: Double, result: @escaping FlutterResult) {
-        guard let pip = pip else {
-            print("PiP: tryStartPip — pip controller is nil")
-            result(false)
+    // ★ FIX: KVO player.rate → biết chính xác khi nào player bắt đầu play
+    private var rateObservation: NSKeyValueObservation?
+    private var pipRetryCount = 0
+    private static let maxPipRetries = 8
+
+    private func observePlayerRateAndStartPip(player: AVPlayer, pip: AVPictureInPictureController, position: Double, result: @escaping FlutterResult) {
+        rateObservation?.invalidate()
+        pipRetryCount = 0
+
+        // Thử ngay lập tức nếu rate > 0
+        if player.rate > 0 && pip.isPictureInPicturePossible {
+            print("PiP: player already playing, starting PiP immediately")
+            do {
+                try pip.startPictureInPicture()
+                print("PiP: started at \(position)s ✓")
+                result(true)
+            } catch {
+                print("PiP: startPictureInPicture threw error: \(error)")
+                result(false)
+            }
             return
         }
 
-        if pip.isPictureInPicturePossible {
-            pip.startPictureInPicture()
-            print("PiP: started at \(position)s ✓")
-            result(true)
-        } else {
-            // ★ FIX: Thử lại nhiều lần hơn (3 lần, mỗi lần 0.5s)
-            print("PiP: not possible yet, retrying...")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                if pip.isPictureInPicturePossible {
-                    pip.startPictureInPicture()
-                    print("PiP: started at \(position)s (retry 1) ✓")
-                    result(true)
-                } else {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        if pip.isPictureInPicturePossible {
-                            pip.startPictureInPicture()
-                            print("PiP: started at \(position)s (retry 2) ✓")
-                            result(true)
-                        } else {
-                            print("PiP: not possible after 3 attempts")
-                            result(false)
-                        }
-                    }
-                }
+        // Observe rate property — khi rate > 0 thì player đang play
+        rateObservation = player.observe(\.rate, options: [.new, .old]) { [weak self, weak player, weak pip] _, change in
+            guard let self = self, let player = player, let pip = pip else { return }
+            let rate = player.rate
+            guard rate > 0 else { return }
+
+            // Player đang play — thử start PiP
+            self.rateObservation?.invalidate()
+            self.rateObservation = nil
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self.tryStartPipWithRetry(pip: pip, position: position, result: result)
             }
+        }
+
+        // Timeout fallback 5s — nếu rate không bao giờ > 0
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
+            guard let self = self, self.rateObservation != nil else { return }
+            self.rateObservation?.invalidate()
+            self.rateObservation = nil
+            print("PiP: timeout waiting for player.rate > 0")
+            result(false)
+        }
+    }
+
+    private func tryStartPipWithRetry(pip: AVPictureInPictureController, position: Double, result: @escaping FlutterResult) {
+        if pip.isPictureInPicturePossible {
+            do {
+                try pip.startPictureInPicture()
+                print("PiP: started at \(position)s ✓")
+                result(true)
+            } catch {
+                print("PiP: startPictureInPicture error: \(error)")
+                result(false)
+            }
+        } else if pipRetryCount < Self.maxPipRetries {
+            pipRetryCount += 1
+            let delay = 0.3 + Double(pipRetryCount) * 0.15
+            print("PiP: not possible yet (retry \(pipRetryCount)), waiting \(delay)s...")
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.tryStartPipWithRetry(pip: pip, position: position, result: result)
+            }
+        } else {
+            print("PiP: not possible after \(Self.maxPipRetries) retries")
+            result(false)
         }
     }
 
@@ -475,25 +514,28 @@ import AVKit
 // MARK: - AVPictureInPictureControllerDelegate
 extension AppDelegate: AVPictureInPictureControllerDelegate {
     func pictureInPictureControllerWillStartPictureInPicture(_ controller: AVPictureInPictureController) {
+        print("PiP: willStartPictureInPicture ✓")
+        // ★ FIX: Đảm bảo player đang play khi PiP start
         pipPlayer?.play()
         startPositionTimer()
         pipChannel?.invokeMethod("onPipStarted", arguments: nil)
     }
 
     func pictureInPictureControllerWillStopPictureInPicture(_ controller: AVPictureInPictureController) {
+        print("PiP: willStopPictureInPicture")
         let pos = pipPlayer?.currentItem?.currentTime().seconds ?? 0
         if !pos.isNaN && pos > 0 { lastPipPosition = pos }
         stopPositionTimer()
     }
 
     func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
+        print("PiP: didStopPictureInPicture")
         pipPlayer?.pause()
-        // ★ FIX: Gửi callback onPipStopped về Flutter để restore video playback
         pipChannel?.invokeMethod("onPipStopped", arguments: nil)
-        // ★ FIX: restore audio session về .playback (video) thay vì .voiceChat
-        // .voiceChat có AGC tự giảm volume → âm thanh bị nhỏ
+        // ★ FIX: restore audio session về .playback (video)
         do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback,
+                options: [.allowBluetooth, .allowBluetoothA2DP])
             try AVAudioSession.sharedInstance().setActive(true)
         } catch {}
     }
@@ -501,7 +543,8 @@ extension AppDelegate: AVPictureInPictureControllerDelegate {
     func pictureInPictureController(_ controller: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
         print("PiP: FAILED to start — \(error.localizedDescription)")
         stopPositionTimer()
-        // ★ FIX: Gửi onPipStopped về Flutter để cleanup overlay + restore video
+        rateObservation?.invalidate()
+        rateObservation = nil
         pipChannel?.invokeMethod("onPipStopped", arguments: nil)
     }
 
