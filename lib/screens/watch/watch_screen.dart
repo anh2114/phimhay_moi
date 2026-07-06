@@ -3176,6 +3176,15 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   },
                   child: const AppSvgIcon('fast-forward.svg', size: 22, color: Colors.white),
                 ),
+                // PiP button
+                if (_pipAvailable)
+                  GestureDetector(
+                    onTap: _startPip,
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 4),
+                      child: AppSvgIcon('picture-in-picture-2.svg', size: 20, color: Colors.white),
+                    ),
+                  ),
                 // Subtitle toggle
                 if (_subtitles.isNotEmpty)
                   GestureDetector(
