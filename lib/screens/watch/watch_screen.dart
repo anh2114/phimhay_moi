@@ -235,7 +235,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   // ── Load subtitles for current episode ──────────────────
-  // Không load phụ đề cho server 4K (server 4K đã có phụ đề cứng)
+  // Chỉ load phụ đề cho server có "4K" trong tên
   bool get _isCurrentServer4K {
     if (_servers.isEmpty || _selectedServer >= _servers.length) return false;
     final name = (_servers[_selectedServer]['server_name'] ?? '').toString();
@@ -244,7 +244,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   Future<void> _loadSubtitles(Map<String, dynamic> episode) async {
     final slug = widget.movieSlug ?? '';
-    if (slug.isEmpty || _isCurrentServer4K) {
+    if (slug.isEmpty || !_isCurrentServer4K) {
       setState(() { _subtitles = []; _subtitleEnabled = false; });
       return;
     }
@@ -709,7 +709,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     final position = _currentPos.inSeconds.toDouble();
 
     // ★ FIX: Pause Flutter player TRƯỚC khi gọi native startPip
-    // Nếu không pause → cả Flutter player + PiP player đều phát audio
     if (_playerMode == _PlayerMode.hls && _player != null) {
       _player!.pause();
     } else if (_playerMode == _PlayerMode.embed && _webController != null) {
@@ -720,10 +719,16 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       } catch (_) {}
     }
 
-    // Đợi 1 frame để Flutter player pause xong
     await Future.delayed(const Duration(milliseconds: 100));
 
+    // ★ FIX: Setup PiP TRƯỚC khi start (đảm bảo native player đã sẵn sàng)
+    // Nếu không setup → pipPlayer/pipController là nil → startPip fail im lặng
+    _setupPip();
+    await Future.delayed(const Duration(milliseconds: 300));
+
     _pipChannel.invokeMethod('updatePipPosition', {'position': position}).catchError((_) {});
+
+    // ★ FIX: Timeout 8s — nếu native không reply thì resolve false
     _pipChannel.invokeMethod('startPip', {'position': position}).then((result) {
       debugPrint('PiP: startPip result=$result, position=$position');
       if (result == true) {
@@ -733,20 +738,22 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         _pipActive = false;
         _pipPollTimer?.cancel();
         debugPrint('PiP: startPip returned false');
-        // PiP fail → restore play
-        if (_playerMode == _PlayerMode.hls && _player != null) {
-          _player!.play();
-        }
+        _restorePlayerAfterPipFail();
       }
     }).catchError((e) {
       debugPrint('PiP: startPip ERROR=$e');
       _pipActive = false;
       _pipPollTimer?.cancel();
-      // PiP fail → restore play
-      if (_playerMode == _PlayerMode.hls && _player != null) {
-        _player!.play();
-      }
+      _restorePlayerAfterPipFail();
     });
+  }
+
+  void _restorePlayerAfterPipFail() {
+    if (_playerMode == _PlayerMode.hls && _player != null) {
+      final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
+      _player!.setVolume(restoreVol);
+      _player!.play();
+    }
   }
 
   /// Update PiP URL khi chuyển tập
@@ -2812,8 +2819,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               const SizedBox(width: 40),
               // Server (mic icon → server popup)
               _buildToolbarItem(Icons.mic_none_rounded, _servers.isNotEmpty ? (_servers[_selectedServer]['server_name']?.toString() ?? 'Server') : 'Server', _showServerPopup),
-              // Phụ đề — KHÔNG hiện cho server 4K
-              if (!_isCurrentServer4K) ...[
+              // Phụ đề — chỉ hiện cho server 4K
+              if (_isCurrentServer4K) ...[
                 const SizedBox(width: 40),
                 _buildToolbarItem(Icons.subtitles_rounded, 'Phụ đề', _showSettingsPopup),
               ],

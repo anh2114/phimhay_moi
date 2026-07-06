@@ -546,6 +546,10 @@ extension AppDelegate: AVPictureInPictureControllerDelegate {
         stopPositionTimer()
         rateObservation?.invalidate()
         rateObservation = nil
+        // ★ FIX: Gọi pendingStartResult?(false) để Dart future resolve
+        // Nếu không gọi → invokeMethod('startPip') treo mãi, Flutter hang
+        pendingStartResult?(false)
+        pendingStartResult = nil
         pipChannel?.invokeMethod("onPipStopped", arguments: nil)
     }
 
