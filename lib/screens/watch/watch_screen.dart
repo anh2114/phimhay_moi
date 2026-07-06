@@ -703,28 +703,49 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     }).catchError((_) {});
   }
 
-  /// Bật PiP — KHÔNG set _pipActive ngay, chờ onPipStarted callback từ native
-  void _startPip() {
+  /// Bật PiP — pause Flutter player TRƯỚC khi start native PiP
+  /// để tránh double audio (2 player phát cùng lúc)
+  void _startPip() async {
     final position = _currentPos.inSeconds.toDouble();
-    // ★ FIX: KHÔNG set _pipActive = true ở đây — chờ onPipStarted từ native
-    // Nếu set ngay mà PiP fail → overlay hiện mà PiP không active
+
+    // ★ FIX: Pause Flutter player TRƯỚC khi gọi native startPip
+    // Nếu không pause → cả Flutter player + PiP player đều phát audio
+    if (_playerMode == _PlayerMode.hls && _player != null) {
+      _player!.pause();
+    } else if (_playerMode == _PlayerMode.embed && _webController != null) {
+      try {
+        await _webController!.evaluateJavascript(
+          source: "document.querySelector('video')?.pause();",
+        );
+      } catch (_) {}
+    }
+
+    // Đợi 1 frame để Flutter player pause xong
+    await Future.delayed(const Duration(milliseconds: 100));
+
     _pipChannel.invokeMethod('updatePipPosition', {'position': position}).catchError((_) {});
     _pipChannel.invokeMethod('startPip', {'position': position}).then((result) {
       debugPrint('PiP: startPip result=$result, position=$position');
       if (result == true) {
-        // ★ FIX: Chỉ set _pipActive khi native confirm PiP started
         _pipActive = true;
         _startPipPoll();
       } else {
-        // PiP failed to start
         _pipActive = false;
         _pipPollTimer?.cancel();
         debugPrint('PiP: startPip returned false');
+        // PiP fail → restore play
+        if (_playerMode == _PlayerMode.hls && _player != null) {
+          _player!.play();
+        }
       }
     }).catchError((e) {
       debugPrint('PiP: startPip ERROR=$e');
       _pipActive = false;
       _pipPollTimer?.cancel();
+      // PiP fail → restore play
+      if (_playerMode == _PlayerMode.hls && _player != null) {
+        _player!.play();
+      }
     });
   }
 

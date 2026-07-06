@@ -53,10 +53,11 @@ import AVKit
                 let args = call.arguments as? [String: Any]
                 let position = args?["position"] as? Double ?? 0
 
-                // ★ FIX: Config audio session đầy đủ options trước khi PiP
+                // ★ FIX: Config audio session — KHÔNG dùng .mixWithOthers
+                // .mixWithOthers cho phép 2 player phát audio cùng lúc → double audio
                 do {
                     try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback,
-                        options: [.allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
+                        options: [.allowBluetooth, .allowBluetoothA2DP])
                     try AVAudioSession.sharedInstance().setActive(true)
                 } catch {
                     print("PiP: audio session error: \(error)")
@@ -384,7 +385,7 @@ import AVKit
 
     /// Thực sự seek + play + startPictureInPicture sau khi biết player đã ready
     private func performStartPip(player: AVPlayer, pip: AVPictureInPictureController, position: Double, result: @escaping FlutterResult) {
-        // ★ FIX: Ensure audio session configured trước khi play
+        // ★ FIX: Ensure audio session configured — KHÔNG .mixWithOthers
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback,
                 options: [.allowBluetooth, .allowBluetoothA2DP])
@@ -515,8 +516,8 @@ import AVKit
 extension AppDelegate: AVPictureInPictureControllerDelegate {
     func pictureInPictureControllerWillStartPictureInPicture(_ controller: AVPictureInPictureController) {
         print("PiP: willStartPictureInPicture ✓")
-        // ★ FIX: Đảm bảo player đang play khi PiP start
-        pipPlayer?.play()
+        // Player đã play từ performStartPip — KHÔNG gọi play() lại
+        // Gọi play() thêm 1 lần nữa gây double audio
         startPositionTimer()
         pipChannel?.invokeMethod("onPipStarted", arguments: nil)
     }
