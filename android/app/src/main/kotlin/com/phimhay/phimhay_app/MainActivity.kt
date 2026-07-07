@@ -1,92 +1,27 @@
 package com.phimhay.phimhay_app
 
-import android.app.PictureInPictureParams
 import android.content.Intent
-import android.content.res.Configuration
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
-import android.os.Environment
 import android.provider.Settings
-import android.util.Rational
 import androidx.core.content.FileProvider
-import io.flutter.embedding.android.FlutterActivity
-import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
+import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.engine.FlutterEngine
 
 class MainActivity : FlutterActivity() {
-    private val CHANNEL_PIP = "phimhay/pip"
     private val CHANNEL_INSTALL = "phimhay/install_apk"
     private val CHANNEL_AUDIO = "phimhay_app/audio"
-    private var pipChannel: MethodChannel? = null
     private var installChannel: MethodChannel? = null
     private var audioChannel: MethodChannel? = null
-    private var pipPosition: Double = 0.0
     private var audioFocusRequest: AudioFocusRequest? = null
-    private var autoPipEnabled: Boolean = false // Flutter controlling auto-PiP
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-
-        pipChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL_PIP)
-        pipChannel?.setMethodCallHandler { call, result ->
-            when (call.method) {
-                "isPipAvailable" -> {
-                    result.success(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                }
-                "setupPip" -> {
-                    result.success(true)
-                }
-                "startPip" -> {
-                    pipPosition = (call.argument<Number>("position") ?: 0).toDouble()
-                    try {
-                        val params = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            PictureInPictureParams.Builder()
-                                .setAspectRatio(Rational(16, 9))
-                                .build()
-                        } else {
-                            null
-                        }
-                        if (params != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            if (isInPictureInPictureMode) {
-                                result.success(true)
-                            } else {
-                                enterPictureInPictureMode(params)
-                                result.success(true)
-                            }
-                        } else {
-                            result.error("UNSUPPORTED", "PiP not supported", null)
-                        }
-                    } catch (e: Exception) {
-                        result.error("ERROR", e.message, null)
-                    }
-                }
-                "setAutoPip" -> {
-                    autoPipEnabled = call.argument<Boolean>("enabled") ?: false
-                    result.success(true)
-                }
-                "updatePipPosition" -> {
-                    pipPosition = (call.argument<Number>("position") ?: 0).toDouble()
-                    result.success(true)
-                }
-                "isPipActive" -> {
-                    result.success(isInPictureInPictureMode)
-                }
-                "stopPip" -> {
-                    if (isInPictureInPictureMode && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        // Exit PiP
-                    }
-                    result.success(true)
-                }
-                "getPipPosition" -> {
-                    result.success(pipPosition)
-                }
-                else -> result.notImplemented()
-            }
-        }
 
         // Install APK channel
         installChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL_INSTALL)
@@ -116,7 +51,7 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        // ★ Audio channel — configure audio focus cho video playback
+        // Audio channel
         audioChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL_AUDIO)
         audioChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
@@ -145,7 +80,6 @@ class MainActivity : FlutterActivity() {
     private fun installApk(file: File) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             if (!packageManager.canRequestPackageInstalls()) {
-                // Mở settings để user cấp quyền
                 val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
                     data = Uri.parse("package:$packageName")
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -169,7 +103,6 @@ class MainActivity : FlutterActivity() {
         startActivity(intent)
     }
 
-    // ★ Request audio focus cho video playback — đảm bảo audio không bị interrupted
     private fun requestAudioFocus() {
         val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         val attrs = AudioAttributes.Builder()
@@ -188,28 +121,6 @@ class MainActivity : FlutterActivity() {
         } else {
             @Suppress("DEPRECATION")
             audioManager.requestAudioFocus({ }, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN)
-        }
-    }
-
-    // ★ Auto-enter PiP khi user bấm Home hoặc chuyển app (giống YouTube)
-    override fun onUserLeaveHint() {
-        super.onUserLeaveHint()
-        if (autoPipEnabled && !isInPictureInPictureMode && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            try {
-                val params = PictureInPictureParams.Builder()
-                    .setAspectRatio(Rational(16, 9))
-                    .build()
-                enterPictureInPictureMode(params)
-            } catch (_: Exception) {}
-        }
-    }
-
-    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration?) {
-        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
-        if (isInPictureInPictureMode) {
-            pipChannel?.invokeMethod("onPipStarted", null)
-        } else {
-            pipChannel?.invokeMethod("onPipStopped", null)
         }
     }
 }

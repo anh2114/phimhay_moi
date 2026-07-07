@@ -602,17 +602,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     if (_playerMode == _PlayerMode.hls && _player != null) {
       _player!.pause();
     }
-    FlPiP().enable(
-      iosConfig: FlPiPiOSConfig(),
-      androidConfig: FlPiPAndroidConfig(
-        aspectRatio: const Rational.landscape(),
-      ),
-    ).then((_) {
-      _pipActive = true;
+    FlPiP().enable().then((_) {
+      debugPrint('PiP: enabled OK');
     }).catchError((e) {
       debugPrint('PiP: enable failed: $e');
-      _pipActive = false;
       if (_playerMode == _PlayerMode.hls && _player != null) {
+        final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
+        _player!.setVolume(restoreVol);
         _player!.play();
       }
     });
