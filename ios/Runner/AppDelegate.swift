@@ -205,6 +205,12 @@ import AVKit
         pipPlayerLayer = playerLayer
         pipController = pipCtrl
 
+        guard let pipCtrl = pipCtrl else {
+            print("PiP: pipCtrl is nil after creation")
+            result(false)
+            return
+        }
+
         // Chờ player ready rồi mới seek + start PiP
         if playerItem.status == .readyToPlay {
             seekAndStartPip(player: player, pip: pipCtrl, position: position, result: result)
