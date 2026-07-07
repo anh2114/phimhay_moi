@@ -2,14 +2,16 @@ import UIKit
 import Flutter
 import AVFoundation
 import AVKit
-import WebKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, AVPictureInPictureControllerDelegate {
 
+    private var pipPlayer: AVPlayer?
+    private var pipPlayerLayer: AVPlayerLayer?
+    private var pipController: AVPictureInPictureController?
     private var pipChannel: FlutterMethodChannel?
-    private var pipWebView: WKWebView?
-    private var pipRestorePosition: Int = 0
+    private var pipOverlayView: UIView?
+    private var pipObservations: [NSKeyValueObservation] = []
 
     override func application(
         _ application: UIApplication,
@@ -140,28 +142,16 @@ import WebKit
                     result(FlutterError(code: "INVALID_ARGS", message: "Missing url or position", details: nil))
                     return
                 }
-                self.startPiP(result: result)
-            case "prewarmPiP":
-                guard let args = call.arguments as? [String: Any],
-                      let url = args["url"] as? String,
-                      let position = args["position"] as? Int else {
-                    result(false)
-                    return
-                }
-                self.prewarmPiP(url: url, position: position)
-                result(true)
+                self.enterPiP(url: url, position: position, result: result)
             case "isPiP":
-                result(self.pipWebView != nil)
+                result(self.pipController?.isPictureInPictureActive ?? false)
             case "exitPiP":
-                result(false)
-            case "updatePiPPosition":
-                guard let args = call.arguments as? [String: Any],
-                      let position = args["position"] as? Int else {
+                if self.pipController?.isPictureInPictureActive == true {
+                    self.pipController?.stopPictureInPicture()
+                    result(true)
+                } else {
                     result(false)
-                    return
                 }
-                self.updatePiPPosition(position: position)
-                result(true)
             default:
                 result(FlutterMethodNotImplemented)
             }
@@ -171,15 +161,18 @@ import WebKit
         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
     }
 
-    // MARK: - PiP via WebKit
+    // MARK: - PiP via Native AVPlayer + Proxy
 
-    private func prewarmPiP(url: String, position: Int) {
+    private func enterPiP(url: String, position: Int, result: @escaping FlutterResult) {
         DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
+            guard let self = self else {
+                result(FlutterError(code: "DEALLOC", message: "AppDelegate deallocated", details: nil))
+                return
+            }
 
-            NSLog("[PiP] prewarm — url=\(url.prefix(100))... pos=\(position)")
+            NSLog("[PiP] enterPiP — url=\(url.prefix(120))... pos=\(position)")
 
-            // Setup audio session
+            // 1. Setup audio session
             do {
                 try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback,
                     options: [.allowBluetooth, .allowBluetoothA2DP])
@@ -188,180 +181,128 @@ import WebKit
                 NSLog("[PiP] Audio session failed: \(error)")
             }
 
-            // Cleanup old WebView
-            self.cleanupPiPWebView()
-
-            // Create hidden WKWebView for PiP
-            let config = WKWebViewConfiguration()
-            config.allowsInlineMediaPlayback = true
-            config.mediaTypesRequiringUserActionForPlayback = []
-
-            let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 320, height: 180), configuration: config)
-            webView.isHidden = true
-            webView.tag = 8888
-            self.window?.rootViewController?.view.addSubview(webView)
-            self.pipWebView = webView
-
-            // Load HTML with video element — autoPiP when going to background
-            let html = """
-            <!DOCTYPE html>
-            <html>
-            <head>
-            <style>
-                body { margin: 0; background: black; }
-                video { width: 100%; height: 100%; object-fit: contain; }
-            </style>
-            </head>
-            <body>
-            <video id="pipVideo" playsinline webkit-playsinline x-webkit-airplay="allows-airplay" autoplay autoPictureInPicture></video>
-            <script>
-                var video = document.getElementById('pipVideo');
-                video.src = '\(url.replacingOccurrences(of: "'", with: "\\'"))';
-                video.currentTime = \(position);
-                video.load();
-                video.play().catch(function(e) { console.log('prewarm play error:', e); });
-                video.addEventListener('enterpictureinpicture', function() {
-                    window.webkit.messageHandlers.pipStarted.postMessage({started: true});
-                });
-                video.addEventListener('leavepictureinpicture', function() {
-                    window.webkit.messageHandlers.pipEnded.postMessage({ended: true});
-                });
-                video.addEventListener('error', function(e) {
-                    window.webkit.messageHandlers.pipError.postMessage({error: e.target.error?.message || 'Unknown error'});
-                });
-            </script>
-            </body>
-            </html>
-            """
-
-            // Add message handlers
-            let pipStartedHandler = PiPStartedHandler { [weak self] in
-                NSLog("[PiP] PiP started!")
-                self?.pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
-            }
-
-            let pipEndedHandler = PiPEndedHandler { [weak self] in
-                NSLog("[PiP] PiP ended — keeping WebView alive for reuse")
-                let webView = self?.pipWebView
-                webView?.evaluateJavaScript("document.getElementById('pipVideo').currentTime") { pos, _ in
-                    let position = (pos as? NSNumber)?.intValue ?? 0
-                    NSLog("[PiP] Position at end: \(position)")
-                    // Pause video but KEEP WebView alive for next PiP
-                    webView?.evaluateJavaScript("document.getElementById('pipVideo').pause()")
-                    self?.pipChannel?.invokeMethod("onPiPModeChanged", arguments: false)
-                    DispatchQueue.main.async {
-                        self?.pipChannel?.invokeMethod("onPiPRestore", arguments: ["position": position])
-                    }
-                }
-            }
-
-            let pipErrorHandler = PiPErrorHandler { [weak self] error in
-                NSLog("[PiP] Error: \(error)")
-            }
-
-            let contentController = webView.configuration.userContentController
-            contentController.add(pipStartedHandler, name: "pipStarted")
-            contentController.add(pipEndedHandler, name: "pipEnded")
-            contentController.add(pipErrorHandler, name: "pipError")
-
-            // Load HTML
-            webView.loadHTMLString(html, baseURL: URL(string: "https://xiaofilm.site"))
-        }
-    }
-
-    private func startPiP(result: @escaping FlutterResult) {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self, let webView = self.pipWebView else {
-                result(FlutterError(code: "NO_WEBVIEW", message: "No prewarmed WebView. Call prewarmPiP first.", details: nil))
+            // 2. Validate URL
+            guard let streamURL = URL(string: url) else {
+                result(FlutterError(code: "INVALID_URL", message: "Cannot create URL", details: nil))
                 return
             }
 
-            NSLog("[PiP] startPiP — calling requestPictureInPicture()")
+            // 3. Cleanup previous PiP if any
+            self.cleanupPiP()
 
-            // This MUST be called in user gesture context (same tick as the tap)
-            let js = """
-            (function() {
-                var video = document.getElementById('pipVideo');
-                if (!video) { return 'no video element'; }
-                if (!video.src) { return 'no video src'; }
-                if (video.readyState < 2) { return 'video not ready: readyState=' + video.readyState; }
-                video.requestPictureInPicture().then(function() {
-                    console.log('PiP started OK');
-                }).catch(function(e) {
-                    console.log('PiP request failed:', e.message);
-                    window.webkit.messageHandlers.pipError.postMessage({error: e.message});
-                });
-                return 'requesting...';
-            })()
-            """
+            // 4. Create overlay view in window (required for PiP)
+            let overlayView = UIView(frame: CGRect(x: -1, y: -1, width: 1, height: 1))
+            overlayView.backgroundColor = .clear
+            overlayView.tag = 8888
+            self.window?.rootViewController?.view.addSubview(overlayView)
+            self.pipOverlayView = overlayView
 
-            webView.evaluateJavaScript(js) { resultStr, error in
-                if let error = error {
-                    NSLog("[PiP] JS error: \(error)")
-                    result(FlutterError(code: "JS_ERROR", message: error.localizedDescription, details: nil))
-                } else {
-                    NSLog("[PiP] JS result: \(resultStr ?? "nil")")
-                    // Don't return true yet — wait for enterpictureinpicture event
-                    result(true)
+            // 5. Create AVPlayer with proxy URL (proxy handles CORS + headers)
+            let playerItem = AVPlayerItem(url: streamURL)
+            let player = AVPlayer(playerItem: playerItem)
+            self.pipPlayer = player
+
+            // 6. Create player layer and add to overlay
+            let playerLayer = AVPlayerLayer(player: player)
+            playerLayer.frame = overlayView.bounds
+            overlayView.layer.addSublayer(playerLayer)
+            self.pipPlayerLayer = playerLayer
+
+            // 7. Create PiP controller
+            let pipController = AVPictureInPictureController(playerLayer: playerLayer)
+            pipController.delegate = self
+            self.pipController = pipController
+
+            NSLog("[PiP] Player created, waiting for ready...")
+
+            // 8. Wait for player ready, then seek + start PiP
+            var handled = false
+            let timeout = DispatchWorkItem { [weak self] in
+                guard !handled else { return }
+                handled = true
+                NSLog("[PiP] TIMEOUT")
+                self?.cleanupPiP()
+                result(FlutterError(code: "TIMEOUT", message: "Player not ready in 15s", details: nil))
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 15, execute: timeout)
+
+            let obs = player.observe(\.status, options: [.new]) { [weak self] player, change in
+                guard let self = self, !handled else { return }
+                guard change.newValue == .readyToPlay else {
+                    if change.newValue == .failed {
+                        handled = true
+                        timeout.cancel()
+                        let errMsg = player.error?.localizedDescription ?? "unknown"
+                        NSLog("[PiP] Player FAILED: \(errMsg)")
+                        self.cleanupPiP()
+                        DispatchQueue.main.async {
+                            result(FlutterError(code: "PLAYER_FAILED", message: errMsg, details: nil))
+                        }
+                    }
+                    return
+                }
+
+                handled = true
+                timeout.cancel()
+                NSLog("[PiP] Player ready — seeking to \(position)s")
+
+                let target = CMTime(seconds: Double(position), preferredTimescale: 600)
+                player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+                    DispatchQueue.main.async {
+                        player.play()
+                        NSLog("[PiP] Starting PiP...")
+                        pipController.startPictureInPicture()
+                        result(true)
+                    }
                 }
             }
+            self.pipObservations.append(obs)
         }
     }
 
-    private func updatePiPPosition(position: Int) {
+    private func cleanupPiP() {
+        pipObservations.removeAll()
+        pipPlayerLayer?.removeFromSuperlayer()
+        pipPlayerLayer = nil
+        pipPlayer?.pause()
+        pipPlayer = nil
+        pipController?.stopPictureInPicture()
+        pipController = nil
+        pipOverlayView?.removeFromSuperview()
+        pipOverlayView = nil
+    }
+
+    // MARK: - AVPictureInPictureControllerDelegate
+
+    func pictureInPictureControllerWillStartPictureInPicture(_ controller: AVPictureInPictureController) {
+        NSLog("[PiP] Will start")
+        pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
+    }
+
+    func pictureInPictureControllerDidStartPictureInPicture(_ controller: AVPictureInPictureController) {
+        NSLog("[PiP] Did start")
+    }
+
+    func pictureInPictureController(_ controller: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
+        NSLog("[PiP] FAILED: \(error.localizedDescription)")
+        pipChannel?.invokeMethod("onPiPError", arguments: error.localizedDescription)
+        cleanupPiP()
+    }
+
+    func pictureInPictureControllerWillStopPictureInPicture(_ controller: AVPictureInPictureController) {
+        NSLog("[PiP] Will stop")
+    }
+
+    func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
+        let position = Int(pipPlayer?.currentTime().seconds ?? 0)
+        NSLog("[PiP] Did stop — pos=\(position)")
+        cleanupPiP()
         DispatchQueue.main.async { [weak self] in
-            guard let webView = self?.pipWebView else { return }
-            let js = """
-            (function() {
-                var video = document.getElementById('pipVideo');
-                if (!video) return;
-                // Only update if position differs significantly (>3s)
-                if (Math.abs(video.currentTime - \(position)) > 3) {
-                    video.currentTime = \(position);
-                }
-                video.play().catch(function(){});
-            })()
-            """
-            webView.evaluateJavaScript(js)
+            self?.pipChannel?.invokeMethod("onPiPRestore", arguments: ["position": position])
         }
-    }
-
-    private func cleanupPiPWebView() {
-        pipWebView?.configuration.userContentController.removeScriptMessageHandler(forName: "pipStarted")
-        pipWebView?.configuration.userContentController.removeScriptMessageHandler(forName: "pipEnded")
-        pipWebView?.configuration.userContentController.removeScriptMessageHandler(forName: "pipError")
-        pipWebView?.removeFromSuperview()
-        pipWebView = nil
     }
 
     @objc func dismissAirPlay() {
         window?.rootViewController?.view.viewWithTag(9999)?.removeFromSuperview()
-    }
-}
-
-// MARK: - WKScriptMessageHandler wrappers
-
-class PiPStartedHandler: NSObject, WKScriptMessageHandler {
-    let callback: () -> Void
-    init(callback: @escaping () -> Void) { self.callback = callback }
-    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        callback()
-    }
-}
-
-class PiPEndedHandler: NSObject, WKScriptMessageHandler {
-    let callback: () -> Void
-    init(callback: @escaping () -> Void) { self.callback = callback }
-    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        callback()
-    }
-}
-
-class PiPErrorHandler: NSObject, WKScriptMessageHandler {
-    let callback: (String) -> Void
-    init(callback: @escaping (String) -> Void) { self.callback = callback }
-    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        let error = (message.body as? [String: Any])?["error"] as? String ?? "Unknown error"
-        callback(error)
     }
 }

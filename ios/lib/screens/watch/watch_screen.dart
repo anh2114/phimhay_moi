@@ -794,6 +794,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       await _saveCurrentProgress();
 
       int position = 0;
+      String url = _currentUrl;
 
       if (_playerMode == _PlayerMode.hls && _player != null) {
         position = _currentPosition;
@@ -806,8 +807,21 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         } catch (_) {}
       }
 
+      if (url.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No video to PiP'), backgroundColor: Colors.orange),
+        );
+        return;
+      }
+
+      // Use proxy with full=1 for iOS (segments go through proxy too)
+      String pipUrl = url;
+      if (Platform.isIOS && !url.contains('hls_proxy.php')) {
+        pipUrl = AppConfig.proxyHlsFullUrl(url);
+      }
+
       final result = await _pipChannel.invokeMethod('enterPiP', {
-        'url': '',
+        'url': pipUrl,
         'position': position,
       });
 
@@ -1050,10 +1064,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         _lastSavedPosition = _currentPosition;
         _saveCurrentProgress();
       }
-      // Sync PiP WebView position on significant seek (>5s jump)
-      if (diff > 5 && Platform.isIOS && !_isPiPMode) {
-        _pipChannel.invokeMethod('updatePiPPosition', {'position': _currentPosition});
-      }
       if (_currentDuration > 0 && _currentPosition >= _currentDuration - 30) {
         _startPrefetch();
       }
@@ -1149,15 +1159,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       // Restore playback speed
       if (_playbackSpeed != 1.0) {
         _player!.setRate(_playbackSpeed);
-      }
-
-      // Pre-warm iOS PiP WebView
-      if (Platform.isIOS && playUrl.isNotEmpty) {
-        final proxyUrl = AppConfig.proxyHlsFullUrl(playUrl);
-        _pipChannel.invokeMethod('prewarmPiP', {
-          'url': proxyUrl,
-          'position': _currentPosition,
-        });
       }
 
       if (targetPosition > 0 && !_seekCompleted) {
@@ -1461,14 +1462,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     if (useHls) {
       if (!_tryUsePrefetched(ep)) {
         _initPlayer(url);
-      }
-      // Re-prewarm iOS PiP with new episode
-      if (Platform.isIOS && url.isNotEmpty) {
-        final proxyUrl = AppConfig.proxyHlsFullUrl(url);
-        _pipChannel.invokeMethod('prewarmPiP', {
-          'url': proxyUrl,
-          'position': 0,
-        });
       }
     }
 
