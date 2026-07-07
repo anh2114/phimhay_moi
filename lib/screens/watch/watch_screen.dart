@@ -328,8 +328,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     final colorHex = int.parse('0xFF${_selectedSubtitleColor.substring(1)}');
     final bgAlpha = (_selectedSubtitleBgOpacity * 255).toInt();
 
+    // ★ PiP: scale font nhỏ lại (PiP window ~200px wide)
+    final fontSize = _pipActive ? 8.0 : _selectedSubtitleSize;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: EdgeInsets.symmetric(horizontal: _pipActive ? 4 : 12, vertical: _pipActive ? 1 : 6),
       decoration: bgAlpha > 0 ? BoxDecoration(
         color: Colors.black.withOpacity(_selectedSubtitleBgOpacity),
         borderRadius: BorderRadius.circular(4),
@@ -337,9 +340,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       child: Text(
         text,
         textAlign: TextAlign.center,
+        maxLines: _pipActive ? 2 : 4,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           color: Color(colorHex),
-          fontSize: _selectedSubtitleSize,
+          fontSize: fontSize,
           fontWeight: FontWeight.w600,
           shadows: [
             const Shadow(blurRadius: 4, color: Colors.black87, offset: Offset(1, 1)),
@@ -668,19 +673,39 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
       if (_player != null && _playerMode == _PlayerMode.hls) {
         final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
-        Future.delayed(const Duration(milliseconds: 150), () {
-          if (!mounted || _player == null) return;
-          if (_positionBeforePause > 15 && _currentPosition < 5) {
-            _player!.seek(Duration(seconds: _positionBeforePause)).then((_) {
+        final pos = _positionBeforePause;
+
+        // ★ FIX FPS lag: reopen media để reset decoder state
+        // media_kit/libmpv decoder có thể mất context khi app background
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (!mounted || _player == null || _currentUrl.isEmpty) return;
+
+          // Re-open media để decoder refresh hoàn toàn
+          final headers = <String, String>{};
+          if (!kIsWeb) {
+            headers['Referer'] = AppConfig.baseUrl;
+            headers['User-Agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+          }
+
+          _player!.open(
+            Media(_currentUrl, httpHeaders: headers),
+            play: true,
+          ).then((_) {
+            if (!mounted || _player == null) return;
+            _player!.setVolume(restoreVol);
+            if (_playbackSpeed != 1.0) _player!.setRate(_playbackSpeed);
+            // Seek về vị trí trước khi pause
+            if (pos > 5) {
+              _player!.seek(Duration(seconds: pos));
+            }
+            debugPrint('PiP/lifecycle: player reopened, seek to ${pos}s');
+          }).catchError((_) {
+            // Nếu reopen fail → chỉ play lại
+            if (_player != null) {
               _player!.setVolume(restoreVol);
               _player!.play();
-            });
-          } else {
-            _player!.setVolume(restoreVol);
-            if (!_isPlaying) {
-              _player!.play();
             }
-          }
+          });
         });
       }
     }
@@ -1421,12 +1446,58 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    // ★ PiP active → chỉ hiện video player, ẩn header/controls/tập phim
-    // fl_pip capture Flutter view → nếu hiện header thì PiP sẽ thấy header
+    // ★ PiP active → chỉ hiện video player + controls nhỏ, ẩn header/tập phim
     if (_pipActive) {
       return Scaffold(
         backgroundColor: Colors.black,
-        body: _buildPlayer(),
+        body: Stack(
+          children: [
+            Positioned.fill(child: _buildPlayer()),
+            // PiP controls overlay — play/pause, rewind, forward
+            Positioned(
+              bottom: 4, left: 0, right: 0,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Rewind 10s
+                  GestureDetector(
+                    onTap: () {
+                      final target = max(0, _currentPos.inSeconds - 10);
+                      _player?.seek(Duration(seconds: target));
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      child: const Icon(Icons.replay_10, color: Colors.white70, size: 18),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  // Play/Pause
+                  GestureDetector(
+                    onTap: () {
+                      if (_isPlaying) { _player?.pause(); } else { _player?.play(); }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      child: Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 24),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  // Forward 10s
+                  GestureDetector(
+                    onTap: () {
+                      final target = _currentPos.inSeconds + 10;
+                      _player?.seek(Duration(seconds: target));
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      child: const Icon(Icons.forward_10, color: Colors.white70, size: 18),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       );
     }
 
