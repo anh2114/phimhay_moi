@@ -704,13 +704,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   /// Bật PiP — pause Flutter player TRƯỚC khi start native PiP
-  /// để tránh double audio (2 player phát cùng lúc)
   void _startPip() async {
     final position = _currentPos.inSeconds.toDouble();
+    debugPrint('PiP: _startPip called — url=${_currentUrl.substring(0, _currentUrl.length > 60 ? 60 : _currentUrl.length)}, pos=$position');
 
-    // ★ FIX: Pause Flutter player TRƯỚC khi gọi native startPip
+    // Pause Flutter player
     if (_playerMode == _PlayerMode.hls && _player != null) {
       _player!.pause();
+      debugPrint('PiP: Flutter player paused');
     } else if (_playerMode == _PlayerMode.embed && _webController != null) {
       try {
         await _webController!.evaluateJavascript(
@@ -721,26 +722,28 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     await Future.delayed(const Duration(milliseconds: 100));
 
-    // ★ FIX: Await setup PiP (đảm bảo native player đã sẵn sàng)
+    // Setup native PiP player
+    debugPrint('PiP: calling _setupPip...');
     await _setupPip();
-    await Future.delayed(const Duration(milliseconds: 500));
+    debugPrint('PiP: _setupPip done, waiting 800ms for native player...');
+    await Future.delayed(const Duration(milliseconds: 800));
 
+    // Start PiP
+    debugPrint('PiP: calling startPip on native...');
     _pipChannel.invokeMethod('updatePipPosition', {'position': position}).catchError((_) {});
-
-    // ★ FIX: Timeout 8s — nếu native không reply thì resolve false
     _pipChannel.invokeMethod('startPip', {'position': position}).then((result) {
-      debugPrint('PiP: startPip result=$result, position=$position');
+      debugPrint('PiP: startPip result=$result');
       if (result == true) {
         _pipActive = true;
         _startPipPoll();
       } else {
+        debugPrint('PiP: startPip FAILED — restoring player');
         _pipActive = false;
         _pipPollTimer?.cancel();
-        debugPrint('PiP: startPip returned false');
         _restorePlayerAfterPipFail();
       }
     }).catchError((e) {
-      debugPrint('PiP: startPip ERROR=$e');
+      debugPrint('PiP: startPip EXCEPTION: $e');
       _pipActive = false;
       _pipPollTimer?.cancel();
       _restorePlayerAfterPipFail();
@@ -748,6 +751,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   void _restorePlayerAfterPipFail() {
+    debugPrint('PiP: restoring Flutter player after fail');
     if (_playerMode == _PlayerMode.hls && _player != null) {
       final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
       _player!.setVolume(restoreVol);

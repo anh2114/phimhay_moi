@@ -1,7 +1,7 @@
 name: phimhay_app
 description: "Xiao Phim - Xem phim online"
 publish_to: 'none'
-version: 3.6.0+38
+version: 3.6.1+39
 
 environment:
   sdk: ^3.6.2

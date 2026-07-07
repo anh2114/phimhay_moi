@@ -52,18 +52,9 @@ import AVKit
                 guard let self = self else { result(false); return }
                 let args = call.arguments as? [String: Any]
                 let position = args?["position"] as? Double ?? 0
+                print("PiP: startPip called from Flutter — position=\(position)")
 
-                // ★ FIX: Config audio session — KHÔNG dùng .mixWithOthers
-                // .mixWithOthers cho phép 2 player phát audio cùng lúc → double audio
-                do {
-                    try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback,
-                        options: [.allowBluetooth, .allowBluetoothA2DP])
-                    try AVAudioSession.sharedInstance().setActive(true)
-                } catch {
-                    print("PiP: audio session error: \(error)")
-                }
-
-                // FIX: dùng hàm mới chờ player ready rồi mới start
+                // Audio session đã configure trong setupPipController — không cần lại
                 self.startPipWhenReady(position: position, result: result)
 
             case "stopPip":
@@ -257,7 +248,9 @@ import AVKit
     // MARK: - PiP Setup
 
     private func setupPipController(url: URL, position: Double = 0, headers: [String: String] = [:]) {
-        // ★ FIX: Dọn dẹp hoàn toàn player cũ trước khi tạo mới
+        print("PiP: setupPipController called — url=\(url.absoluteString.prefix(80)), position=\(position)")
+
+        // Dọn dẹp player cũ
         playerItemObserver?.invalidate()
         playerItemObserver = nil
         rateObservation?.invalidate()
@@ -273,16 +266,17 @@ import AVKit
         pipController = nil
         stopPositionTimer()
 
-        // ★ FIX: Configure audio session TRƯỚC KHI tạo player (bắt buộc cho PiP)
+        // Audio session — CHỈ configure 1 lần ở đây, KHÔNG configure lại trong startPip
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback,
                 options: [.allowBluetooth, .allowBluetoothA2DP])
             try AVAudioSession.sharedInstance().setActive(true)
+            print("PiP: audio session configured OK")
         } catch {
-            print("PiP: audio session setup error: \(error)")
+            print("PiP: audio session ERROR: \(error)")
         }
 
-        // Dùng AVURLAsset với custom headers nếu có
+        // Tạo AVPlayer với URL
         let asset: AVURLAsset
         if !headers.isEmpty {
             asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
@@ -293,10 +287,8 @@ import AVKit
         let player = AVPlayer(playerItem: playerItem)
         player.preventsDisplaySleepDuringVideoPlayback = true
 
-        // ★ FIX: AVPlayerLayer PHẢI visible + có size hợp lý để PiP render
-        // KHÔNG được set opacity = 0 hoặc.isHidden = true — iOS sẽ crash PiP
+        // PlayerLayer — PHẢI đủ lớn cho iOS PiP
         let playerLayer = AVPlayerLayer(player: player)
-        // ★ FIX: Layer PHẢI đủ lớn — 1x1 pixel bị iOS 16+ reject PiP
         playerLayer.frame = CGRect(x: 0, y: 0, width: 320, height: 180)
         playerLayer.isHidden = false
         playerLayer.opacity = 0.001
@@ -304,14 +296,19 @@ import AVKit
 
         if let rootView = window?.rootViewController?.view {
             rootView.layer.addSublayer(playerLayer)
+            print("PiP: playerLayer added to rootView")
+        } else {
+            print("PiP: ERROR — rootView is nil!")
         }
 
         let pipCtrl = AVPictureInPictureController(playerLayer: playerLayer)
         pipCtrl?.delegate = self
+        print("PiP: AVPictureInPictureController created, isPictureInPicturePossible=\(pipCtrl?.isPictureInPicturePossible ?? false)")
 
-        // FIX: seek NGAY SAU KHI player item ready, không seek lúc chưa load
+        // Seek khi player ready
         if position > 0 {
             playerItemObserver = playerItem.observe(\.status, options: [.new]) { [weak self, weak player] item, _ in
+                print("PiP: playerItem.status changed to \(item.status.rawValue)")
                 guard item.status == .readyToPlay else { return }
                 self?.playerItemObserver?.invalidate()
                 self?.playerItemObserver = nil
@@ -320,7 +317,7 @@ import AVKit
                     toleranceBefore: .zero,
                     toleranceAfter: .zero
                 )
-                print("PiP: setup seek to \(position)s after readyToPlay")
+                print("PiP: seek to \(position)s done")
             }
         }
 
@@ -328,14 +325,15 @@ import AVKit
         pipPlayerLayer = playerLayer
         pipController = pipCtrl
 
-        print("PiP: setup — url=\(url.lastPathComponent), position=\(position), headers=\(headers.count)")
+        print("PiP: setup COMPLETE — player=\(player), pipCtrl=\(pipCtrl != nil)")
     }
 
     // MARK: - FIX: Start PiP chờ player + pip possible
 
     private func startPipWhenReady(position: Double, result: @escaping FlutterResult) {
+        print("PiP: startPipWhenReady — pipPlayer=\(pipPlayer != nil), pipController=\(pipController != nil)")
         guard let player = pipPlayer, let pip = pipController else {
-            print("PiP: startPipWhenReady — no player/controller")
+            print("PiP: FAIL — pipPlayer or pipController is nil!")
             result(false)
             return
         }
@@ -388,20 +386,11 @@ import AVKit
 
     /// Thực sự seek + play + startPictureInPicture sau khi biết player đã ready
     private func performStartPip(player: AVPlayer, pip: AVPictureInPictureController, position: Double, result: @escaping FlutterResult) {
-        // ★ FIX: Ensure audio session configured — KHÔNG .mixWithOthers
-        do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback,
-                options: [.allowBluetooth, .allowBluetoothA2DP])
-            try AVAudioSession.sharedInstance().setActive(true)
-        } catch {
-            print("PiP: audio session error in performStartPip: \(error)")
-        }
+        print("PiP: performStartPip — position=\(position), isPossible=\(pip.isPictureInPicturePossible), rate=\(player.rate)")
 
         let seekThenPlay: () -> Void = { [weak self] in
             player.play()
-            print("PiP: player.play() called, waiting for rate > 0...")
-            // ★ FIX: Dùng KVO observe player.rate thay vì delay cố định
-            // Khi player.rate > 0 → player đang play → PiP possible
+            print("PiP: player.play() called, rate after play=\(player.rate)")
             self?.observePlayerRateAndStartPip(player: player, pip: pip, position: position, result: result)
         }
 
@@ -468,13 +457,14 @@ import AVKit
     }
 
     private func tryStartPipWithRetry(pip: AVPictureInPictureController, position: Double, result: @escaping FlutterResult) {
+        print("PiP: tryStartPipWithRetry — isPossible=\(pip.isPictureInPicturePossible), retry=\(pipRetryCount)")
         if pip.isPictureInPicturePossible {
             do {
                 try pip.startPictureInPicture()
-                print("PiP: started at \(position)s ✓")
+                print("PiP: startPictureInPicture() called OK at \(position)s")
                 result(true)
             } catch {
-                print("PiP: startPictureInPicture error: \(error)")
+                print("PiP: startPictureInPicture THREW: \(error)")
                 result(false)
             }
         } else if pipRetryCount < Self.maxPipRetries {
@@ -518,9 +508,7 @@ import AVKit
 // MARK: - AVPictureInPictureControllerDelegate
 extension AppDelegate: AVPictureInPictureControllerDelegate {
     func pictureInPictureControllerWillStartPictureInPicture(_ controller: AVPictureInPictureController) {
-        print("PiP: willStartPictureInPicture ✓")
-        // ★ FIX: Nil pendingStartResult ở đây — khi PiP THỰC SỰ start
-        // Nếu nil ở performStartPip → failedToStart delegate không gọi được result(false)
+        print("PiP: willStartPictureInPicture ✓ — PiP THỰC SỰ STARTED")
         pendingStartResult = nil
         startPositionTimer()
         pipChannel?.invokeMethod("onPipStarted", arguments: nil)
