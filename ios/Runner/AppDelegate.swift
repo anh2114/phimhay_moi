@@ -143,7 +143,8 @@ import AVKit
                     result(FlutterError(code: "INVALID_ARGS", message: "Missing url or position", details: nil))
                     return
                 }
-                self.enterPiP(url: url, position: position, result: result)
+                let headers = args["headers"] as? [String: String] ?? [:]
+                self.enterPiP(url: url, position: position, headers: headers, result: result)
             case "isPiP":
                 result(self.pipController?.isPictureInPictureActive ?? false)
             case "exitPiP":
@@ -164,7 +165,7 @@ import AVKit
 
     // MARK: - PiP
 
-    private func enterPiP(url: String, position: Int, result: @escaping FlutterResult) {
+    private func enterPiP(url: String, position: Int, headers: [String: String], result: @escaping FlutterResult) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else {
                 result(FlutterError(code: "DEALLOC", message: "AppDelegate deallocated", details: nil))
@@ -198,8 +199,13 @@ import AVKit
             self.window?.rootViewController?.view.addSubview(overlayView)
             self.pipOverlayView = overlayView
 
-            // 4. Create AVPlayerLayer and attach to overlay view
-            let player = AVPlayer(url: streamURL)
+            // 4. Create AVPlayerLayer with headers and attach to overlay view
+            let assetOptions: [String: Any] = [
+                AVURLAssetHTTPHeaderKey: headers
+            ]
+            let asset = AVURLAsset(url: streamURL, options: assetOptions)
+            let playerItem = AVPlayerItem(asset: asset)
+            let player = AVPlayer(playerItem: playerItem)
             let playerLayer = AVPlayerLayer(player: player)
             playerLayer.frame = overlayView.bounds
             playerLayer.isHidden = true  // Hidden — PiP will create its own window
