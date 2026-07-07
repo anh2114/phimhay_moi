@@ -699,37 +699,22 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
         final pos = _positionBeforePause;
 
-        // ★ FIX FPS lag: reopen media để reset decoder state
-        // media_kit/libmpv decoder có thể mất context khi app background
+        // ★ FIX: seek về vị trí cũ + play — KHÔNG reopen media
+        // reopen gây seek về đầu vì _currentPos bị reset thành 0
         Future.delayed(const Duration(milliseconds: 300), () {
-          if (!mounted || _player == null || _currentUrl.isEmpty) return;
+          if (!mounted || _player == null) return;
 
-          // Re-open media để decoder refresh hoàn toàn
-          final headers = <String, String>{};
-          if (!kIsWeb) {
-            headers['Referer'] = AppConfig.baseUrl;
-            headers['User-Agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+          _player!.setVolume(restoreVol);
+          if (_playbackSpeed != 1.0) _player!.setRate(_playbackSpeed);
+
+          // Nếu position bị reset về 0 mà trước đó > 5s → seek lại
+          if (pos > 5 && _currentPosition < 3) {
+            _player!.seek(Duration(seconds: pos)).then((_) {
+              if (!_isPlaying) _player!.play();
+            });
+          } else {
+            if (!_isPlaying) _player!.play();
           }
-
-          _player!.open(
-            Media(_currentUrl, httpHeaders: headers),
-            play: true,
-          ).then((_) {
-            if (!mounted || _player == null) return;
-            _player!.setVolume(restoreVol);
-            if (_playbackSpeed != 1.0) _player!.setRate(_playbackSpeed);
-            // Seek về vị trí trước khi pause
-            if (pos > 5) {
-              _player!.seek(Duration(seconds: pos));
-            }
-            debugPrint('PiP/lifecycle: player reopened, seek to ${pos}s');
-          }).catchError((_) {
-            // Nếu reopen fail → chỉ play lại
-            if (_player != null) {
-              _player!.setVolume(restoreVol);
-              _player!.play();
-            }
-          });
         });
       }
     }
