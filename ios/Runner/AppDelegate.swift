@@ -10,8 +10,10 @@ import AVKit
     private var pipPlayerLayer: AVPlayerLayer?
     private var pipController: AVPictureInPictureController?
     private var pipChannel: FlutterMethodChannel?
+    private var pipRestoreURL: String?
     private var pipOverlayView: UIView?
-    private var pipObservations: [NSKeyValueObservation] = []
+    private var pipPlayerObservations: [NSKeyValueObservation] = []
+    private var pipErrorLogObserver: NSObjectProtocol?
 
     override func application(
         _ application: UIApplication,
@@ -142,7 +144,8 @@ import AVKit
                     result(FlutterError(code: "INVALID_ARGS", message: "Missing url or position", details: nil))
                     return
                 }
-                self.enterPiP(url: url, position: position, result: result)
+                let headers = args["headers"] as? [String: String] ?? [:]
+                self.enterPiP(url: url, position: position, headers: headers, result: result)
             case "isPiP":
                 result(self.pipController?.isPictureInPictureActive ?? false)
             case "exitPiP":
@@ -161,147 +164,180 @@ import AVKit
         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
     }
 
-    // MARK: - PiP via Native AVPlayer + Proxy
+    // MARK: - PiP
 
-    private func enterPiP(url: String, position: Int, result: @escaping FlutterResult) {
+    private func enterPiP(url: String, position: Int, headers: [String: String], result: @escaping FlutterResult) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else {
                 result(FlutterError(code: "DEALLOC", message: "AppDelegate deallocated", details: nil))
                 return
             }
 
-            NSLog("[PiP] enterPiP — url=\(url.prefix(120))... pos=\(position)")
+            NSLog("[PiP] enterPiP called — url=\(url.prefix(80))... pos=\(position)")
 
-            // 1. Setup audio session
+            // 1. Setup audio session for background playback
             do {
                 try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback,
                     options: [.allowBluetooth, .allowBluetoothA2DP])
                 try AVAudioSession.sharedInstance().setActive(true)
             } catch {
-                NSLog("[PiP] Audio session failed: \(error)")
+                NSLog("[PiP] Audio session setup failed: \(error.localizedDescription)")
             }
 
             // 2. Validate URL
             guard let streamURL = URL(string: url) else {
+                NSLog("[PiP] Invalid URL")
                 result(FlutterError(code: "INVALID_URL", message: "Cannot create URL", details: nil))
                 return
             }
 
-            // 3. Cleanup previous PiP if any
-            self.cleanupPiP()
-
-            // 4. Create overlay view in window (required for PiP)
-            let overlayView = UIView(frame: CGRect(x: -1, y: -1, width: 1, height: 1))
+            // 3. Create overlay view — MUST be in window hierarchy for PiP to work
+            self.removePiPOverlay()
+            let overlayView = UIView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
             overlayView.backgroundColor = .clear
+            overlayView.isHidden = true
             overlayView.tag = 8888
             self.window?.rootViewController?.view.addSubview(overlayView)
             self.pipOverlayView = overlayView
 
-            // 5. Create AVPlayer with proxy URL (proxy handles CORS + headers)
-            let playerItem = AVPlayerItem(url: streamURL)
+            // 4. Create AVPlayerLayer with headers (only if actually provided) and attach to overlay view
+            var assetOptions: [String: Any] = [:]
+            if !headers.isEmpty {
+                assetOptions["AVURLAssetHTTPHeaderFieldsKey"] = headers
+            }
+            let asset = AVURLAsset(url: streamURL, options: assetOptions)
+            let playerItem = AVPlayerItem(asset: asset)
             let player = AVPlayer(playerItem: playerItem)
-            self.pipPlayer = player
-
-            // 6. Create player layer and add to overlay
             let playerLayer = AVPlayerLayer(player: player)
             playerLayer.frame = overlayView.bounds
+            playerLayer.isHidden = true  // Hidden — PiP will create its own window
             overlayView.layer.addSublayer(playerLayer)
             self.pipPlayerLayer = playerLayer
+            self.pipPlayer = player
+            self.pipRestoreURL = url
 
-            // 7. Create PiP controller
+            // 5. Create PiP controller
             guard let pipController = AVPictureInPictureController(playerLayer: playerLayer) else {
-                NSLog("[PiP] Failed to create PiP controller")
-                self.cleanupPiP()
-                result(FlutterError(code: "NO_PIP", message: "PiP not available", details: nil))
+                NSLog("[PiP] Failed to create AVPictureInPictureController")
+                self.removePiPOverlay()
+                result(FlutterError(code: "NO_PIP", message: "AVPictureInPictureController not available", details: nil))
                 return
             }
             pipController.delegate = self
             self.pipController = pipController
 
-            NSLog("[PiP] Player created, waiting for ready...")
+            NSLog("[PiP] Player + controller created, waiting for player ready...")
 
-            // 8. Wait for player ready, then seek + start PiP
-            var handled = false
-            let timeout = DispatchWorkItem { [weak self] in
-                guard !handled else { return }
-                handled = true
-                NSLog("[PiP] TIMEOUT")
-                self?.cleanupPiP()
-                result(FlutterError(code: "TIMEOUT", message: "Player not ready in 15s", details: nil))
+            // 6. Wait for player to be ready (status = .readyToPlay)
+            // Use timeout: if not ready in 20s, fail (đủ thời gian cho DNS+TLS+tải segment đầu trên mobile)
+            var observed = false
+            let timeoutWork = DispatchWorkItem { [weak self] in
+                guard !observed, let self = self else { return }
+                observed = true
+                NSLog("[PiP] TIMEOUT — player not ready in 20s. itemStatus=\(playerItem.status.rawValue) itemError=\(playerItem.error?.localizedDescription ?? "nil")")
+                self.removePiPOverlay()
+                result(FlutterError(code: "TIMEOUT", message: "Player did not become ready in 20s: \(playerItem.error?.localizedDescription ?? "unknown reason")", details: nil))
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 15, execute: timeout)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 20, execute: timeoutWork)
 
-            let obs = player.observe(\.status, options: [.new]) { [weak self] player, change in
-                guard let self = self, !handled else { return }
+            // Log lỗi HTTP thật của từng request (manifest/segment) — rất hữu ích để biết
+            // chính xác lý do treo: 403, 404, timeout mạng, DNS, v.v.
+            pipErrorLogObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.newErrorLogEntryNotification, object: playerItem, queue: .main) { _ in
+                guard let entry = playerItem.errorLog()?.events.last else { return }
+                NSLog("[PiP] HLS error log — URI=\(entry.uri ?? "?") statusCode=\(entry.errorStatusCode) domain=\(entry.errorDomain) comment=\(entry.errorComment ?? "nil")")
+            }
+
+            // Observe cả playerItem.status (đáng tin hơn player.status, có kèm error cụ thể)
+            let itemObservation = playerItem.observe(\.status, options: [.new]) { item, _ in
+                if item.status == .failed {
+                    NSLog("[PiP] PlayerItem FAILED: \(item.error?.localizedDescription ?? "unknown")")
+                }
+            }
+            self.pipPlayerObservations.append(itemObservation)
+
+            let observation = player.observe(\.status, options: [.new]) { [weak self] player, change in
+                guard let self = self, !observed else { return }
                 guard change.newValue == .readyToPlay else {
                     if change.newValue == .failed {
-                        handled = true
-                        timeout.cancel()
-                        let errMsg = player.error?.localizedDescription ?? "unknown"
-                        NSLog("[PiP] Player FAILED: \(errMsg)")
-                        self.cleanupPiP()
+                        observed = true
+                        timeoutWork.cancel()
+                        NSLog("[PiP] Player FAILED: \(player.error?.localizedDescription ?? "unknown")")
+                        self.removePiPOverlay()
                         DispatchQueue.main.async {
-                            result(FlutterError(code: "PLAYER_FAILED", message: errMsg, details: nil))
+                            result(FlutterError(code: "PLAYER_FAILED", message: player.error?.localizedDescription ?? "Player failed", details: nil))
                         }
                     }
                     return
                 }
 
-                handled = true
-                timeout.cancel()
+                // Player is ready
+                observed = true
+                timeoutWork.cancel()
                 NSLog("[PiP] Player ready — seeking to \(position)s")
 
-                let target = CMTime(seconds: Double(position), preferredTimescale: 600)
-                player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+                // Seek to position
+                let targetTime = CMTime(seconds: Double(position), preferredTimescale: 600)
+                player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
                     DispatchQueue.main.async {
+                        NSLog("[PiP] Seek complete — starting PiP")
                         player.play()
-                        NSLog("[PiP] Starting PiP...")
                         pipController.startPictureInPicture()
+                        // Result will be returned in delegate callback
+                        // But return true here to indicate PiP was initiated
                         result(true)
                     }
                 }
             }
-            self.pipObservations.append(obs)
+            self.pipPlayerObservations.append(observation)
         }
     }
 
-    private func cleanupPiP() {
-        pipObservations.removeAll()
+    private func removePiPOverlay() {
+        pipPlayerObservations.removeAll()
+        if let token = pipErrorLogObserver {
+            NotificationCenter.default.removeObserver(token)
+            pipErrorLogObserver = nil
+        }
         pipPlayerLayer?.removeFromSuperlayer()
         pipPlayerLayer = nil
         pipPlayer?.pause()
         pipPlayer = nil
-        pipController?.stopPictureInPicture()
-        pipController = nil
         pipOverlayView?.removeFromSuperview()
         pipOverlayView = nil
     }
 
     // MARK: - AVPictureInPictureControllerDelegate
 
-    func pictureInPictureControllerWillStartPictureInPicture(_ controller: AVPictureInPictureController) {
+    func pictureInPictureControllerWillStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
         NSLog("[PiP] Will start")
         pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
     }
 
-    func pictureInPictureControllerDidStartPictureInPicture(_ controller: AVPictureInPictureController) {
-        NSLog("[PiP] Did start")
+    func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+        NSLog("[PiP] Did start — PiP is active")
     }
 
-    func pictureInPictureController(_ controller: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
-        NSLog("[PiP] FAILED: \(error.localizedDescription)")
+    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
+        NSLog("[PiP] FAILED to start: \(error.localizedDescription)")
         pipChannel?.invokeMethod("onPiPError", arguments: error.localizedDescription)
-        cleanupPiP()
+        removePiPOverlay()
     }
 
-    func pictureInPictureControllerWillStopPictureInPicture(_ controller: AVPictureInPictureController) {
-        NSLog("[PiP] Will stop")
+    func pictureInPictureControllerWillStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+        NSLog("[PiP] Will stop — user tapped restore")
+        pipChannel?.invokeMethod("onPiPModeChanged", arguments: false)
     }
 
-    func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
+    func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+        NSLog("[PiP] Did stop")
+        // Get position before cleanup
         let position = Int(pipPlayer?.currentTime().seconds ?? 0)
-        NSLog("[PiP] Did stop — pos=\(position)")
-        cleanupPiP()
+        NSLog("[PiP] Stopping — position=\(position)")
+
+        // Cleanup native player
+        removePiPOverlay()
+
+        // Notify Flutter to resume at position
         DispatchQueue.main.async { [weak self] in
             self?.pipChannel?.invokeMethod("onPiPRestore", arguments: ["position": position])
         }
