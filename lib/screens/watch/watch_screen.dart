@@ -32,7 +32,6 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:phimhay_app/services/srt_parser.dart';
-import 'package:fl_pip/fl_pip.dart';
 
 /// Loại player hiện tại
 enum _PlayerMode { hls, embed }
@@ -190,7 +189,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     super.initState();
     _enableWakelockWithRetry(); // Chặn màn hình khóa khi xem phim
     _lockBrightness(); // Giữ độ sáng khi xem phim
-    _checkPipAvailability();
     WidgetsBinding.instance.addObserver(this);
     _currentEpId = widget.episodeId;
     _showControlsWithAutoHide(); // hiện controls khi vào, auto ẩn sau 4s
@@ -328,32 +326,24 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     final colorHex = int.parse('0xFF${_selectedSubtitleColor.substring(1)}');
 
-    // ★ PiP: scale nhỏ + background rõ ràng
-    final fontSize = _pipActive ? 8.0 : _selectedSubtitleSize;
-    final bgOpacity = _pipActive ? 0.7 : _selectedSubtitleBgOpacity;
-
     return Positioned(
-      top: _pipActive ? 2 : null,
-      bottom: _pipActive ? null : 16,
-      left: _pipActive ? 2 : 16,
-      right: _pipActive ? 2 : 16,
+      bottom: 16,
+      left: 16,
+      right: 16,
       child: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: _pipActive ? 4 : 12,
-          vertical: _pipActive ? 1 : 6,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(bgOpacity),
-          borderRadius: BorderRadius.circular(_pipActive ? 2 : 4),
+          color: Colors.black.withOpacity(_selectedSubtitleBgOpacity),
+          borderRadius: BorderRadius.circular(4),
         ),
         child: Text(
           text,
           textAlign: TextAlign.center,
-          maxLines: _pipActive ? 2 : 4,
+          maxLines: 4,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: Color(colorHex),
-            fontSize: fontSize,
+            fontSize: _selectedSubtitleSize,
             fontWeight: FontWeight.w600,
             height: 1.2,
           ),
@@ -601,101 +591,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     await _saveCurrentProgress();
   }
 
-  static const _pipChannel = MethodChannel('phimhay/pip');
-  bool _pipAvailable = false;
-  bool _pipActive = false;
 
-  void _checkPipAvailability() async {
-    try {
-      if (Platform.isIOS) {
-        // iOS: dùng native AVPlayer PiP → check via method channel
-        _pipAvailable = await _pipChannel.invokeMethod('isPipAvailable') ?? false;
-      } else {
-        // Android: dùng fl_pip package
-        _pipAvailable = await FlPiP().isAvailable ?? false;
-      }
-    } catch (_) {
-      _pipAvailable = false;
-    }
-    _pipChannel.setMethodCallHandler((call) async {
-      if (call.method == 'onPipStarted') {
-        // ★ iOS: PiP started → pause media_kit
-        _pipActive = true;
-        if (Platform.isIOS && _player != null) {
-          _player!.pause();
-        }
-        if (mounted) setState(() {});
-      } else if (call.method == 'onPipStopped') {
-        // ★ iOS: PiP stopped → seek media_kit về position từ AVPlayer → play
-        _pipActive = false;
-        final pos = (call.arguments is Map) ? ((call.arguments as Map)['position'] as double?) ?? 0 : 0.0;
-        if (Platform.isIOS && _player != null && pos > 0) {
-          final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
-          await _player!.seek(Duration(seconds: pos.toInt()));
-          _player!.setVolume(restoreVol);
-          _player!.play();
-        } else if (_player != null) {
-          final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
-          _player!.setVolume(restoreVol);
-          _player!.play();
-        }
-        if (mounted) setState(() {});
-      }
-      // ★ Android: MediaSession callbacks
-      else if (call.method == 'onMediaPlay') {
-        _player?.play();
-        _updateMediaSessionState();
-      } else if (call.method == 'onMediaPause') {
-        _player?.pause();
-        _updateMediaSessionState();
-      } else if (call.method == 'onMediaSeek') {
-        final pos = (call.arguments as Map?)?['position'] as double? ?? 0;
-        _player?.seek(Duration(seconds: pos.toInt()));
-        _updateMediaSessionState();
-      }
-    });
-    if (mounted) setState(() {});
-  }
-
-  void _updateMediaSessionState() {
-    _pipChannel.invokeMethod('updatePlaybackState', {
-      'isPlaying': _isPlaying,
-      'position': _currentPos.inSeconds.toDouble(),
-    }).then((_) {}, onError: (_) {});
-  }
-
-  void _startPip() async {
-    final position = _currentPos.inSeconds.toDouble();
-
-    if (Platform.isIOS) {
-      // ★ iOS: gửi URL + position + headers → native tạo AVPlayer → PiP
-      if (_currentUrl.isEmpty) return;
-      _pipChannel.invokeMethod('startPip', {
-        'url': _currentUrl,
-        'position': position,
-        'headers': {
-          'Referer': AppConfig.baseUrl,
-          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-        },
-      }).then((result) {
-        debugPrint('PiP: iOS startPip result=$result');
-      }).catchError((e) {
-        debugPrint('PiP: iOS startPip error: $e');
-      });
-    } else {
-      // ★ Android: fl_pip capture Flutter view + MediaSession controls
-      _pipActive = true;
-      setState(() {});
-      await Future.delayed(const Duration(milliseconds: 200));
-      FlPiP().enable().then((_) {
-        debugPrint('PiP: Android enabled');
-      }).catchError((e) {
-        debugPrint('PiP: Android enable failed: $e');
-        _pipActive = false;
-        setState(() {});
-      });
-    }
-  }
 
   Future<void> _showAirPlayPicker() async {
     try {
@@ -1058,10 +954,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     });
 
     _subPlaying = _player!.stream.playing.listen((playing) {
-      if (mounted) {
-        setState(() => _isPlaying = playing);
-        _updateMediaSessionState();
-      }
+      if (mounted) setState(() => _isPlaying = playing);
     });
 
     _subDuration = _player!.stream.duration.listen((dur) {
@@ -1480,15 +1373,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    // ★ PiP active → chỉ hiện video player, ẩn header/tập phim
-    // Controls play/pause/next/prev dùng Android MediaSession (system overlay)
-    if (_pipActive) {
-      return Scaffold(
-        backgroundColor: Colors.black,
-        body: _buildPlayer(),
-      );
-    }
-
     final orientation = MediaQuery.of(context).orientation;
     final isLandscape = orientation == Orientation.landscape;
 
@@ -2429,15 +2313,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 ),
               ),
             ),
-            // Right: PiP + AirPlay + Episodes list
-            if (_pipAvailable)
-              GestureDetector(
-                onTap: _startPip,
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 8),
-                  child: AppSvgIcon('picture-in-picture-2.svg', size: 22, color: Colors.white),
-                ),
+            // Right: PiP icon (placeholder — PiP chưa implement)
+            GestureDetector(
+              onTap: () {},
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: AppSvgIcon('picture-in-picture-2.svg', size: 22, color: Colors.white38),
               ),
+            ),
             if (Platform.isIOS)
               GestureDetector(
                 onTap: _showAirPlayPicker,
@@ -2799,14 +2682,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   },
                   child: const AppSvgIcon('fast-forward.svg', size: 22, color: Colors.white),
                 ),
-                // PiP button
-                if (_pipAvailable)
-                  GestureDetector(
-                    onTap: _startPip,
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 4),
-                      child: AppSvgIcon('picture-in-picture-2.svg', size: 20, color: Colors.white),
-                    ),
+                // PiP icon (placeholder)
+                GestureDetector(
+                  onTap: () {},
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4),
+                    child: AppSvgIcon('picture-in-picture-2.svg', size: 20, color: Colors.white38),
+                  ),
                   ),
                 // Subtitle toggle
                 if (_subtitles.isNotEmpty)
@@ -3030,15 +2912,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 ),
               // Next episode button
               _nextEpisodeButton(),
-              // PiP button
-              if (_pipAvailable)
-                GestureDetector(
-                  onTap: _startPip,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 4),
-                    child: AppSvgIcon('picture-in-picture-2.svg', size: 20, color: Colors.white),
-                  ),
+              // PiP icon (placeholder)
+              GestureDetector(
+                onTap: () {},
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 4),
+                  child: AppSvgIcon('picture-in-picture-2.svg', size: 20, color: Colors.white38),
                 ),
+              ),
               // AirPlay button (iOS only)
               if (Platform.isIOS)
                 GestureDetector(
