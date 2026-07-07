@@ -31,7 +31,9 @@ import AVKit
         // PiP channel
         let pipChannel = FlutterMethodChannel(name: "phimhay/pip", binaryMessenger: controller.binaryMessenger)
         self.pipChannel = pipChannel
+        print("PiP: channel registered — self=\(Unmanaged.passUnretained(self).toOpaque())")
         pipChannel.setMethodCallHandler { [weak self] (call, result) in
+            print("PiP: handler invoked — method=\(call.method), self=\(String(describing: self))")
             switch call.method {
             case "isPipAvailable":
                 result(AVPictureInPictureController.isPictureInPictureSupported())
@@ -40,21 +42,27 @@ import AVKit
                 guard let args = call.arguments as? [String: Any],
                       let urlString = args["url"] as? String,
                       let url = URL(string: urlString) else {
+                    print("PiP: setupPip FAIL — invalid args or URL")
                     result(false)
                     return
                 }
                 let position = args["position"] as? Double ?? 0
                 let headers = args["headers"] as? [String: String] ?? [:]
+                print("PiP: setupPip handler — url=\(urlString.prefix(60)), position=\(position)")
                 self?.setupPipController(url: url, position: position, headers: headers)
+                print("PiP: setupPip handler DONE — pipPlayer=\(self?.pipPlayer != nil), pipController=\(self?.pipController != nil)")
                 result(true)
 
             case "startPip":
-                guard let self = self else { result(false); return }
+                print("PiP: startPip handler ENTERED — self=\(String(describing: self)), pipPlayer=\(String(describing: self?.pipPlayer)), pipController=\(String(describing: self?.pipController))")
+                guard let self = self else {
+                    print("PiP: startPip FAIL — self is nil!")
+                    result(false)
+                    return
+                }
                 let args = call.arguments as? [String: Any]
                 let position = args?["position"] as? Double ?? 0
-                print("PiP: startPip called from Flutter — position=\(position)")
-
-                // Audio session đã configure trong setupPipController — không cần lại
+                print("PiP: startPip called — position=\(position), pipPlayer=\(self.pipPlayer != nil), pipController=\(self.pipController != nil)")
                 self.startPipWhenReady(position: position, result: result)
 
             case "stopPip":
