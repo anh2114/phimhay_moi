@@ -181,13 +181,17 @@ class MainActivity : FlPiPActivity() {
                 }
 
                 override fun onSkipToNext() {
-                    // Gửi về Flutter: next episode
-                    pipChannel?.invokeMethod("onMediaNext", null)
+                    // Tua trước 10s
+                    pipPosition += 10.0
+                    pipChannel?.invokeMethod("onMediaSeek", mapOf("position" to pipPosition))
+                    updateMediaSessionState(isPlaying, pipPosition)
                 }
 
                 override fun onSkipToPrevious() {
-                    // Gửi về Flutter: previous episode
-                    pipChannel?.invokeMethod("onMediaPrevious", null)
+                    // Lùi 10s
+                    pipPosition = maxOf(0.0, pipPosition - 10.0)
+                    pipChannel?.invokeMethod("onMediaSeek", mapOf("position" to pipPosition))
+                    updateMediaSessionState(isPlaying, pipPosition)
                 }
 
                 override fun onSeekTo(pos: Long) {
