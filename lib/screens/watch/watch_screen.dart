@@ -686,21 +686,29 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     });
   }
 
-  /// Setup PiP — enable auto-PiP trên Android, setup native player trên iOS
+  /// Setup PiP — tạo native AVPlayer + PiP controller trên iOS
   Future<void> _setupPip() async {
-    if (!_pipAvailable || _currentUrl.isEmpty) return;
-    if (Platform.isAndroid) {
-      _pipChannel.invokeMethod('setAutoPip', {'enabled': true}).catchError((_) {});
+    if (!_pipAvailable || _currentUrl.isEmpty) {
+      debugPrint('PiP: _setupPip skipped — available=$_pipAvailable, url=${_currentUrl.length}');
+      return;
     }
-    // ★ FIX: Await setup để đảm bảo native player đã sẵn sàng trước khi startPip
-    await _pipChannel.invokeMethod('setupPip', {
-      'url': _currentUrl,
-      'position': _currentPos.inSeconds.toDouble(),
-      'headers': {
-        'Referer': AppConfig.baseUrl,
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-      },
-    }).catchError((_) {});
+    if (Platform.isAndroid) {
+      _pipChannel.invokeMethod('setAutoPip', {'enabled': true}).then((_) {}, onError: (_) {});
+    }
+    debugPrint('PiP: _setupPip sending setupPip to native — url=${_currentUrl.substring(0, _currentUrl.length > 80 ? 80 : _currentUrl.length)}');
+    try {
+      final result = await _pipChannel.invokeMethod('setupPip', {
+        'url': _currentUrl,
+        'position': _currentPos.inSeconds.toDouble(),
+        'headers': {
+          'Referer': AppConfig.baseUrl,
+          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+        },
+      });
+      debugPrint('PiP: setupPip native result=$result');
+    } catch (e) {
+      debugPrint('PiP: setupPip FAILED: $e');
+    }
   }
 
   /// Bật PiP — pause Flutter player TRƯỚC khi start native PiP
@@ -730,7 +738,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     // Start PiP
     debugPrint('PiP: calling startPip on native...');
-    _pipChannel.invokeMethod('updatePipPosition', {'position': position}).catchError((_) {});
+    _pipChannel.invokeMethod('updatePipPosition', {'position': position}).then((_) {}, onError: (_) {});
     _pipChannel.invokeMethod('startPip', {'position': position}).then((result) {
       debugPrint('PiP: startPip result=$result');
       if (result == true) {
@@ -742,7 +750,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         _pipPollTimer?.cancel();
         _restorePlayerAfterPipFail();
       }
-    }).catchError((e) {
+    }, onError: (e) {
       debugPrint('PiP: startPip EXCEPTION: $e');
       _pipActive = false;
       _pipPollTimer?.cancel();
@@ -782,7 +790,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         _positionBeforePause = _currentPos.inSeconds;
         _saveCurrentProgress();
         // Cập nhật PiP position
-        _pipChannel.invokeMethod('updatePipPosition', {'position': _positionBeforePause.toDouble()}).catchError((_) {});
+        _pipChannel.invokeMethod('updatePipPosition', {'position': _positionBeforePause.toDouble()}).then((_) {}, onError: (_) {});
       }
     } else if (state == AppLifecycleState.resumed) {
       // ★ FIX: Skip resume logic nếu đang resume từ PiP (PiP poll sẽ handle)
@@ -795,7 +803,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
       // ★ FIX: Re-configure audio session khi resume — OS có thể reset về silent mode
       if (Platform.isIOS && _playerMode == _PlayerMode.hls) {
-        _audioChannel.invokeMethod('configureForPlayback').catchError((_) {});
+        _audioChannel.invokeMethod('configureForPlayback').then((_) {}, onError: (_) {});
       }
 
       // ★ FIX: Properly resume video — tránh FPS drop bằng cách restart decoder
@@ -853,7 +861,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   void dispose() {
     // ★ FIX: Disable auto-PiP khi thoát watch screen
     if (_pipAvailable && Platform.isAndroid) {
-      _pipChannel.invokeMethod('setAutoPip', {'enabled': false}).catchError((_) {});
+      _pipChannel.invokeMethod('setAutoPip', {'enabled': false}).then((_) {}, onError: (_) {});
     }
     // Restore wakelock và brightness
     try { WakelockPlus.disable(); } catch (_) {}
@@ -1220,7 +1228,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     // ★ FIX: Configure iOS audio session cho video playback TRƯỚC KHI tạo player
     // Nếu không set → silent switch mute audio, hoặc audio không phát
     if (Platform.isIOS) {
-      _audioChannel.invokeMethod('configureForPlayback').catchError((_) {});
+      _audioChannel.invokeMethod('configureForPlayback').then((_) {}, onError: (_) {});
     }
 
     final startPos = _currentPosition > 0 ? Duration(seconds: _currentPosition) : Duration.zero;
