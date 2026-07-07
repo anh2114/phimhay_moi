@@ -140,7 +140,16 @@ import WebKit
                     result(FlutterError(code: "INVALID_ARGS", message: "Missing url or position", details: nil))
                     return
                 }
-                self.enterPiP(url: url, position: position, result: result)
+                self.startPiP(result: result)
+            case "prewarmPiP":
+                guard let args = call.arguments as? [String: Any],
+                      let url = args["url"] as? String,
+                      let position = args["position"] as? Int else {
+                    result(false)
+                    return
+                }
+                self.prewarmPiP(url: url, position: position)
+                result(true)
             case "isPiP":
                 result(self.pipWebView != nil)
             case "exitPiP":
@@ -156,15 +165,11 @@ import WebKit
 
     // MARK: - PiP via WebKit
 
-    private func enterPiP(url: String, position: Int, result: @escaping FlutterResult) {
+    private func prewarmPiP(url: String, position: Int) {
         DispatchQueue.main.async { [weak self] in
-            guard let self = self else {
-                result(FlutterError(code: "DEALLOC", message: "AppDelegate deallocated", details: nil))
-                return
-            }
+            guard let self = self else { return }
 
-            NSLog("[PiP] enterPiP via WebKit — url=\(url.prefix(100))... pos=\(position)")
-            self.pipRestorePosition = position
+            NSLog("[PiP] prewarm — url=\(url.prefix(100))... pos=\(position)")
 
             // Setup audio session
             do {
@@ -189,7 +194,7 @@ import WebKit
             self.window?.rootViewController?.view.addSubview(webView)
             self.pipWebView = webView
 
-            // Load HTML with video element pointing to the m3u8 URL
+            // Load HTML with video element — autoPiP when going to background
             let html = """
             <!DOCTYPE html>
             <html>
@@ -200,46 +205,13 @@ import WebKit
             </style>
             </head>
             <body>
-            <video id="pipVideo" playsinline webkit-playsinline x-webkit-airplay="allows-airplay" autoplay></video>
+            <video id="pipVideo" playsinline webkit-playsinline x-webkit-airplay="allows-airplay" autoplay autoPictureInPicture></video>
             <script>
                 var video = document.getElementById('pipVideo');
-                var pipRequested = false;
                 video.src = '\(url.replacingOccurrences(of: "'", with: "\\'"))';
+                video.currentTime = \(position);
                 video.load();
-
-                function tryRequestPiP() {
-                    if (pipRequested) return;
-                    pipRequested = true;
-                    console.log('Requesting PiP...');
-                    video.requestPictureInPicture().catch(function(e) {
-                        console.log('PiP error:', e.message);
-                        window.webkit.messageHandlers.pipError.postMessage({error: e.message});
-                    });
-                }
-
-                // Wait for loadedmetadata + video track
-                video.addEventListener('loadedmetadata', function() {
-                    console.log('metadata loaded, videoTracks=' + (video.videoTracks ? video.videoTracks.length : 'N/A'));
-                    // Try multiple times — track may appear after metadata
-                    var attempts = 0;
-                    var checkTrack = setInterval(function() {
-                        attempts++;
-                        var hasTrack = (video.videoTracks && video.videoTracks.length > 0) || video.readyState >= 2;
-                        console.log('attempt=' + attempts + ' hasTrack=' + hasTrack + ' readyState=' + video.readyState);
-                        if (hasTrack || attempts >= 20) {
-                            clearInterval(checkTrack);
-                            video.currentTime = \(position);
-                            video.play().then(function() {
-                                // Delay PiP request a bit after play starts
-                                setTimeout(tryRequestPiP, 500);
-                            }).catch(function(e) {
-                                console.log('play error:', e);
-                                window.webkit.messageHandlers.pipError.postMessage({error: e.message});
-                            });
-                        }
-                    }, 300);
-                });
-
+                video.play().catch(function(e) { console.log('prewarm play error:', e); });
                 video.addEventListener('enterpictureinpicture', function() {
                     window.webkit.messageHandlers.pipStarted.postMessage({started: true});
                 });
@@ -258,7 +230,6 @@ import WebKit
             let pipStartedHandler = PiPStartedHandler { [weak self] in
                 NSLog("[PiP] PiP started!")
                 self?.pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
-                result(true)
             }
 
             let pipEndedHandler = PiPEndedHandler { [weak self] in
@@ -276,8 +247,6 @@ import WebKit
 
             let pipErrorHandler = PiPErrorHandler { [weak self] error in
                 NSLog("[PiP] Error: \(error)")
-                result(FlutterError(code: "PIP_ERROR", message: error, details: nil))
-                self?.cleanupPiPWebView()
             }
 
             let contentController = webView.configuration.userContentController
@@ -285,16 +254,47 @@ import WebKit
             contentController.add(pipEndedHandler, name: "pipEnded")
             contentController.add(pipErrorHandler, name: "pipError")
 
-            // Timeout after 15s
-            DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
-                guard self?.pipWebView != nil else { return }
-                NSLog("[PiP] TIMEOUT — video not ready in 15s")
-                self?.cleanupPiPWebView()
-                result(FlutterError(code: "TIMEOUT", message: "Video did not load in 15s", details: nil))
-            }
-
             // Load HTML
             webView.loadHTMLString(html, baseURL: URL(string: "https://xiaofilm.site"))
+        }
+    }
+
+    private func startPiP(result: @escaping FlutterResult) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, let webView = self.pipWebView else {
+                result(FlutterError(code: "NO_WEBVIEW", message: "No prewarmed WebView. Call prewarmPiP first.", details: nil))
+                return
+            }
+
+            NSLog("[PiP] startPiP — calling requestPictureInPicture()")
+
+            // This MUST be called in user gesture context (same tick as the tap)
+            let js = """
+            (function() {
+                var video = document.getElementById('pipVideo');
+                if (!video) { return 'no video element'; }
+                if (!video.src) { return 'no video src'; }
+                if (video.readyState < 2) { return 'video not ready: readyState=' + video.readyState; }
+                video.requestPictureInPicture().then(function() {
+                    console.log('PiP started OK');
+                }).catch(function(e) {
+                    console.log('PiP request failed:', e.message);
+                    window.webkit.messageHandlers.pipError.postMessage({error: e.message});
+                });
+                return 'requesting...';
+            })()
+            """
+
+            webView.evaluateJavaScript(js) { resultStr, error in
+                if let error = error {
+                    NSLog("[PiP] JS error: \(error)")
+                    result(FlutterError(code: "JS_ERROR", message: error.localizedDescription, details: nil))
+                } else {
+                    NSLog("[PiP] JS result: \(resultStr ?? "nil")")
+                    // Don't return true yet — wait for enterpictureinpicture event
+                    result(true)
+                }
+            }
         }
     }
 

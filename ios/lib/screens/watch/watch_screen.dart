@@ -794,7 +794,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       await _saveCurrentProgress();
 
       int position = 0;
-      String url = _currentUrl;
 
       if (_playerMode == _PlayerMode.hls && _player != null) {
         position = _currentPosition;
@@ -804,38 +803,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             source: "document.querySelector('video')?.currentTime || 0",
           );
           if (posResult != null) position = (posResult as num).toInt();
-          final urlResult = await _webController!.evaluateJavascript(
-            source: "document.querySelector('video')?.src || ''",
-          );
-          if (urlResult != null && (urlResult as String).isNotEmpty) {
-            url = urlResult;
-          }
         } catch (_) {}
       }
 
-      if (url.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Không có video để PiP'), backgroundColor: Colors.orange),
-        );
-        return;
-      }
-
-      // iOS PiP needs to go through hls_proxy for CORS + headers
-      // Android PiP works directly with the raw URL
-      String pipUrl = url;
-      if (Platform.isIOS && url.isNotEmpty && !url.contains('hls_proxy.php')) {
-        pipUrl = AppConfig.proxyHlsUrl(url);
-      }
-
       final result = await _pipChannel.invokeMethod('enterPiP', {
-        'url': pipUrl,
+        'url': '',
         'position': position,
-        'width': 16,
-        'height': 9,
-        'headers': {
-          'Referer': AppConfig.baseUrl,
-          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-        },
       });
 
       if (result != true) {
@@ -1172,6 +1145,15 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       // Restore playback speed
       if (_playbackSpeed != 1.0) {
         _player!.setRate(_playbackSpeed);
+      }
+
+      // Pre-warm iOS PiP WebView
+      if (Platform.isIOS && playUrl.isNotEmpty) {
+        final proxyUrl = AppConfig.proxyHlsUrl(playUrl);
+        _pipChannel.invokeMethod('prewarmPiP', {
+          'url': proxyUrl,
+          'position': _currentPosition,
+        });
       }
 
       if (targetPosition > 0 && !_seekCompleted) {
