@@ -206,18 +206,16 @@ import AVKit
         pipController = pipCtrl
 
         // Chờ player ready rồi mới seek + start PiP
-        let status = playerItem.status
-        if status == .readyToPlay {
+        if playerItem.status == .readyToPlay {
             seekAndStartPip(player: player, pip: pipCtrl, position: position, result: result)
         } else {
             print("PiP: waiting for readyToPlay...")
-            playerItemObserver = playerItem.observe(\.status, options: [.new]) { [weak self, weak player, weak pip] item, _ in
+            playerItemObserver = playerItem.observe(\.status, options: [.new]) { [weak self] item, _ in
                 guard item.status == .readyToPlay else { return }
                 self?.playerItemObserver?.invalidate()
                 self?.playerItemObserver = nil
-                guard let player = player, let pip = pip else { return }
                 DispatchQueue.main.async {
-                    self?.seekAndStartPip(player: player, pip: pip, position: position, result: result)
+                    self?.seekAndStartPip(player: player, pip: pipCtrl, position: position, result: result)
                 }
             }
             // Timeout 8s
