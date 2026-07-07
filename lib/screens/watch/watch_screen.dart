@@ -611,32 +611,37 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     } catch (_) {
       _pipAvailable = false;
     }
-    // Lắng nghe PiP state + MediaSession callbacks từ native
     _pipChannel.setMethodCallHandler((call) async {
       if (call.method == 'onPipStarted') {
+        // ★ iOS: PiP started → pause media_kit
         _pipActive = true;
+        if (Platform.isIOS && _player != null) {
+          _player!.pause();
+        }
         if (mounted) setState(() {});
       } else if (call.method == 'onPipStopped') {
+        // ★ iOS: PiP stopped → seek media_kit về position từ AVPlayer → play
         _pipActive = false;
-        if (mounted) setState(() {});
-        if (_playerMode == _PlayerMode.hls && _player != null) {
+        final pos = (call.arguments is Map) ? ((call.arguments as Map)['position'] as double?) ?? 0 : 0.0;
+        if (Platform.isIOS && _player != null && pos > 0) {
+          final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
+          await _player!.seek(Duration(seconds: pos.toInt()));
+          _player!.setVolume(restoreVol);
+          _player!.play();
+        } else if (_player != null) {
           final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
           _player!.setVolume(restoreVol);
           _player!.play();
         }
+        if (mounted) setState(() {});
       }
-      // ★ MediaSession callbacks — Android PiP controls
+      // ★ Android: MediaSession callbacks
       else if (call.method == 'onMediaPlay') {
         _player?.play();
         _updateMediaSessionState();
       } else if (call.method == 'onMediaPause') {
         _player?.pause();
         _updateMediaSessionState();
-      } else if (call.method == 'onMediaNext') {
-        final nextEp = _getNextEpisode();
-        if (nextEp != null) _switchEpisode(nextEp);
-      } else if (call.method == 'onMediaPrevious' && _currentPosition > 10) {
-        _player?.seek(Duration(seconds: _currentPosition - 10));
       } else if (call.method == 'onMediaSeek') {
         final pos = (call.arguments as Map?)?['position'] as double? ?? 0;
         _player?.seek(Duration(seconds: pos.toInt()));
@@ -646,7 +651,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     if (mounted) setState(() {});
   }
 
-  /// Gửi playback state về native để MediaSession update controls
   void _updateMediaSessionState() {
     _pipChannel.invokeMethod('updatePlaybackState', {
       'isPlaying': _isPlaying,
@@ -655,30 +659,32 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   void _startPip() async {
-    // Set _pipActive TRƯỚC để UI rebuild ẩn header/controls
-    // → PiP capture chỉ thấy video player
-    _pipActive = true;
-    setState(() {});
-    await Future.delayed(const Duration(milliseconds: 200));
+    final position = _currentPos.inSeconds.toDouble();
 
-    // Chỉ pause trên iOS (iOS dùng AVPlayer riêng cho PiP)
-    // Android: Flutter view vẫn chạy → KHÔNG pause
-    if (Platform.isIOS && _playerMode == _PlayerMode.hls && _player != null) {
-      _player!.pause();
-    }
-
-    FlPiP().enable().then((_) {
-      debugPrint('PiP: enabled OK');
-    }).catchError((e) {
-      debugPrint('PiP: enable failed: $e');
-      _pipActive = false;
+    if (Platform.isIOS) {
+      // ★ iOS: gửi URL + position → native tạo AVPlayer → PiP
+      if (_currentUrl.isEmpty) return;
+      _pipChannel.invokeMethod('startPip', {
+        'url': _currentUrl,
+        'position': position,
+      }).then((result) {
+        debugPrint('PiP: iOS startPip result=$result');
+      }).catchError((e) {
+        debugPrint('PiP: iOS startPip error: $e');
+      });
+    } else {
+      // ★ Android: fl_pip capture Flutter view + MediaSession controls
+      _pipActive = true;
       setState(() {});
-      if (_playerMode == _PlayerMode.hls && _player != null) {
-        final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
-        _player!.setVolume(restoreVol);
-        _player!.play();
-      }
-    });
+      await Future.delayed(const Duration(milliseconds: 200));
+      FlPiP().enable().then((_) {
+        debugPrint('PiP: Android enabled');
+      }).catchError((e) {
+        debugPrint('PiP: Android enable failed: $e');
+        _pipActive = false;
+        setState(() {});
+      });
+    }
   }
 
   Future<void> _showAirPlayPicker() async {
