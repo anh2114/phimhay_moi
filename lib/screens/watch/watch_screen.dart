@@ -32,6 +32,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:phimhay_app/services/srt_parser.dart';
+import 'package:fl_pip/fl_pip.dart';
 
 /// Loại player hiện tại
 enum _PlayerMode { hls, embed }
@@ -101,9 +102,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   // Prefetch — giữ đơn giản ban đầu
   String _prefetchUrl = '';
   dynamic _prefetchEpId;
-  static const _pipChannel = MethodChannel('phimhay/pip');
   static const _airplayChannel = MethodChannel('phimhay/airplay');
-  bool _pipAvailable = false;
 
   bool _isLoading = true;
   String? _error;
@@ -590,189 +589,33 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     await _saveCurrentProgress();
   }
 
-  Future<void> _checkPipAvailability() async {
-    try {
-      _pipAvailable = await _pipChannel.invokeMethod('isPipAvailable') ?? false;
-    } catch (_) {
-      _pipAvailable = false;
-    }
-    // Lắng nghe callback từ native (iOS + Android)
-    _pipChannel.setMethodCallHandler((call) async {
-      if (call.method == 'onPipStarted') {
-        debugPrint('PiP: native callback — PiP started');
-        _pipActive = true;
-        _startPipPoll();
-        // iOS: pause vì PiP dùng AVPlayer riêng
-        // Android: KHÔNG pause vì PiP dùng Flutter surface
-        if (Platform.isIOS) {
-          _player?.pause();
-        }
-      } else if (call.method == 'onPipStopped') {
-        debugPrint('PiP: native callback — PiP stopped');
-        if (_pipActive) {
-          _pipActive = false;
-          _pipPollTimer?.cancel();
-          _isResumingFromPip = true;
+  bool _pipAvailable = false;
 
-          if (Platform.isIOS) {
-            // ★ FIX: iOS PiP dùng AVPlayer riêng → seek Flutter player về position PiP
-            final position = await _pipChannel.invokeMethod('getPipPosition') ?? 0.0;
-            if (position > 0 && _player != null) {
-              await Future.delayed(const Duration(milliseconds: 300));
-              await _player!.seek(Duration(seconds: (position as double).toInt()));
-              final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
-              _player!.setVolume(restoreVol);
-              _player!.play();
-              debugPrint('PiP: iOS resumed, seeked to ${position}s');
-            }
-          } else {
-            // Android: player vẫn chạy trong Flutter surface → chỉ restore volume
-            final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
-            _player?.setVolume(restoreVol);
-            _player?.play();
-          }
-
-          Future.delayed(const Duration(milliseconds: 500), () {
-            _isResumingFromPip = false;
-          });
-        }
-      }
-    });
-    if (mounted) setState(() {});
+  /// Check PiP availability using fl_pip package
+  void _checkPipAvailability() {
+    FlPiP().isAvailable.then((available) {
+      if (mounted) setState(() { _pipAvailable = available ?? false; });
+    }).catchError((_) {});
   }
 
-  bool _pipActive = false; // Guard: PiP đang active → không auto start lại
-  Timer? _pipPollTimer;   // Poll PiP position mỗi 1s
-  bool _isResumingFromPip = false; // Đang resume từ PiP → skip lifecycle logic
-
-  /// Bắt đầu poll PiP position (gọi khi PiP start)
-  void _startPipPoll() {
-    _pipPollTimer?.cancel();
-    _pipPollTimer = Timer.periodic(const Duration(milliseconds: 500), (_) async {
-      try {
-        final isActive = await _pipChannel.invokeMethod('isPipActive') ?? false;
-        if (!isActive && _pipActive) {
-          _pipActive = false;
-          _isResumingFromPip = true;
-          _pipPollTimer?.cancel();
-          debugPrint('PiP: poll detected stopped');
-
-          if (Platform.isIOS) {
-            // iOS: PiP dùng AVPlayer riêng → seek video chính về position PiP
-            final position = await _pipChannel.invokeMethod('getPipPosition') ?? 0.0;
-            if (position > 0 && _player != null) {
-              // ★ FIX: Đợi decoder ready trước khi seek + play (tránh FPS drop)
-              await Future.delayed(const Duration(milliseconds: 300));
-              await _player!.seek(Duration(seconds: (position as double).toInt()));
-              await Future.delayed(const Duration(milliseconds: 100));
-              _player!.play();
-              final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
-              await Future.delayed(const Duration(milliseconds: 200));
-              _player!.setVolume(restoreVol);
-              debugPrint('PiP: seeked to ${position}s, playing');
-            }
-          } else {
-            // Android: video vẫn chạy trong Flutter surface → restore volume + play
-            final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
-            _player?.setVolume(restoreVol);
-            _player?.play();
-          }
-          // Clear flag sau khi resume xong
-          Future.delayed(const Duration(milliseconds: 500), () {
-            _isResumingFromPip = false;
-          });
-        }
-      } catch (_) {}
-    });
-  }
-
-  /// Setup PiP — tạo native AVPlayer + PiP controller trên iOS
-  Future<void> _setupPip() async {
-    if (!_pipAvailable || _currentUrl.isEmpty) {
-      debugPrint('PiP: _setupPip skipped — available=$_pipAvailable, url=${_currentUrl.length}');
-      return;
-    }
-    if (Platform.isAndroid) {
-      _pipChannel.invokeMethod('setAutoPip', {'enabled': true}).then((_) {}, onError: (_) {});
-    }
-    debugPrint('PiP: _setupPip sending setupPip to native — url=${_currentUrl.substring(0, _currentUrl.length > 80 ? 80 : _currentUrl.length)}');
-    try {
-      final result = await _pipChannel.invokeMethod('setupPip', {
-        'url': _currentUrl,
-        'position': _currentPos.inSeconds.toDouble(),
-        'headers': {
-          'Referer': AppConfig.baseUrl,
-          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-        },
-      });
-      debugPrint('PiP: setupPip native result=$result');
-    } catch (e) {
-      debugPrint('PiP: setupPip FAILED: $e');
-    }
-  }
-
-  /// Bật PiP — pause Flutter player TRƯỚC khi start native PiP
-  void _startPip() async {
-    final position = _currentPos.inSeconds.toDouble();
-    debugPrint('PiP: _startPip called — url=${_currentUrl.substring(0, _currentUrl.length > 60 ? 60 : _currentUrl.length)}, pos=$position');
-
-    // Pause Flutter player
+  void _startPip() {
     if (_playerMode == _PlayerMode.hls && _player != null) {
       _player!.pause();
-      debugPrint('PiP: Flutter player paused');
-    } else if (_playerMode == _PlayerMode.embed && _webController != null) {
-      try {
-        await _webController!.evaluateJavascript(
-          source: "document.querySelector('video')?.pause();",
-        );
-      } catch (_) {}
     }
-
-    await Future.delayed(const Duration(milliseconds: 100));
-
-    // Setup native PiP player
-    debugPrint('PiP: calling _setupPip...');
-    await _setupPip();
-    debugPrint('PiP: _setupPip done, waiting 800ms for native player...');
-    await Future.delayed(const Duration(milliseconds: 800));
-
-    // Start PiP
-    debugPrint('PiP: calling startPip on native...');
-    _pipChannel.invokeMethod('updatePipPosition', {'position': position}).then((_) {}, onError: (_) {});
-    _pipChannel.invokeMethod('startPip', {'position': position}).then((result) {
-      debugPrint('PiP: startPip result=$result');
-      if (result == true) {
-        _pipActive = true;
-        _startPipPoll();
-      } else {
-        debugPrint('PiP: startPip FAILED — restoring player');
-        _pipActive = false;
-        _pipPollTimer?.cancel();
-        _restorePlayerAfterPipFail();
-      }
-    }, onError: (e) {
-      debugPrint('PiP: startPip EXCEPTION: $e');
+    FlPiP().enable(
+      iosConfig: FlPiPiOSConfig(),
+      androidConfig: FlPiPAndroidConfig(
+        aspectRatio: const Rational.landscape(),
+      ),
+    ).then((_) {
+      _pipActive = true;
+    }).catchError((e) {
+      debugPrint('PiP: enable failed: $e');
       _pipActive = false;
-      _pipPollTimer?.cancel();
-      _restorePlayerAfterPipFail();
+      if (_playerMode == _PlayerMode.hls && _player != null) {
+        _player!.play();
+      }
     });
-  }
-
-  void _restorePlayerAfterPipFail() {
-    debugPrint('PiP: restoring Flutter player after fail');
-    if (_playerMode == _PlayerMode.hls && _player != null) {
-      final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
-      _player!.setVolume(restoreVol);
-      _player!.play();
-    }
-  }
-
-  /// Update PiP URL khi chuyển tập
-  Future<void> _updatePipUrl() async {
-    if (!_pipAvailable || _currentUrl.isEmpty) return;
-    try {
-      await _pipChannel.invokeMethod('updatePipUrl', {'url': _currentUrl});
-    } catch (_) {}
   }
 
   Future<void> _showAirPlayPicker() async {
@@ -784,44 +627,28 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
-      // ★ FIX: KHÔNG pause player khi vào background — để PiP/native video tiếp tục
-      // Lưu vị trí để restore sau
       if (_player != null) {
         _positionBeforePause = _currentPos.inSeconds;
         _saveCurrentProgress();
-        // Cập nhật PiP position
-        _pipChannel.invokeMethod('updatePipPosition', {'position': _positionBeforePause.toDouble()}).then((_) {}, onError: (_) {});
       }
     } else if (state == AppLifecycleState.resumed) {
-      // ★ FIX: Skip resume logic nếu đang resume từ PiP (PiP poll sẽ handle)
-      if (_isResumingFromPip) return;
-
-      // Re-enable wakelock khi quay lại app (với retry)
       _enableWakelockWithRetry();
-      // Re-lock brightness
       _lockBrightness();
 
-      // ★ FIX: Re-configure audio session khi resume — OS có thể reset về silent mode
       if (Platform.isIOS && _playerMode == _PlayerMode.hls) {
         _audioChannel.invokeMethod('configureForPlayback').then((_) {}, onError: (_) {});
       }
 
-      // ★ FIX: Properly resume video — tránh FPS drop bằng cách restart decoder
       if (_player != null && _playerMode == _PlayerMode.hls) {
         final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
-
-        // Đợi 1 frame để Flutter surface ready lại
         Future.delayed(const Duration(milliseconds: 150), () {
           if (!mounted || _player == null) return;
-
-          // Nếu position bị reset về 0 mà trước đó > 15s → seek lại
           if (_positionBeforePause > 15 && _currentPosition < 5) {
             _player!.seek(Duration(seconds: _positionBeforePause)).then((_) {
               _player!.setVolume(restoreVol);
               _player!.play();
             });
           } else {
-            // Bình thường: chỉ restore volume + play nếu chưa playing
             _player!.setVolume(restoreVol);
             if (!_isPlaying) {
               _player!.play();
@@ -829,40 +656,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           }
         });
       }
-
-      // PiP active → seek video đến vị trí PiP khi quay lại
-      if (_pipActive) {
-        _pipActive = false;
-        _pipPollTimer?.cancel();
-        if (Platform.isIOS) {
-          _pipChannel.invokeMethod('getPipPosition').then((pos) {
-            final position = (pos as double?) ?? 0;
-            if (position > 0 && _player != null) {
-              Future.delayed(const Duration(milliseconds: 300), () {
-                _player!.seek(Duration(seconds: position.toInt())).then((_) {
-                  final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
-                  _player!.setVolume(restoreVol);
-                  _player!.play();
-                });
-              });
-            }
-          });
-        } else {
-          // Android: video vẫn chạy trong Flutter surface → restore volume
-          final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
-          _player?.setVolume(restoreVol);
-          _player?.play();
-        }
-      }
     }
   }
 
   @override
   void dispose() {
-    // ★ FIX: Disable auto-PiP khi thoát watch screen
-    if (_pipAvailable && Platform.isAndroid) {
-      _pipChannel.invokeMethod('setAutoPip', {'enabled': false}).then((_) {}, onError: (_) {});
-    }
     // Restore wakelock và brightness
     try { WakelockPlus.disable(); } catch (_) {}
     _unlockBrightness(); // Restore độ sáng gốc
@@ -875,7 +673,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _brightnessTimer?.cancel();
     _pendingServerSave?.cancel();
     _seekRetryTimer?.cancel();
-    _pipPollTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _saveProgressOnExit();
     ActivityService.stopWatching();
@@ -1288,7 +1085,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     });
 
     _startProgressTimer();
-    _setupPip();
   }
 
   /// ★ Seek — 1 lần ngay + 1 lần retry sau 2s nếu chưa tới target
@@ -1571,7 +1367,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (!_tryUsePrefetched(ep)) {
         _initPlayer(url);
       }
-      _updatePipUrl();
     }
 
     Future.delayed(const Duration(seconds: 3), () {
@@ -1883,19 +1678,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               left: 16,
               right: 16,
               child: _buildSubtitleZone(),
-            ),
-
-          // ── Black overlay khi PiP active — CHỈ iOS (Android dùng Flutter surface → video tự hiện) ──
-          if (_pipActive && Platform.isIOS && !_isResumingFromPip)
-            Container(
-              color: Colors.black,
-              child: Center(
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  AppSvgIcon('picture-in-picture-2.svg', size: 48, color: Colors.white38),
-                  const SizedBox(height: 8),
-                  const Text('Đang phát trong PiP', style: TextStyle(color: Colors.white54, fontSize: 14)),
-                ]),
-              ),
             ),
 
           // ── Buffering indicator (hiện khi HLS đang load hoặc đang seek) ──

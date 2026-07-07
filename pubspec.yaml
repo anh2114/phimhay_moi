@@ -1,7 +1,7 @@
 name: phimhay_app
 description: "Xiao Phim - Xem phim online"
 publish_to: 'none'
-version: 3.6.2+40
+version: 3.7.0+42
 
 environment:
   sdk: ^3.6.2
@@ -10,6 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_svg: ^2.0.17
+  fl_pip: ^3.2.3
   cupertino_icons: ^1.0.8
   dio: ^5.4.0
   provider: ^6.1.2
