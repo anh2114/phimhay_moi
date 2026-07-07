@@ -209,7 +209,12 @@ import AVKit
             self.pipPlayerLayer = playerLayer
 
             // 7. Create PiP controller
-            let pipController = AVPictureInPictureController(playerLayer: playerLayer)
+            guard let pipController = AVPictureInPictureController(playerLayer: playerLayer) else {
+                NSLog("[PiP] Failed to create PiP controller")
+                self.cleanupPiP()
+                result(FlutterError(code: "NO_PIP", message: "PiP not available", details: nil))
+                return
+            }
             pipController.delegate = self
             self.pipController = pipController
 
