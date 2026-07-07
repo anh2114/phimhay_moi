@@ -820,8 +820,15 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         return;
       }
 
+      // iOS PiP needs to go through hls_proxy for CORS + headers
+      // Android PiP works directly with the raw URL
+      String pipUrl = url;
+      if (Platform.isIOS && url.isNotEmpty && !url.contains('hls_proxy.php')) {
+        pipUrl = AppConfig.proxyHlsUrl(url);
+      }
+
       final result = await _pipChannel.invokeMethod('enterPiP', {
-        'url': url,
+        'url': pipUrl,
         'position': position,
         'width': 16,
         'height': 9,
