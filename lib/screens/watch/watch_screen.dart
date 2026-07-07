@@ -1050,6 +1050,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         _lastSavedPosition = _currentPosition;
         _saveCurrentProgress();
       }
+      // Sync PiP WebView position on significant seek (>5s jump)
+      if (diff > 5 && Platform.isIOS && !_isPiPMode) {
+        _pipChannel.invokeMethod('updatePiPPosition', {'position': _currentPosition});
+      }
       if (_currentDuration > 0 && _currentPosition >= _currentDuration - 30) {
         _startPrefetch();
       }
@@ -1457,6 +1461,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     if (useHls) {
       if (!_tryUsePrefetched(ep)) {
         _initPlayer(url);
+      }
+      // Re-prewarm iOS PiP with new episode
+      if (Platform.isIOS && url.isNotEmpty) {
+        final proxyUrl = AppConfig.proxyHlsUrl(url);
+        _pipChannel.invokeMethod('prewarmPiP', {
+          'url': proxyUrl,
+          'position': 0,
+        });
       }
     }
 

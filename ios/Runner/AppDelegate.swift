@@ -154,6 +154,14 @@ import WebKit
                 result(self.pipWebView != nil)
             case "exitPiP":
                 result(false)
+            case "updatePiPPosition":
+                guard let args = call.arguments as? [String: Any],
+                      let position = args["position"] as? Int else {
+                    result(false)
+                    return
+                }
+                self.updatePiPPosition(position: position)
+                result(true)
             default:
                 result(FlutterMethodNotImplemented)
             }
@@ -233,12 +241,14 @@ import WebKit
             }
 
             let pipEndedHandler = PiPEndedHandler { [weak self] in
-                NSLog("[PiP] PiP ended — getting position")
+                NSLog("[PiP] PiP ended — keeping WebView alive for reuse")
                 let webView = self?.pipWebView
                 webView?.evaluateJavaScript("document.getElementById('pipVideo').currentTime") { pos, _ in
                     let position = (pos as? NSNumber)?.intValue ?? 0
                     NSLog("[PiP] Position at end: \(position)")
-                    self?.cleanupPiPWebView()
+                    // Pause video but KEEP WebView alive for next PiP
+                    webView?.evaluateJavaScript("document.getElementById('pipVideo').pause()")
+                    self?.pipChannel?.invokeMethod("onPiPModeChanged", arguments: false)
                     DispatchQueue.main.async {
                         self?.pipChannel?.invokeMethod("onPiPRestore", arguments: ["position": position])
                     }
@@ -295,6 +305,24 @@ import WebKit
                     result(true)
                 }
             }
+        }
+    }
+
+    private func updatePiPPosition(position: Int) {
+        DispatchQueue.main.async { [weak self] in
+            guard let webView = self?.pipWebView else { return }
+            let js = """
+            (function() {
+                var video = document.getElementById('pipVideo');
+                if (!video) return;
+                // Only update if position differs significantly (>3s)
+                if (Math.abs(video.currentTime - \(position)) > 3) {
+                    video.currentTime = \(position);
+                }
+                video.play().catch(function(){});
+            })()
+            """
+            webView.evaluateJavaScript(js)
         }
     }
 
