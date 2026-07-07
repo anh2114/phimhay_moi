@@ -686,14 +686,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     });
   }
 
-  /// Setup PiP — enable auto-PiP trên Android
-  void _setupPip() {
+  /// Setup PiP — enable auto-PiP trên Android, setup native player trên iOS
+  Future<void> _setupPip() async {
     if (!_pipAvailable || _currentUrl.isEmpty) return;
     if (Platform.isAndroid) {
-      // Android: enable auto-PiP khi user bấm Home (giống YouTube)
       _pipChannel.invokeMethod('setAutoPip', {'enabled': true}).catchError((_) {});
     }
-    _pipChannel.invokeMethod('setupPip', {
+    // ★ FIX: Await setup để đảm bảo native player đã sẵn sàng trước khi startPip
+    await _pipChannel.invokeMethod('setupPip', {
       'url': _currentUrl,
       'position': _currentPos.inSeconds.toDouble(),
       'headers': {
@@ -721,10 +721,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     await Future.delayed(const Duration(milliseconds: 100));
 
-    // ★ FIX: Setup PiP TRƯỚC khi start (đảm bảo native player đã sẵn sàng)
-    // Nếu không setup → pipPlayer/pipController là nil → startPip fail im lặng
-    _setupPip();
-    await Future.delayed(const Duration(milliseconds: 300));
+    // ★ FIX: Await setup PiP (đảm bảo native player đã sẵn sàng)
+    await _setupPip();
+    await Future.delayed(const Duration(milliseconds: 500));
 
     _pipChannel.invokeMethod('updatePipPosition', {'position': position}).catchError((_) {});
 

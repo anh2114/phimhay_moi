@@ -296,9 +296,10 @@ import AVKit
         // ★ FIX: AVPlayerLayer PHẢI visible + có size hợp lý để PiP render
         // KHÔNG được set opacity = 0 hoặc.isHidden = true — iOS sẽ crash PiP
         let playerLayer = AVPlayerLayer(player: player)
-        playerLayer.frame = CGRect(x: 0, y: 0, width: 1, height: 1) // 1x1 pixel, gần như ẩn
+        // ★ FIX: Layer PHẢI đủ lớn — 1x1 pixel bị iOS 16+ reject PiP
+        playerLayer.frame = CGRect(x: 0, y: 0, width: 320, height: 180)
         playerLayer.isHidden = false
-        playerLayer.opacity = 0.001 // Gần như 0 nhưng KHÔNG phải 0
+        playerLayer.opacity = 0.001
         playerLayer.videoGravity = .resizeAspect
 
         if let rootView = window?.rootViewController?.view {
@@ -348,8 +349,10 @@ import AVKit
 
         if status == .readyToPlay {
             // Player đã sẵn sàng, thực hiện luôn
+            // ★ FIX: KHÔNG nil pendingStartResult ở đây
+            // → nil trong willStartPictureInPicture (khi PiP THỰC SỰ start)
+            // → hoặc failedToStart delegate (khi PiP fail)
             performStartPip(player: player, pip: pip, position: position, result: result)
-            pendingStartResult = nil
         } else {
             // Chưa ready → observe, timeout 5s
             print("PiP: waiting for player readyToPlay before startPip...")
@@ -516,8 +519,9 @@ import AVKit
 extension AppDelegate: AVPictureInPictureControllerDelegate {
     func pictureInPictureControllerWillStartPictureInPicture(_ controller: AVPictureInPictureController) {
         print("PiP: willStartPictureInPicture ✓")
-        // Player đã play từ performStartPip — KHÔNG gọi play() lại
-        // Gọi play() thêm 1 lần nữa gây double audio
+        // ★ FIX: Nil pendingStartResult ở đây — khi PiP THỰC SỰ start
+        // Nếu nil ở performStartPip → failedToStart delegate không gọi được result(false)
+        pendingStartResult = nil
         startPositionTimer()
         pipChannel?.invokeMethod("onPipStarted", arguments: nil)
     }
