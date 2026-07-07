@@ -589,13 +589,16 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     await _saveCurrentProgress();
   }
 
+  static const _pipChannel = MethodChannel('phimhay/pip');
   bool _pipAvailable = false;
 
-  /// Check PiP availability using fl_pip package
-  void _checkPipAvailability() {
-    FlPiP().isAvailable.then((available) {
-      if (mounted) setState(() { _pipAvailable = available ?? false; });
-    }).catchError((_) {});
+  void _checkPipAvailability() async {
+    try {
+      _pipAvailable = await FlPiP().isAvailable ?? false;
+    } catch (_) {
+      _pipAvailable = false;
+    }
+    if (mounted) setState(() {});
   }
 
   void _startPip() {

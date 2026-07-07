@@ -75,6 +75,15 @@ jobs:
       - name: Install Flutter dependencies
         run: flutter pub get
 
+      - name: Patch fl_pip Swift for Flutter SDK compatibility
+        run: |
+          PIP_FILE="$PUB_CACHE/hosted/pub.dev/fl_pip-3.2.3/ios/Classes/PiPHelper.swift"
+          if [ -f "$PIP_FILE" ]; then
+            sed -i '' 's/engine?\.viewController = nil/engine.viewController = nil/g' "$PIP_FILE"
+            sed -i '' 's/FlutterViewController(engine: engine!/FlutterViewController(engine: engine/g' "$PIP_FILE"
+            echo "Patched fl_pip PiPHelper.swift"
+          fi
+
       - name: Install CocoaPods
         run: |
           cd ios
