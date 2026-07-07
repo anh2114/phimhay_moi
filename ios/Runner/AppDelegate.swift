@@ -209,7 +209,12 @@ import AVKit
             self.pipRestoreURL = url
 
             // 5. Create PiP controller
-            let pipController = AVPictureInPictureController(playerLayer: playerLayer)
+            guard let pipController = AVPictureInPictureController(playerLayer: playerLayer) else {
+                NSLog("[PiP] Failed to create AVPictureInPictureController")
+                self.removePiPOverlay()
+                result(FlutterError(code: "NO_PIP", message: "AVPictureInPictureController not available", details: nil))
+                return
+            }
             pipController.delegate = self
             self.pipController = pipController
 
