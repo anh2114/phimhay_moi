@@ -756,10 +756,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             setState(() => _isPiPMode = false);
             // Resume player at position
             if (_playerMode == _PlayerMode.hls && _player != null) {
-              if (position > 0 && !_seekCompleted) {
-                _currentPosition = position;
-                _performSeekRetry(position);
+              // Always restore audio session before playing
+              if (Platform.isIOS) {
+                _audioChannel.invokeMethod('configureForPlayback').then((_) {}, onError: (_) {});
               }
+              _currentPosition = position;
+              _performSeekRetry(position);
               _player!.play();
             } else if (_playerMode == _PlayerMode.embed && _webController != null) {
               if (position > 0) {
@@ -772,10 +774,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           break;
         case 'onPiPError':
           if (mounted) {
+            final error = call.arguments?.toString() ?? 'Unknown error';
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Lỗi PiP: ${call.arguments}'),
+                content: Text('PiP failed: $error'),
                 backgroundColor: Colors.red,
+                duration: const Duration(seconds: 3),
               ),
             );
           }
