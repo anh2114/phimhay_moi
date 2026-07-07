@@ -3,11 +3,16 @@ package com.phimhay.phimhay_app
 import android.app.PictureInPictureParams
 import android.content.Intent
 import android.content.res.Configuration
+import android.graphics.BitmapFactory
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.media.MediaMetadata
+import android.media.session.MediaSession
+import android.media.session.PlaybackState
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.provider.Settings
 import android.util.Rational
 import androidx.core.content.FileProvider
@@ -28,8 +33,16 @@ class MainActivity : FlPiPActivity() {
     private var audioFocusRequest: AudioFocusRequest? = null
     private var autoPipEnabled: Boolean = false
 
+    // ★ MediaSession — hiện controls play/pause/next/prev trong PiP
+    private var mediaSession: MediaSession? = null
+    private var isPlaying = false
+    private var videoTitle = "Xiao Phim"
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // ★ Setup MediaSession cho PiP controls
+        setupMediaSession()
 
         pipChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL_PIP)
         pipChannel?.setMethodCallHandler { call, result ->
@@ -42,6 +55,8 @@ class MainActivity : FlPiPActivity() {
                 }
                 "startPip" -> {
                     pipPosition = (call.argument<Number>("position") ?: 0).toDouble()
+                    // Update MediaSession state
+                    updateMediaSessionState(isPlaying, pipPosition)
                     try {
                         val params = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                             PictureInPictureParams.Builder()
@@ -68,6 +83,16 @@ class MainActivity : FlPiPActivity() {
                 }
                 "updatePipPosition" -> {
                     pipPosition = (call.argument<Number>("position") ?: 0).toDouble()
+                    updateMediaSessionState(isPlaying, pipPosition)
+                    result.success(true)
+                }
+                "updatePlaybackState" -> {
+                    // Flutter báo playback state thay đổi (play/pause)
+                    val playing = call.argument<Boolean>("isPlaying") ?: false
+                    isPlaying = playing
+                    val pos = call.argument<Number>("position")?.toDouble() ?: pipPosition
+                    pipPosition = pos
+                    updateMediaSessionState(isPlaying, pipPosition)
                     result.success(true)
                 }
                 "isPipActive" -> {
@@ -127,6 +152,92 @@ class MainActivity : FlPiPActivity() {
                 else -> result.notImplemented()
             }
         }
+    }
+
+    // ★ MediaSession — hiện play/pause/next/prev trong PiP overlay
+    private fun setupMediaSession() {
+        mediaSession = MediaSession(this, "XiaoPhim").apply {
+            // Metadata — title hiển thị trong PiP
+            val metadata = MediaMetadata.Builder()
+                .putString(MediaMetadata.METADATA_KEY_TITLE, videoTitle)
+                .putString(MediaMetadata.METADATA_KEY_ARTIST, "Xiao Phim")
+                .build()
+            setMetadata(metadata)
+
+            // Callback — xử lý nút bấm từ PiP controls
+            setCallback(object : MediaSession.Callback() {
+                override fun onPlay() {
+                    // Gửi về Flutter: play
+                    pipChannel?.invokeMethod("onMediaPlay", null)
+                    isPlaying = true
+                    updateMediaSessionState(true, pipPosition)
+                }
+
+                override fun onPause() {
+                    // Gửi về Flutter: pause
+                    pipChannel?.invokeMethod("onMediaPause", null)
+                    isPlaying = false
+                    updateMediaSessionState(false, pipPosition)
+                }
+
+                override fun onSkipToNext() {
+                    // Gửi về Flutter: next episode
+                    pipChannel?.invokeMethod("onMediaNext", null)
+                }
+
+                override fun onSkipToPrevious() {
+                    // Gửi về Flutter: previous episode
+                    pipChannel?.invokeMethod("onMediaPrevious", null)
+                }
+
+                override fun onSeekTo(pos: Long) {
+                    // pos = milliseconds
+                    pipPosition = pos / 1000.0
+                    pipChannel?.invokeMethod("onMediaSeek", mapOf("position" to pipPosition))
+                    updateMediaSessionState(isPlaying, pipPosition)
+                }
+            })
+
+            isActive = true
+        }
+    }
+
+    private fun updateMediaSessionState(playing: Boolean, positionSec: Double) {
+        val state = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            PlaybackState.Builder()
+                .setActions(
+                    PlaybackState.ACTION_PLAY or
+                    PlaybackState.ACTION_PAUSE or
+                    PlaybackState.ACTION_PLAY_PAUSE or
+                    PlaybackState.ACTION_SKIP_TO_NEXT or
+                    PlaybackState.ACTION_SKIP_TO_PREVIOUS or
+                    PlaybackState.ACTION_SEEK_TO
+                )
+                .setState(
+                    if (playing) PlaybackState.STATE_PLAYING else PlaybackState.STATE_PAUSED,
+                    (positionSec * 1000).toLong(),
+                    1.0f
+                )
+                .build()
+        } else {
+            @Suppress("DEPRECATION")
+            PlaybackState.Builder()
+                .setActions(
+                    PlaybackState.ACTION_PLAY or
+                    PlaybackState.ACTION_PAUSE or
+                    PlaybackState.ACTION_PLAY_PAUSE or
+                    PlaybackState.ACTION_SKIP_TO_NEXT or
+                    PlaybackState.ACTION_SKIP_TO_PREVIOUS or
+                    PlaybackState.ACTION_SEEK_TO
+                )
+                .setState(
+                    if (playing) PlaybackState.STATE_PLAYING else PlaybackState.STATE_PAUSED,
+                    (positionSec * 1000).toLong(),
+                    1.0f
+                )
+                .build()
+        }
+        mediaSession?.setPlaybackState(state)
     }
 
     private fun installApk(file: File) {
@@ -192,5 +303,11 @@ class MainActivity : FlPiPActivity() {
         } else {
             pipChannel?.invokeMethod("onPipStopped", null)
         }
+    }
+
+    override fun onDestroy() {
+        mediaSession?.release()
+        mediaSession = null
+        super.onDestroy()
     }
 }

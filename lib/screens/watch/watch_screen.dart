@@ -604,7 +604,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     } catch (_) {
       _pipAvailable = false;
     }
-    // Lắng nghe PiP state từ native (Android: onPictureInPictureModeChanged)
+    // Lắng nghe PiP state + MediaSession callbacks từ native
     _pipChannel.setMethodCallHandler((call) async {
       if (call.method == 'onPipStarted') {
         _pipActive = true;
@@ -612,15 +612,39 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       } else if (call.method == 'onPipStopped') {
         _pipActive = false;
         if (mounted) setState(() {});
-        // Restore player khi thoát PiP
         if (_playerMode == _PlayerMode.hls && _player != null) {
           final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
           _player!.setVolume(restoreVol);
           _player!.play();
         }
       }
+      // ★ MediaSession callbacks — Android PiP controls
+      else if (call.method == 'onMediaPlay') {
+        _player?.play();
+        _updateMediaSessionState();
+      } else if (call.method == 'onMediaPause') {
+        _player?.pause();
+        _updateMediaSessionState();
+      } else if (call.method == 'onMediaNext') {
+        final nextEp = _getNextEpisode();
+        if (nextEp != null) _switchEpisode(nextEp);
+      } else if (call.method == 'onMediaPrevious' && _currentPosition > 10) {
+        _player?.seek(Duration(seconds: _currentPosition - 10));
+      } else if (call.method == 'onMediaSeek') {
+        final pos = (call.arguments as Map?)?['position'] as double? ?? 0;
+        _player?.seek(Duration(seconds: pos.toInt()));
+        _updateMediaSessionState();
+      }
     });
     if (mounted) setState(() {});
+  }
+
+  /// Gửi playback state về native để MediaSession update controls
+  void _updateMediaSessionState() {
+    _pipChannel.invokeMethod('updatePlaybackState', {
+      'isPlaying': _isPlaying,
+      'position': _currentPos.inSeconds.toDouble(),
+    }).then((_) {}, onError: (_) {});
   }
 
   void _startPip() async {
@@ -1026,8 +1050,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     });
 
     _subPlaying = _player!.stream.playing.listen((playing) {
-
-      if (mounted) setState(() => _isPlaying = playing);
+      if (mounted) {
+        setState(() => _isPlaying = playing);
+        _updateMediaSessionState();
+      }
     });
 
     _subDuration = _player!.stream.duration.listen((dur) {
@@ -1446,58 +1472,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    // ★ PiP active → chỉ hiện video player + controls nhỏ, ẩn header/tập phim
+    // ★ PiP active → chỉ hiện video player, ẩn header/tập phim
+    // Controls play/pause/next/prev dùng Android MediaSession (system overlay)
     if (_pipActive) {
       return Scaffold(
         backgroundColor: Colors.black,
-        body: Stack(
-          children: [
-            Positioned.fill(child: _buildPlayer()),
-            // PiP controls overlay — play/pause, rewind, forward
-            Positioned(
-              bottom: 4, left: 0, right: 0,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Rewind 10s
-                  GestureDetector(
-                    onTap: () {
-                      final target = max(0, _currentPos.inSeconds - 10);
-                      _player?.seek(Duration(seconds: target));
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      child: const Icon(Icons.replay_10, color: Colors.white70, size: 18),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  // Play/Pause
-                  GestureDetector(
-                    onTap: () {
-                      if (_isPlaying) { _player?.pause(); } else { _player?.play(); }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      child: Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 24),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  // Forward 10s
-                  GestureDetector(
-                    onTap: () {
-                      final target = _currentPos.inSeconds + 10;
-                      _player?.seek(Duration(seconds: target));
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      child: const Icon(Icons.forward_10, color: Colors.white70, size: 18),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+        body: _buildPlayer(),
       );
     }
 
