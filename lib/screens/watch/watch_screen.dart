@@ -591,6 +591,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   static const _pipChannel = MethodChannel('phimhay/pip');
   bool _pipAvailable = false;
+  bool _pipActive = false;
 
   void _checkPipAvailability() async {
     try {
@@ -598,17 +599,44 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     } catch (_) {
       _pipAvailable = false;
     }
+    // Lắng nghe PiP state từ native (Android: onPictureInPictureModeChanged)
+    _pipChannel.setMethodCallHandler((call) async {
+      if (call.method == 'onPipStarted') {
+        _pipActive = true;
+        if (mounted) setState(() {});
+      } else if (call.method == 'onPipStopped') {
+        _pipActive = false;
+        if (mounted) setState(() {});
+        // Restore player khi thoát PiP
+        if (_playerMode == _PlayerMode.hls && _player != null) {
+          final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
+          _player!.setVolume(restoreVol);
+          _player!.play();
+        }
+      }
+    });
     if (mounted) setState(() {});
   }
 
-  void _startPip() {
-    if (_playerMode == _PlayerMode.hls && _player != null) {
+  void _startPip() async {
+    // Set _pipActive TRƯỚC để UI rebuild ẩn header/controls
+    // → PiP capture chỉ thấy video player
+    _pipActive = true;
+    setState(() {});
+    await Future.delayed(const Duration(milliseconds: 200));
+
+    // Chỉ pause trên iOS (iOS dùng AVPlayer riêng cho PiP)
+    // Android: Flutter view vẫn chạy → KHÔNG pause
+    if (Platform.isIOS && _playerMode == _PlayerMode.hls && _player != null) {
       _player!.pause();
     }
+
     FlPiP().enable().then((_) {
       debugPrint('PiP: enabled OK');
     }).catchError((e) {
       debugPrint('PiP: enable failed: $e');
+      _pipActive = false;
+      setState(() {});
       if (_playerMode == _PlayerMode.hls && _player != null) {
         final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
         _player!.setVolume(restoreVol);
@@ -1393,6 +1421,15 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    // ★ PiP active → chỉ hiện video player, ẩn header/controls/tập phim
+    // fl_pip capture Flutter view → nếu hiện header thì PiP sẽ thấy header
+    if (_pipActive) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: _buildPlayer(),
+      );
+    }
+
     final orientation = MediaQuery.of(context).orientation;
     final isLandscape = orientation == Orientation.landscape;
 
