@@ -203,14 +203,43 @@ import WebKit
             <video id="pipVideo" playsinline webkit-playsinline x-webkit-airplay="allows-airplay" autoplay></video>
             <script>
                 var video = document.getElementById('pipVideo');
+                var pipRequested = false;
                 video.src = '\(url.replacingOccurrences(of: "'", with: "\\'"))';
                 video.load();
-                video.addEventListener('loadeddata', function() {
-                    video.currentTime = \(position);
-                    video.play().catch(function(e) { console.log('play error:', e); });
-                    // Notify native that video is ready
-                    window.webkit.messageHandlers.pipReady.postMessage({ready: true});
+
+                function tryRequestPiP() {
+                    if (pipRequested) return;
+                    pipRequested = true;
+                    console.log('Requesting PiP...');
+                    video.requestPictureInPicture().catch(function(e) {
+                        console.log('PiP error:', e.message);
+                        window.webkit.messageHandlers.pipError.postMessage({error: e.message});
+                    });
+                }
+
+                // Wait for loadedmetadata + video track
+                video.addEventListener('loadedmetadata', function() {
+                    console.log('metadata loaded, videoTracks=' + (video.videoTracks ? video.videoTracks.length : 'N/A'));
+                    // Try multiple times — track may appear after metadata
+                    var attempts = 0;
+                    var checkTrack = setInterval(function() {
+                        attempts++;
+                        var hasTrack = (video.videoTracks && video.videoTracks.length > 0) || video.readyState >= 2;
+                        console.log('attempt=' + attempts + ' hasTrack=' + hasTrack + ' readyState=' + video.readyState);
+                        if (hasTrack || attempts >= 20) {
+                            clearInterval(checkTrack);
+                            video.currentTime = \(position);
+                            video.play().then(function() {
+                                // Delay PiP request a bit after play starts
+                                setTimeout(tryRequestPiP, 500);
+                            }).catch(function(e) {
+                                console.log('play error:', e);
+                                window.webkit.messageHandlers.pipError.postMessage({error: e.message});
+                            });
+                        }
+                    }, 300);
                 });
+
                 video.addEventListener('enterpictureinpicture', function() {
                     window.webkit.messageHandlers.pipStarted.postMessage({started: true});
                 });
@@ -226,18 +255,6 @@ import WebKit
             """
 
             // Add message handlers
-            let pipReadyHandler = PipReadyHandler { [weak self] in
-                NSLog("[PiP] Video ready — requesting PiP")
-                let js = "document.getElementById('pipVideo').requestPictureInPicture().catch(function(e){window.webkit.messageHandlers.pipError.postMessage({error:e.message})});"
-                webView.evaluateJavaScript(js) { _, error in
-                    if let error = error {
-                        NSLog("[PiP] requestPictureInPicture failed: \(error)")
-                        result(FlutterError(code: "PIP_FAILED", message: error.localizedDescription, details: nil))
-                        self?.cleanupPiPWebView()
-                    }
-                }
-            }
-
             let pipStartedHandler = PiPStartedHandler { [weak self] in
                 NSLog("[PiP] PiP started!")
                 self?.pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
@@ -264,7 +281,6 @@ import WebKit
             }
 
             let contentController = webView.configuration.userContentController
-            contentController.add(pipReadyHandler, name: "pipReady")
             contentController.add(pipStartedHandler, name: "pipStarted")
             contentController.add(pipEndedHandler, name: "pipEnded")
             contentController.add(pipErrorHandler, name: "pipError")
@@ -283,7 +299,6 @@ import WebKit
     }
 
     private func cleanupPiPWebView() {
-        pipWebView?.configuration.userContentController.removeScriptMessageHandler(forName: "pipReady")
         pipWebView?.configuration.userContentController.removeScriptMessageHandler(forName: "pipStarted")
         pipWebView?.configuration.userContentController.removeScriptMessageHandler(forName: "pipEnded")
         pipWebView?.configuration.userContentController.removeScriptMessageHandler(forName: "pipError")
@@ -297,14 +312,6 @@ import WebKit
 }
 
 // MARK: - WKScriptMessageHandler wrappers
-
-class PipReadyHandler: NSObject, WKScriptMessageHandler {
-    let callback: () -> Void
-    init(callback: @escaping () -> Void) { self.callback = callback }
-    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        callback()
-    }
-}
 
 class PiPStartedHandler: NSObject, WKScriptMessageHandler {
     let callback: () -> Void
