@@ -201,7 +201,7 @@ import AVKit
 
             // 4. Create AVPlayerLayer with headers and attach to overlay view
             let assetOptions: [String: Any] = [
-                AVURLAssetHTTPHeaderKey: headers
+                "AVURLAssetHTTPHeaderFieldsKey": headers
             ]
             let asset = AVURLAsset(url: streamURL, options: assetOptions)
             let playerItem = AVPlayerItem(asset: asset)
