@@ -262,9 +262,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             final subs = await _fetchSubtitleUrl(subUrl);
             if (mounted && subs.isNotEmpty) {
               _currentSubtitleUrl = subUrl;
-              // ★ FIX: Load phụ đề nhưng KHÔNG auto-enable
-              // Tránh đè lên hardsub đã nhúng trong video
-              setState(() { _subtitles = subs; _subtitleEnabled = false; });
+              setState(() { _subtitles = subs; _subtitleEnabled = true; });
               return;
             }
           } catch (_) {}
@@ -320,6 +318,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   /// Build subtitle zone — overlay trên video
+  /// Positioned ở TRÊN cùng để tránh đè hardsub (thường ở dưới)
   Widget _buildSubtitleZone() {
     if (!_subtitleEnabled || _subtitles.isEmpty || _playerMode != _PlayerMode.hls) {
       return const SizedBox.shrink();
@@ -328,30 +327,36 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     if (text == null) return const SizedBox.shrink();
 
     final colorHex = int.parse('0xFF${_selectedSubtitleColor.substring(1)}');
-    final bgAlpha = (_selectedSubtitleBgOpacity * 255).toInt();
 
-    // ★ PiP: scale font nhỏ lại (PiP window ~200px wide)
+    // ★ PiP: scale nhỏ + background rõ ràng
     final fontSize = _pipActive ? 8.0 : _selectedSubtitleSize;
+    final bgOpacity = _pipActive ? 0.7 : _selectedSubtitleBgOpacity;
 
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: _pipActive ? 4 : 12, vertical: _pipActive ? 1 : 6),
-      decoration: bgAlpha > 0 ? BoxDecoration(
-        color: Colors.black.withOpacity(_selectedSubtitleBgOpacity),
-        borderRadius: BorderRadius.circular(4),
-      ) : null,
-      child: Text(
-        text,
-        textAlign: TextAlign.center,
-        maxLines: _pipActive ? 2 : 4,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: Color(colorHex),
-          fontSize: fontSize,
-          fontWeight: FontWeight.w600,
-          shadows: [
-            const Shadow(blurRadius: 4, color: Colors.black87, offset: Offset(1, 1)),
-            const Shadow(blurRadius: 8, color: Colors.black54, offset: Offset(-1, -1)),
-          ],
+    return Positioned(
+      top: _pipActive ? 2 : null,
+      bottom: _pipActive ? null : 16,
+      left: _pipActive ? 2 : 16,
+      right: _pipActive ? 2 : 16,
+      child: Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: _pipActive ? 4 : 12,
+          vertical: _pipActive ? 1 : 6,
+        ),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(bgOpacity),
+          borderRadius: BorderRadius.circular(_pipActive ? 2 : 4),
+        ),
+        child: Text(
+          text,
+          textAlign: TextAlign.center,
+          maxLines: _pipActive ? 2 : 4,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: Color(colorHex),
+            fontSize: fontSize,
+            fontWeight: FontWeight.w600,
+            height: 1.2,
+          ),
         ),
       ),
     );
@@ -1747,12 +1752,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
           // ── Subtitle overlay — đặt TRONG player stack ──
           if (_subtitleEnabled && _subtitles.isNotEmpty && _playerMode == _PlayerMode.hls)
-            Positioned(
-              bottom: 16,
-              left: 16,
-              right: 16,
-              child: _buildSubtitleZone(),
-            ),
+            _buildSubtitleZone(),
 
           // ── Buffering indicator (hiện khi HLS đang load hoặc đang seek) ──
           if (_playerMode == _PlayerMode.hls && _player != null && !_isLoading && (!_playerReady || _isSeeking))
