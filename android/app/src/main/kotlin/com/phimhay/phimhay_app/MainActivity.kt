@@ -10,10 +10,10 @@ import android.provider.Settings
 import androidx.core.content.FileProvider
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
-import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import fl.pip.FlPiPActivity
 
-class MainActivity : FlutterActivity() {
+class MainActivity : FlPiPActivity() {
     private val CHANNEL_INSTALL = "phimhay/install_apk"
     private val CHANNEL_AUDIO = "phimhay_app/audio"
     private var installChannel: MethodChannel? = null
