@@ -262,7 +262,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             final subs = await _fetchSubtitleUrl(subUrl);
             if (mounted && subs.isNotEmpty) {
               _currentSubtitleUrl = subUrl;
-              setState(() { _subtitles = subs; _subtitleEnabled = true; });
+              // ★ FIX: Load phụ đề nhưng KHÔNG auto-enable
+              // Tránh đè lên hardsub đã nhúng trong video
+              setState(() { _subtitles = subs; _subtitleEnabled = false; });
               return;
             }
           } catch (_) {}
@@ -285,7 +287,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         final subs = await _fetchSubtitleUrl(url);
         if (mounted && subs.isNotEmpty) {
           _currentSubtitleUrl = url;
-          setState(() { _subtitles = subs; _subtitleEnabled = true; });
+          setState(() { _subtitles = subs; _subtitleEnabled = false; });
           return;
         }
       } catch (_) {}
