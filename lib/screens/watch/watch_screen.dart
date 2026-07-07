@@ -607,7 +607,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   void _checkPipAvailability() async {
     try {
-      _pipAvailable = await FlPiP().isAvailable ?? false;
+      if (Platform.isIOS) {
+        // iOS: dùng native AVPlayer PiP → check via method channel
+        _pipAvailable = await _pipChannel.invokeMethod('isPipAvailable') ?? false;
+      } else {
+        // Android: dùng fl_pip package
+        _pipAvailable = await FlPiP().isAvailable ?? false;
+      }
     } catch (_) {
       _pipAvailable = false;
     }
@@ -662,11 +668,15 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     final position = _currentPos.inSeconds.toDouble();
 
     if (Platform.isIOS) {
-      // ★ iOS: gửi URL + position → native tạo AVPlayer → PiP
+      // ★ iOS: gửi URL + position + headers → native tạo AVPlayer → PiP
       if (_currentUrl.isEmpty) return;
       _pipChannel.invokeMethod('startPip', {
         'url': _currentUrl,
         'position': position,
+        'headers': {
+          'Referer': AppConfig.baseUrl,
+          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+        },
       }).then((result) {
         debugPrint('PiP: iOS startPip result=$result');
       }).catchError((e) {

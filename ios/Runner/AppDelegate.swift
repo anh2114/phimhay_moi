@@ -40,10 +40,12 @@ import AVKit
                       let urlString = args["url"] as? String,
                       let url = URL(string: urlString),
                       let position = args["position"] as? Double else {
+                    print("PiP: startPip FAIL — invalid args")
                     result(false)
                     return
                 }
-                self.startIosPip(url: url, position: position, result: result)
+                let headers = args["headers"] as? [String: String] ?? [:]
+                self.startIosPip(url: url, position: position, headers: headers, result: result)
 
             case "stopPip":
                 self.pipController?.stopPictureInPicture()
@@ -167,8 +169,8 @@ import AVKit
 
     // MARK: - iOS PiP Flow
 
-    private func startIosPip(url: URL, position: Double, result: @escaping FlutterResult) {
-        print("PiP: startIosPip — url=\(url.absoluteString.prefix(60)), pos=\(position)")
+    private func startIosPip(url: URL, position: Double, headers: [String: String], result: @escaping FlutterResult) {
+        print("PiP: startIosPip — url=\(url.absoluteString.prefix(60)), pos=\(position), headers=\(headers.count)")
 
         // Cleanup player cũ
         cleanupPipPlayer()
@@ -182,8 +184,15 @@ import AVKit
             print("PiP: audio session error: \(error)")
         }
 
-        // Tạo AVPlayer
-        let asset = AVURLAsset(url: url)
+        // Tạo AVPlayer — CÓ headers (CDN cần Referer)
+        let asset: AVURLAsset
+        if !headers.isEmpty {
+            asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
+            print("PiP: AVURLAsset with headers: \(headers.keys.joined(separator: ", "))")
+        } else {
+            asset = AVURLAsset(url: url)
+            print("PiP: AVURLAsset without headers")
+        }
         let playerItem = AVPlayerItem(asset: asset)
         let player = AVPlayer(playerItem: playerItem)
         player.preventsDisplaySleepDuringVideoPlayback = true
