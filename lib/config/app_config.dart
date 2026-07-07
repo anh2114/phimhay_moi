@@ -8,5 +8,9 @@ class AppConfig {
     return '$apiUrl/hls_proxy.php?url=${Uri.encodeComponent(url)}';
   }
 
+  static String proxyHlsFullUrl(String url) {
+    return '$apiUrl/hls_proxy.php?url=${Uri.encodeComponent(url)}&full=1';
+  }
+
   static String get serverHealthUrl => '$apiUrl/server_health.php';
 }

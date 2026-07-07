@@ -1153,7 +1153,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
       // Pre-warm iOS PiP WebView
       if (Platform.isIOS && playUrl.isNotEmpty) {
-        final proxyUrl = AppConfig.proxyHlsUrl(playUrl);
+        final proxyUrl = AppConfig.proxyHlsFullUrl(playUrl);
         _pipChannel.invokeMethod('prewarmPiP', {
           'url': proxyUrl,
           'position': _currentPosition,
@@ -1464,7 +1464,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       }
       // Re-prewarm iOS PiP with new episode
       if (Platform.isIOS && url.isNotEmpty) {
-        final proxyUrl = AppConfig.proxyHlsUrl(url);
+        final proxyUrl = AppConfig.proxyHlsFullUrl(url);
         _pipChannel.invokeMethod('prewarmPiP', {
           'url': proxyUrl,
           'position': 0,
