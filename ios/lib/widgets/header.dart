@@ -120,7 +120,6 @@ class _HeaderState extends State<Header> {
           child: Row(
             children: [
               GestureDetector(
-                onLongPress: () => Navigator.pushNamed(context, '/debug/ads'),
                 child: Image.asset(
                   'assets/images/logo2.png',
                   height: 28,

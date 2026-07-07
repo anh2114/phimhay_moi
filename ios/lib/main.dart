@@ -86,6 +86,12 @@ void main() async {
   );
 }
 
+/// Entry point cho fl_pip iOS PiP — iOS gọi function này khi PiP start
+@pragma('vm:entry-point')
+void pipMain() {
+  runApp(const XiaoPhimApp());
+}
+
 class XiaoPhimApp extends StatelessWidget {
   const XiaoPhimApp({super.key});
 
@@ -96,9 +102,7 @@ class XiaoPhimApp extends StatelessWidget {
       theme: AppTheme.darkTheme,
       debugShowCheckedModeBanner: false,
       home: SplashScreen(child: const HomeScreen()),
-      routes: {
-        '/debug/ads': (_) => const Scaffold(body: Center(child: Text('Ad debug removed'))),
-      },
+      routes: {},
     );
   }
 }

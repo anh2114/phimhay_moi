@@ -205,6 +205,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     _fetchEpisodes();
     _loadWatchProgress();
+    _setupPiPListener();
 
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
@@ -607,6 +608,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         _saveCurrentProgress();
       }
     } else if (state == AppLifecycleState.resumed) {
+      // Skip resume logic if PiP is active — native player handles playback
+      if (_isPiPMode) return;
+
       _enableWakelockWithRetry();
       _lockBrightness();
 
@@ -664,6 +668,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _subCompleted?.cancel();
     _player?.dispose();
     _webController?.dispose();
+    _pipChannel.setMethodCallHandler(null);
     super.dispose();
   }
 
@@ -722,6 +727,112 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       await ScreenBrightness().setScreenBrightness(_originalBrightness);
       _brightnessLocked = false;
     } catch (_) {}
+  }
+
+  // ── PiP (Picture-in-Picture) ──────────────────────────
+  void _setupPiPListener() {
+    _pipChannel.setMethodCallHandler((call) async {
+      switch (call.method) {
+        case 'onPiPModeChanged':
+          final isPiP = call.arguments as bool;
+          if (mounted) {
+            setState(() => _isPiPMode = isPiP);
+            if (isPiP) {
+              // PiP mode ON — hide controls, pause Flutter player
+              _showControls = false;
+              _autoHideControlsTimer?.cancel();
+              _player?.pause();
+              _webController?.evaluateJavascript(
+                source: "document.querySelector('video')?.pause();",
+              );
+            }
+          }
+          break;
+        case 'onPiPRestore':
+          // PiP ended — restore Flutter player
+          final args = call.arguments as Map<dynamic, dynamic>?;
+          final position = args?['position'] as int? ?? 0;
+          if (mounted) {
+            setState(() => _isPiPMode = false);
+            // Resume player at position
+            if (_playerMode == _PlayerMode.hls && _player != null) {
+              if (position > 0 && !_seekCompleted) {
+                _currentPosition = position;
+                _performSeekRetry(position);
+              }
+              _player!.play();
+            } else if (_playerMode == _PlayerMode.embed && _webController != null) {
+              if (position > 0) {
+                _webController!.evaluateJavascript(
+                  source: "var v=document.querySelector('video'); if(v){v.currentTime=$position; v.play();}",
+                );
+              }
+            }
+          }
+          break;
+        case 'onPiPError':
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Lỗi PiP: ${call.arguments}'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          break;
+      }
+    });
+  }
+
+  Future<void> _enterPiP() async {
+    try {
+      // Save current position first
+      await _saveCurrentProgress();
+
+      int position = 0;
+      String url = _currentUrl;
+
+      if (_playerMode == _PlayerMode.hls && _player != null) {
+        position = _currentPosition;
+      } else if (_playerMode == _PlayerMode.embed && _webController != null) {
+        try {
+          final posResult = await _webController!.evaluateJavascript(
+            source: "document.querySelector('video')?.currentTime || 0",
+          );
+          if (posResult != null) position = (posResult as num).toInt();
+          final urlResult = await _webController!.evaluateJavascript(
+            source: "document.querySelector('video')?.src || ''",
+          );
+          if (urlResult != null && (urlResult as String).isNotEmpty) {
+            url = urlResult;
+          }
+        } catch (_) {}
+      }
+
+      if (url.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Không có video để PiP'), backgroundColor: Colors.orange),
+        );
+        return;
+      }
+
+      final result = await _pipChannel.invokeMethod('enterPiP', {
+        'url': url,
+        'position': position,
+        'width': 16,
+        'height': 9,
+      });
+
+      if (result != true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Không thể vào chế độ PiP'), backgroundColor: Colors.orange),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lỗi PiP: $e'), backgroundColor: Colors.red),
+      );
+    }
   }
 
   // ── Double-click visual feedback ─────────────────────
@@ -886,6 +997,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   // ── Brightness lock ──
   double _originalBrightness = 1.0;
   bool _brightnessLocked = false;
+
+  // ── PiP (Picture-in-Picture) ──
+  static const _pipChannel = MethodChannel('phimhay/pip');
+  bool _isPiPMode = false;
 
   // ── Double-click visual feedback ──
   bool _showDoubleTapLeft = false;
@@ -2313,14 +2428,15 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 ),
               ),
             ),
-            // Right: PiP icon (placeholder — PiP chưa implement)
-            GestureDetector(
-              onTap: () {},
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8),
-                child: AppSvgIcon('picture-in-picture-2.svg', size: 22, color: Colors.white38),
+            // Right: PiP icon
+            if (!_isPiPMode)
+              GestureDetector(
+                onTap: _enterPiP,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8),
+                  child: AppSvgIcon('picture-in-picture-2.svg', size: 22, color: Colors.white),
+                ),
               ),
-            ),
             if (Platform.isIOS)
               GestureDetector(
                 onTap: _showAirPlayPicker,
@@ -2682,13 +2798,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   },
                   child: const AppSvgIcon('fast-forward.svg', size: 22, color: Colors.white),
                 ),
-                // PiP icon (placeholder)
-                GestureDetector(
-                  onTap: () {},
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 4),
-                    child: AppSvgIcon('picture-in-picture-2.svg', size: 20, color: Colors.white38),
-                  ),
+                // PiP icon
+                if (!_isPiPMode)
+                  GestureDetector(
+                    onTap: _enterPiP,
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 4),
+                      child: AppSvgIcon('picture-in-picture-2.svg', size: 20, color: Colors.white),
+                    ),
                   ),
                 // Subtitle toggle
                 if (_subtitles.isNotEmpty)
@@ -2912,14 +3029,15 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 ),
               // Next episode button
               _nextEpisodeButton(),
-              // PiP icon (placeholder)
-              GestureDetector(
-                onTap: () {},
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 4),
-                  child: AppSvgIcon('picture-in-picture-2.svg', size: 20, color: Colors.white38),
+              // PiP icon
+              if (!_isPiPMode)
+                GestureDetector(
+                  onTap: _enterPiP,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4),
+                    child: AppSvgIcon('picture-in-picture-2.svg', size: 20, color: Colors.white),
+                  ),
                 ),
-              ),
               // AirPlay button (iOS only)
               if (Platform.isIOS)
                 GestureDetector(

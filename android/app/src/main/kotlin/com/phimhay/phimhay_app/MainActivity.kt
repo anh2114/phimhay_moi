@@ -1,12 +1,14 @@
 package com.phimhay.phimhay_app
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.util.Rational
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -16,8 +18,10 @@ import java.io.File
 class MainActivity : FlutterActivity() {
     private val CHANNEL_INSTALL = "phimhay/install_apk"
     private val CHANNEL_AUDIO = "phimhay_app/audio"
+    private val CHANNEL_PIP = "phimhay/pip"
     private var installChannel: MethodChannel? = null
     private var audioChannel: MethodChannel? = null
+    private var pipChannel: MethodChannel? = null
     private var audioFocusRequest: AudioFocusRequest? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -63,6 +67,53 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        // PiP channel
+        pipChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL_PIP)
+        pipChannel?.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "enterPiP" -> {
+                    val width = call.argument<Int>("width") ?: 16
+                    val height = call.argument<Int>("height") ?: 9
+                    val params = android.app.PictureInPictureParams.Builder()
+                        .setAspectRatio(Rational(width, height))
+                        .build()
+                    try {
+                        enterPictureInPictureMode(params)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("PIP_ERROR", e.message, null)
+                    }
+                }
+                "isPiP" -> result.success(isInPictureInPictureMode)
+                "exitPiP" -> {
+                    if (isInPictureInPictureMode) {
+                        // PiP will be exited when user taps to expand
+                        result.success(true)
+                    } else {
+                        result.success(false)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(inPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(inPictureInPictureMode, newConfig)
+        pipChannel?.invokeMethod("onPiPModeChanged", inPictureInPictureMode)
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        // Auto-enter PiP when user presses home (optional - like YouTube)
+        // Uncomment if you want auto-PiP on home press:
+        // if (!isInPictureInPictureMode) {
+        //     val params = android.app.PictureInPictureParams.Builder()
+        //         .setAspectRatio(Rational(16, 9))
+        //         .build()
+        //     try { enterPictureInPictureMode(params) } catch (_: Exception) {}
+        // }
     }
 
     private fun installApk(file: File) {

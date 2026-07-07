@@ -1,9 +1,17 @@
 import UIKit
 import Flutter
 import AVFoundation
+import AVKit
 
 @main
-@objc class AppDelegate: FlutterAppDelegate {
+@objc class AppDelegate: FlutterAppDelegate, AVPictureInPictureControllerDelegate {
+
+    private var pipPlayer: AVPlayer?
+    private var pipController: AVPictureInPictureController?
+    private var pipChannel: FlutterMethodChannel?
+    private var pipRestorePosition: CMTime?
+    private var pipRestoreURL: String?
+    private var pipChannelCreated = false
 
     override func application(
         _ application: UIApplication,
@@ -122,8 +130,142 @@ import AVFoundation
             }
         }
 
+        // PiP channel
+        pipChannel = FlutterMethodChannel(name: "phimhay/pip", binaryMessenger: controller.binaryMessenger)
+        pipChannel?.setMethodCallHandler { [weak self] (call, result) in
+            guard let self = self else { return }
+            switch call.method {
+            case "enterPiP":
+                guard let args = call.arguments as? [String: Any],
+                      let url = args["url"] as? String,
+                      let position = args["position"] as? Int else {
+                    result(FlutterError(code: "INVALID_ARGS", message: "Missing url or position", details: nil))
+                    return
+                }
+                self.enterPiP(url: url, position: position, result: result)
+            case "isPiP":
+                result(self.pipController?.isPictureInPictureActive ?? false)
+            case "exitPiP":
+                if self.pipController?.isPictureInPictureActive == true {
+                    self.pipController?.stopPictureInPicture()
+                    result(true)
+                } else {
+                    result(false)
+                }
+            default:
+                result(FlutterMethodNotImplemented)
+            }
+        }
+
         GeneratedPluginRegistrant.register(with: self)
         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    }
+
+    // MARK: - PiP
+
+    private func enterPiP(url: String, position: Int, result: @escaping FlutterResult) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else {
+                result(FlutterError(code: "DEALLOC", message: "AppDelegate deallocated", details: nil))
+                return
+            }
+
+            // Ensure audio session for PiP
+            let session = AVAudioSession.sharedInstance()
+            do {
+                try session.setCategory(.playback, mode: .moviePlayback,
+                    options: [.allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
+                try session.setActive(true)
+            } catch {
+                // Continue anyway - PiP might still work
+            }
+
+            // Create or reconfigure player
+            guard let streamURL = URL(string: url) else {
+                result(FlutterError(code: "INVALID_URL", message: "Cannot create URL from: \(url)", details: nil))
+                return
+            }
+
+            // If same URL, just seek and play
+            if self.pipRestoreURL == url, let player = self.pipPlayer {
+                let targetTime = CMTime(seconds: Double(position), preferredTimescale: 600)
+                player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+                    player.play()
+                }
+                if let controller = self.pipController, controller.isPictureInPictureActive {
+                    result(true)
+                    return
+                }
+            } else {
+                // New URL - create fresh player
+                self.pipPlayer?.pause()
+                self.pipPlayer = AVPlayer(url: streamURL)
+            }
+
+            self.pipRestoreURL = url
+            self.pipRestorePosition = CMTime(seconds: Double(position), preferredTimescale: 600)
+
+            guard let player = self.pipPlayer else {
+                result(FlutterError(code: "PLAYER_ERROR", message: "Failed to create AVPlayer", details: nil))
+                return
+            }
+
+            // Configure PiP controller
+            if self.pipController == nil {
+                self.pipController = AVPictureInPictureController(playerLayer: AVPlayerLayer(player: player))
+                self.pipController?.delegate = self
+                // Optional: set PiP size
+                self.pipController?.setValue(1, forKey: "controlsStyle") // 1 = minimal controls
+            } else {
+                // Re-attach player layer to new player
+                self.pipController = AVPictureInPictureController(playerLayer: AVPlayerLayer(player: player))
+                self.pipController?.delegate = self
+                self.pipController?.setValue(1, forKey: "controlsStyle")
+            }
+
+            // Seek to position then start PiP
+            let targetTime = CMTime(seconds: Double(position), preferredTimescale: 600)
+            player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+                guard let self = self else { return }
+                player.play()
+                if let controller = self.pipController {
+                    if controller.isPictureInPictureActive {
+                        result(true)
+                    } else {
+                        controller.startPictureInPicture()
+                        result(true)
+                    }
+                } else {
+                    result(FlutterError(code: "NO_PIP", message: "PiP controller not available", details: nil))
+                }
+            }
+        }
+    }
+
+    // MARK: - AVPictureInPictureControllerDelegate
+
+    func pictureInPictureControllerWillStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+        pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
+    }
+
+    func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+        // PiP started successfully
+    }
+
+    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
+        pipChannel?.invokeMethod("onPiPError", arguments: error.localizedDescription)
+    }
+
+    func pictureInPictureControllerWillStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+        // User tapped to restore
+        pipChannel?.invokeMethod("onPiPModeChanged", arguments: false)
+    }
+
+    func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+        // Stop native player and notify Flutter to resume
+        let position = Int(pipPlayer?.currentTime().seconds ?? 0)
+        pipPlayer?.pause()
+        pipChannel?.invokeMethod("onPiPRestore", arguments: ["position": position])
     }
 
     @objc func dismissAirPlay() {
