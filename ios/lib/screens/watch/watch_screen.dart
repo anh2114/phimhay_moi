@@ -789,6 +789,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _enterPiP() async {
+    if (!Platform.isAndroid) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('PiP only available on Android'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
     try {
       // Save current position first
       await _saveCurrentProgress();
@@ -1000,7 +1006,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   double _originalBrightness = 1.0;
   bool _brightnessLocked = false;
 
-  // ── PiP (Picture-in-Picture) ──
+  // ── PiP (Picture-in-Picture) — Android only ──
+  // iOS PiP暂不支持 (AVPlayer proxy issues with m3u8 streams)
   static const _pipChannel = MethodChannel('phimhay/pip');
   bool _isPiPMode = false;
 
@@ -2430,8 +2437,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 ),
               ),
             ),
-            // Right: PiP icon
-            if (!_isPiPMode)
+            // Right: PiP icon (Android only)
+            if (!_isPiPMode && Platform.isAndroid)
               GestureDetector(
                 onTap: _enterPiP,
                 child: const Padding(
@@ -2800,8 +2807,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   },
                   child: const AppSvgIcon('fast-forward.svg', size: 22, color: Colors.white),
                 ),
-                // PiP icon
-                if (!_isPiPMode)
+                // PiP icon (Android only)
+                if (!_isPiPMode && Platform.isAndroid)
                   GestureDetector(
                     onTap: _enterPiP,
                     child: const Padding(
@@ -3031,8 +3038,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 ),
               // Next episode button
               _nextEpisodeButton(),
-              // PiP icon
-              if (!_isPiPMode)
+              // PiP icon (Android only)
+              if (!_isPiPMode && Platform.isAndroid)
                 GestureDetector(
                   onTap: _enterPiP,
                   child: const Padding(
