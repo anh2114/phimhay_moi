@@ -834,15 +834,19 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         return;
       }
 
-      // iOS PiP: dùng proxy URL (AVPlayer cần proxy để load HLS segments)
+      // iOS PiP: dùng proxy URL + headers (AVPlayer cần proxy + User-Agent)
       String pipUrl = url;
+      Map<String, String> pipHeaders = {};
       if (Platform.isIOS && !url.contains('hls_proxy.php')) {
         pipUrl = AppConfig.proxyHlsFullUrl(url);
+        pipHeaders['Referer'] = AppConfig.baseUrl;
+        pipHeaders['User-Agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
       }
 
       final result = await _pipChannel.invokeMethod('enterPiP', {
         'url': pipUrl,
         'position': position,
+        'headers': pipHeaders,
       });
 
       if (result != true) {
