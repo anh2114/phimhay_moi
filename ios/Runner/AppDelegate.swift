@@ -191,7 +191,10 @@ import AVKit
                 return
             }
 
-            // 3. Create overlay view — MUST be in window hierarchy for PiP to work
+            // 3. Notify Flutter: PiP starting (pause player to free bandwidth)
+            self.pipChannel?.invokeMethod("onPiPBuffering", arguments: nil)
+
+            // 4. Create overlay view — MUST be in window hierarchy for PiP to work
             self.removePiPOverlay()
             let overlayView = UIView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
             overlayView.backgroundColor = .clear
@@ -200,7 +203,7 @@ import AVKit
             self.window?.rootViewController?.view.addSubview(overlayView)
             self.pipOverlayView = overlayView
 
-            // 4. Create AVPlayerLayer with headers (only if actually provided) and attach to overlay view
+            // 5. Create AVPlayerLayer with headers (only if actually provided) and attach to overlay view
             var assetOptions: [String: Any] = [:]
             if !headers.isEmpty {
                 assetOptions["AVURLAssetHTTPHeaderFieldsKey"] = headers
@@ -216,7 +219,7 @@ import AVKit
             self.pipPlayer = player
             self.pipRestoreURL = url
 
-            // 5. Create PiP controller
+            // 6. Create PiP controller
             guard let pipController = AVPictureInPictureController(playerLayer: playerLayer) else {
                 NSLog("[PiP] Failed to create AVPictureInPictureController")
                 self.removePiPOverlay()
@@ -229,7 +232,7 @@ import AVKit
 
             NSLog("[PiP] Player + controller created, waiting for player ready...")
 
-            // 6. Wait for player to be ready (status = .readyToPlay)
+            // 7. Wait for player to be ready (status = .readyToPlay)
             // Use timeout: if not ready in 20s, fail (đủ thời gian cho DNS+TLS+tải segment đầu trên mobile)
             var observed = false
             let timeoutWork = DispatchWorkItem { [weak self] in
