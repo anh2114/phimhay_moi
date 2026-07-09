@@ -166,34 +166,7 @@ import AVKit
 
     // MARK: - PiP
 
-    // MARK: - PiP States
-    private enum PipState {
-        case idle
-        case prebuffering   // AVPlayer đang buffer, Flutter vẫn play
-        case ready          // AVPlayer ready, waiting to start PiP
-        case active         // PiP đang chạy
-    }
-    private var pipState: PipState = .idle
-
     private func enterPiP(url: String, position: Int, headers: [String: String], result: @escaping FlutterResult) {
-        // Nếu đã có AVPlayer đang pre-buffer → chỉ cần start PiP
-        if pipState == .ready, let pipController = self.pipController, let player = self.pipPlayer {
-            NSLog("[PiP] AVPlayer already pre-buffered — starting PiP directly")
-            self.pipState = .active
-            pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
-            player.play()
-            pipController.startPictureInPicture()
-            result(true)
-            return
-        }
-
-        // Nếu đang pre-buffering → wait
-        if pipState == .prebuffering {
-            NSLog("[PiP] Already pre-buffering — waiting...")
-            result(FlutterError(code: "PREBUFFERING", message: "Already pre-buffering", details: nil))
-            return
-        }
-
         DispatchQueue.main.async { [weak self] in
             guard let self = self else {
                 result(FlutterError(code: "DEALLOC", message: "AppDelegate deallocated", details: nil))
@@ -218,7 +191,7 @@ import AVKit
                 return
             }
 
-            // 3. Notify Flutter: đang pre-buffer (show overlay)
+            // 3. Notify Flutter: entering PiP (show overlay)
             self.pipChannel?.invokeMethod("onPiPBuffering", arguments: nil)
 
             // 4. Create overlay view — MUST be in window hierarchy for PiP to work
@@ -250,29 +223,26 @@ import AVKit
             guard let pipController = AVPictureInPictureController(playerLayer: playerLayer) else {
                 NSLog("[PiP] Failed to create AVPictureInPictureController")
                 self.removePiPOverlay()
-                self.pipState = .idle
                 self.pipChannel?.invokeMethod("onPiPError", arguments: "PiP not available on this device")
                 result(FlutterError(code: "NO_PIP", message: "AVPictureInPictureController not available", details: nil))
                 return
             }
             pipController.delegate = self
             self.pipController = pipController
-            self.pipState = .prebuffering
 
-            NSLog("[PiP] Player + controller created, pre-buffering...")
+            NSLog("[PiP] Player + controller created, waiting for ready...")
 
             // 7. Wait for player to be ready (status = .readyToPlay)
             var observed = false
             let timeoutWork = DispatchWorkItem { [weak self] in
                 guard !observed, let self = self else { return }
                 observed = true
-                NSLog("[PiP] TIMEOUT — player not ready in 20s")
+                NSLog("[PiP] TIMEOUT — player not ready in 12s")
                 self.removePiPOverlay()
-                self.pipState = .idle
                 self.pipChannel?.invokeMethod("onPiPError", arguments: "Player timeout")
                 result(FlutterError(code: "TIMEOUT", message: "Player timeout", details: nil))
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 20, execute: timeoutWork)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 12, execute: timeoutWork)
 
             pipErrorLogObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.newErrorLogEntryNotification, object: playerItem, queue: .main) { _ in
                 guard let entry = playerItem.errorLog()?.events.last else { return }
@@ -294,7 +264,6 @@ import AVKit
                         timeoutWork.cancel()
                         NSLog("[PiP] Player FAILED: \(player.error?.localizedDescription ?? "unknown")")
                         self.removePiPOverlay()
-                        self.pipState = .idle
                         DispatchQueue.main.async {
                             self.pipChannel?.invokeMethod("onPiPError", arguments: player.error?.localizedDescription ?? "Player failed")
                             result(FlutterError(code: "PLAYER_FAILED", message: player.error?.localizedDescription ?? "Player failed", details: nil))
@@ -303,17 +272,15 @@ import AVKit
                     return
                 }
 
-                // Player is ready → pre-buffer done
+                // Player is ready
                 observed = true
                 timeoutWork.cancel()
-                self.pipState = .ready
-                NSLog("[PiP] Player pre-buffered — seeking to \(position)s")
+                NSLog("[PiP] Player ready — seeking to \(position)s")
 
                 let targetTime = CMTime(seconds: Double(position), preferredTimescale: 600)
                 player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
                     DispatchQueue.main.async {
-                        NSLog("[PiP] Seek done — auto-starting PiP")
-                        self.pipState = .active
+                        NSLog("[PiP] Seek done — starting PiP")
                         self.pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
                         player.play()
                         pipController.startPictureInPicture()
@@ -352,14 +319,12 @@ import AVKit
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
         NSLog("[PiP] FAILED to start: \(error.localizedDescription)")
-        pipState = .idle
         pipChannel?.invokeMethod("onPiPError", arguments: error.localizedDescription)
         removePiPOverlay()
     }
 
     func pictureInPictureControllerWillStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
         NSLog("[PiP] Will stop — user tapped restore")
-        pipState = .idle
         pipChannel?.invokeMethod("onPiPModeChanged", arguments: false)
     }
 

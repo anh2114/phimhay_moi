@@ -610,10 +610,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     } else if (state == AppLifecycleState.resumed) {
       // Skip resume logic if PiP is active — native player handles playback
       if (_isPiPMode) return;
+      // Skip if transitioning (PiP overlay still showing)
+      if (_isPiPTransitioning) return;
 
       _enableWakelockWithRetry();
       _lockBrightness();
 
+      // ★ FIX: Restore audio session TRƯỚC rồi mới play
+      // iOS cần time để audio session switch từ background → playback
       if (Platform.isIOS && _playerMode == _PlayerMode.hls) {
         _audioChannel.invokeMethod('configureForPlayback').then((_) {}, onError: (_) {});
       }
@@ -621,22 +625,40 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (_player != null && _playerMode == _PlayerMode.hls) {
         final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
         final pos = _positionBeforePause;
+        final wasPlaying = _isPlaying;
 
-        // ★ FIX: seek về vị trí cũ + play — KHÔNG reopen media
-        // reopen gây seek về đầu vì _currentPos bị reset thành 0
-        Future.delayed(const Duration(milliseconds: 300), () {
+        // ★ FIX: Delay 500ms trên iOS (hệ thống cần time stabilize sau background)
+        // Android 300ms là đủ
+        final delay = Platform.isIOS
+            ? const Duration(milliseconds: 500)
+            : const Duration(milliseconds: 300);
+
+        Future.delayed(delay, () {
           if (!mounted || _player == null) return;
 
+          // Restore volume + speed
           _player!.setVolume(restoreVol);
           if (_playbackSpeed != 1.0) _player!.setRate(_playbackSpeed);
 
-          // Nếu position bị reset về 0 mà trước đó > 5s → seek lại
+          // ★ FIX: Nếu position bị reset về 0 mà trước đó > 5s → seek lại
           if (pos > 5 && _currentPosition < 3) {
             _player!.seek(Duration(seconds: pos)).then((_) {
-              if (!_isPlaying) _player!.play();
+              if (mounted && !_isPlaying) _player!.play();
             });
-          } else {
-            if (!_isPlaying) _player!.play();
+          } else if (wasPlaying && !_isPlaying) {
+            // ★ FIX: Chỉ play nếu TRƯỚC KHI pause đang play
+            _player!.play();
+          }
+        });
+      } else if (_playerMode == _PlayerMode.embed && _webController != null) {
+        // WebView embed — resume play
+        final wasPlaying = _isPlaying;
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (!mounted || _webController == null) return;
+          if (wasPlaying) {
+            _webController!.evaluateJavascript(
+              source: "document.querySelector('video')?.play();",
+            );
           }
         });
       }
@@ -657,6 +679,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _brightnessTimer?.cancel();
     _pendingServerSave?.cancel();
     _seekRetryTimer?.cancel();
+    _pipOverlayTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _saveProgressOnExit();
     ActivityService.stopWatching();
@@ -730,15 +753,24 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   // ── PiP (Picture-in-Picture) ──────────────────────────
+  Timer? _pipOverlayTimer;
   void _setupPiPListener() {
     _pipChannel.setMethodCallHandler((call) async {
       switch (call.method) {
         case 'onPiPBuffering':
-          // Native AVPlayer đang pre-buffer — show overlay trên Flutter
-          if (mounted) setState(() => _isPiPTransitioning = true);
+          // Native AVPlayer đang buffer — show overlay
+          if (mounted) {
+            setState(() => _isPiPTransitioning = true);
+            // Auto-hide overlay sau 8s nếu native không respond (timeout safety)
+            _pipOverlayTimer?.cancel();
+            _pipOverlayTimer = Timer(const Duration(seconds: 8), () {
+              if (mounted) setState(() => _isPiPTransitioning = false);
+            });
+          }
           break;
         case 'onPiPModeChanged':
           final isPiP = call.arguments as bool;
+          _pipOverlayTimer?.cancel();
           if (mounted) {
             setState(() {
               _isPiPMode = isPiP;
@@ -757,6 +789,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           break;
         case 'onPiPRestore':
           // PiP ended — show restore overlay, then resume Flutter player
+          _pipOverlayTimer?.cancel();
           final args = call.arguments as Map<dynamic, dynamic>?;
           final position = args?['position'] as int? ?? 0;
           if (mounted) {
@@ -767,11 +800,16 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             // Delay nhỏ để overlay hiện lên trước khi resume
             await Future.delayed(const Duration(milliseconds: 300));
             if (!mounted) return;
+            // Restore audio session TRƯỚC khi play
+            if (Platform.isIOS) {
+              try {
+                await _audioChannel.invokeMethod('configureForPlayback');
+              } catch (_) {}
+              await Future.delayed(const Duration(milliseconds: 200));
+              if (!mounted) return;
+            }
             // Resume player at position
             if (_playerMode == _PlayerMode.hls && _player != null) {
-              if (Platform.isIOS) {
-                _audioChannel.invokeMethod('configureForPlayback').then((_) {}, onError: (_) {});
-              }
               _currentPosition = position;
               _performSeekRetry(position);
               _player!.play();
@@ -782,12 +820,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 );
               }
             }
-            // Ẩn overlay sau 500ms
-            await Future.delayed(const Duration(milliseconds: 500));
+            // Ẩn overlay sau 800ms (cho player time buffer)
+            await Future.delayed(const Duration(milliseconds: 800));
             if (mounted) setState(() => _isPiPTransitioning = false);
           }
           break;
         case 'onPiPError':
+          _pipOverlayTimer?.cancel();
           if (mounted) {
             setState(() => _isPiPTransitioning = false);
             final error = call.arguments?.toString() ?? 'Unknown error';
