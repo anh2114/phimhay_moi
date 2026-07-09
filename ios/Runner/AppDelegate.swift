@@ -208,7 +208,11 @@ import AVKit
             var assetOptions: [String: Any] = [:]
             if !headers.isEmpty {
                 assetOptions["AVURLAssetHTTPHeaderFieldsKey"] = headers
+                NSLog("[PiP] Headers: \(headers)")
+            } else {
+                NSLog("[PiP] No headers provided")
             }
+            NSLog("[PiP] Creating AVURLAsset for: \(streamURL.absoluteString.prefix(100))")
             let asset = AVURLAsset(url: streamURL, options: assetOptions)
             asset.resourceLoader.preloadsEligibleContentKeys = true
             let playerItem = AVPlayerItem(asset: asset)
