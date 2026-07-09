@@ -834,28 +834,16 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         return;
       }
 
-      // iOS PiP: dùng proxy URL + headers (AVPlayer cần proxy + User-Agent)
+      // iOS PiP: gửi URL gốc trực tiếp + User-Agent
+      // KHÔNG dùng proxy vì proxy server ở nước ngoài, CDN geo-restricted → 502
       String pipUrl = url;
       Map<String, String> pipHeaders = {};
       if (Platform.isIOS && !url.contains('hls_proxy.php')) {
-        pipUrl = AppConfig.proxyHlsFullUrl(url);
-        pipHeaders['Referer'] = AppConfig.baseUrl;
         pipHeaders['User-Agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+        pipHeaders['Referer'] = AppConfig.baseUrl;
       }
 
-      // Debug: show URL being sent to PiP
       debugPrint('[PiP] Sending URL: $pipUrl');
-      debugPrint('[PiP] Headers: $pipHeaders');
-      if (mounted) {
-        final shortUrl = pipUrl.length > 80 ? '${pipUrl.substring(0, 80)}...' : pipUrl;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('PiP URL: $shortUrl', style: const TextStyle(fontSize: 10)),
-            duration: const Duration(seconds: 5),
-            backgroundColor: Colors.blue,
-          ),
-        );
-      }
 
       final result = await _pipChannel.invokeMethod('enterPiP', {
         'url': pipUrl,
