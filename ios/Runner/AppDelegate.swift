@@ -2,6 +2,100 @@ import UIKit
 import Flutter
 import AVFoundation
 import AVKit
+import Network
+
+// MARK: - Local HLS Proxy Server
+// Runs on localhost, proxies HLS requests to CDN
+// Solves AVPlayer inability to load geo-restricted CDN URLs
+class HLSProxyServer {
+    static let shared = HLSProxyServer()
+    private var listener: NWListener?
+    private var connections: [NWConnection] = []
+    private let queue = DispatchQueue(label: "hls-proxy", qos: .userInitiated)
+    private(set) var port: UInt16 = 0
+    private var baseURL: String = ""
+
+    func start(baseURL: String) throws {
+        self.baseURL = baseURL
+        let params = NWParameters.tcp
+        params.allowLocalEndpointReuse = true
+        listener = try NWListener(using: params, on: NWEndpoint.Port(rawValue: 0)!)
+        listener?.stateUpdateHandler = { state in
+            if case .ready = state {
+                self.port = self.listener?.localPort ?? 0
+                NSLog("[HLSProxy] Server started on port \(self.port)")
+            }
+        }
+        listener?.newConnectionHandler = { [weak self] conn in
+            self?.handleConnection(conn)
+        }
+        listener?.start(queue: queue)
+    }
+
+    func stop() {
+        listener?.cancel()
+        listener = nil
+        connections.forEach { $0.cancel() }
+        connections.removeAll()
+        port = 0
+    }
+
+    private func handleConnection(_ conn: NWConnection) {
+        connections.append(conn)
+        conn.start(queue: queue)
+        conn.receive(minimumIncompleteLength: 1, maximumLength: 65536) { data, _, isComplete, error in
+            guard let data = data, !data.isEmpty else {
+                conn.cancel()
+                return
+            }
+            let request = String(data: data, encoding: .utf8) ?? ""
+            guard let firstLine = request.components(separatedBy: "\r\n").first,
+                  let path = firstLine.components(separatedBy: " ").dropFirst().first else {
+                conn.cancel()
+                return
+            }
+            // URL decode the path
+            let decodedPath = path.removingPercentEncoding ?? path
+            NSLog("[HLSProxy] Request: \(decodedPath.prefix(100))")
+
+            // Fetch from CDN and respond
+            let targetURL = self.baseURL.hasSuffix("/") ? String(self.baseURL.dropLast()) + decodedPath : decodedPath
+            self.proxyRequest(targetURL, to: conn)
+        }
+    }
+
+    private func proxyRequest(_ urlString: String, to conn: NWConnection) {
+        guard let url = URL(string: urlString) else {
+            let response = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n"
+            conn.send(content: response.data(using: .utf8), completion: .contentProcessed { _ in conn.cancel() })
+            return
+        }
+        let task = URLSession.shared.dataTask(with: url) { data, response, error in
+            if let error = error {
+                NSLog("[HLSProxy] Fetch error: \(error.localizedDescription)")
+                let resp = "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n"
+                conn.send(content: resp.data(using: .utf8), completion: .contentProcessed { _ in conn.cancel() })
+                return
+            }
+            let httpResponse = response as? HTTPURLResponse
+            let statusCode = httpResponse?.statusCode ?? 200
+            var headerStr = "HTTP/1.1 \(statusCode) OK\r\n"
+            headerStr += "Content-Type: \(httpResponse?.mimeType ?? "application/octet-stream")\r\n"
+            headerStr += "Access-Control-Allow-Origin: *\r\n"
+            headerStr += "Connection: close\r\n"
+            headerStr += "Cache-Control: no-cache\r\n"
+            if let data = data {
+                headerStr += "Content-Length: \(data.count)\r\n\r\n"
+                var responseData = headerStr.data(using: .utf8)! + data
+                conn.send(content: responseData, completion: .contentProcessed { _ in conn.cancel() })
+            } else {
+                headerStr += "Content-Length: 0\r\n\r\n"
+                conn.send(content: headerStr.data(using: .utf8), completion: .contentProcessed { _ in conn.cancel() })
+            }
+        }
+        task.resume()
+    }
+}
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, AVPictureInPictureControllerDelegate {
@@ -194,7 +288,39 @@ import AVKit
             }
             NSLog("[PiP] URL scheme=\(streamURL.scheme ?? "nil") host=\(streamURL.host ?? "nil")")
 
-            // 3. Create overlay view — MUST be in window hierarchy for PiP to work
+            // 3. Start local HLS proxy (AVPlayer loads from localhost, proxy fetches from CDN)
+            let proxy = HLSProxyServer.shared
+            proxy.stop() // Stop any previous instance
+            do {
+                // baseURL = everything before the m3u8 filename
+                let fullURL = streamURL.absoluteString
+                let baseURL: String
+                if let lastSlash = fullURL.lastIndex(of: "/") {
+                    baseURL = String(fullURL[fullURL.startIndex...lastSlash])
+                } else {
+                    baseURL = fullURL
+                }
+                try proxy.start(baseURL: baseURL)
+                NSLog("[PiP] Proxy started on port \(proxy.port), baseURL=\(baseURL.prefix(80))")
+            } catch {
+                NSLog("[PiP] Proxy start failed: \(error.localizedDescription)")
+                // Fallback: use original URL directly
+            }
+
+            // 4. Rewrite URL to localhost proxy (if proxy started)
+            let finalURL: URL
+            if proxy.port > 0 {
+                // Extract path from original URL (everything after host)
+                let path = streamURL.path // e.g. "/20260602/NfKAemIC/index.m3u8"
+                let localURL = URL(string: "http://127.0.0.1:\(proxy.port)\(path)")!
+                finalURL = localURL
+                NSLog("[PiP] Using local proxy: \(localURL.absoluteString)")
+            } else {
+                finalURL = streamURL
+                NSLog("[PiP] Using direct URL (proxy failed)")
+            }
+
+            // 5. Create overlay view — MUST be in window hierarchy for PiP to work
             self.removePiPOverlay()
             let overlayView = UIView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
             overlayView.backgroundColor = .clear
@@ -204,17 +330,8 @@ import AVKit
             self.window?.rootViewController?.view.addSubview(overlayView)
             self.pipOverlayView = overlayView
 
-            // 5. Create AVPlayerLayer with headers (only if actually provided) and attach to overlay view
-            var assetOptions: [String: Any] = [:]
-            if !headers.isEmpty {
-                assetOptions["AVURLAssetHTTPHeaderFieldsKey"] = headers
-                NSLog("[PiP] Headers: \(headers)")
-            } else {
-                NSLog("[PiP] No headers provided")
-            }
-            NSLog("[PiP] Creating AVURLAsset for: \(streamURL.absoluteString.prefix(100))")
-            let asset = AVURLAsset(url: streamURL, options: assetOptions)
-            asset.resourceLoader.preloadsEligibleContentKeys = true
+            // 6. Create AVPlayerLayer and attach to overlay view
+            let asset = AVURLAsset(url: finalURL)
             let playerItem = AVPlayerItem(asset: asset)
             playerItem.preferredForwardBufferDuration = 10
             let player = AVPlayer(playerItem: playerItem)
@@ -317,6 +434,8 @@ import AVKit
         pipPlayer = nil
         pipOverlayView?.removeFromSuperview()
         pipOverlayView = nil
+        // Stop local proxy server
+        HLSProxyServer.shared.stop()
     }
 
     // MARK: - AVPictureInPictureControllerDelegate
