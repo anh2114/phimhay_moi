@@ -177,9 +177,11 @@ import AVKit
 
             // 1. Setup audio session for background playback
             do {
-                try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback,
-                    options: [.allowBluetooth, .allowBluetoothA2DP])
-                try AVAudioSession.sharedInstance().setActive(true)
+                let session = AVAudioSession.sharedInstance()
+                try session.setCategory(.playback, mode: .moviePlayback,
+                    options: [.allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
+                try session.setActive(true)
+                NSLog("[PiP] Audio session OK — category=\(session.category.rawValue)")
             } catch {
                 NSLog("[PiP] Audio session setup failed: \(error.localizedDescription)")
             }
@@ -190,6 +192,7 @@ import AVKit
                 result(FlutterError(code: "INVALID_URL", message: "Cannot create URL", details: nil))
                 return
             }
+            NSLog("[PiP] URL scheme=\(streamURL.scheme ?? "nil") host=\(streamURL.host ?? "nil")")
 
             // 3. Create overlay view — MUST be in window hierarchy for PiP to work
             self.removePiPOverlay()
@@ -207,8 +210,11 @@ import AVKit
                 assetOptions["AVURLAssetHTTPHeaderFieldsKey"] = headers
             }
             let asset = AVURLAsset(url: streamURL, options: assetOptions)
+            asset.resourceLoader.preloadsEligibleContentKeys = true
             let playerItem = AVPlayerItem(asset: asset)
+            playerItem.preferredForwardBufferDuration = 10
             let player = AVPlayer(playerItem: playerItem)
+            player.allowsExternalPlayback = true
             let playerLayer = AVPlayerLayer(player: player)
             playerLayer.frame = overlayView.bounds
             overlayView.layer.addSublayer(playerLayer)
