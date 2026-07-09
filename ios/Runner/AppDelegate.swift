@@ -312,7 +312,7 @@ class HLSLocalProxy {
                     }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 20, execute: timeoutWork)
 
-                    pipErrorLogObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.newErrorLogEntryNotification, object: playerItem, queue: .main) { _ in
+                    self.pipErrorLogObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.newErrorLogEntryNotification, object: playerItem, queue: .main) { _ in
                         guard let entry = playerItem.errorLog()?.events.last else { return }
                         NSLog("[PiP] HLS error — URI=\(entry.uri ?? "?") code=\(entry.errorStatusCode) \(entry.errorComment ?? "")")
                     }
