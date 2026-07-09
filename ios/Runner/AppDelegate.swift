@@ -19,11 +19,16 @@ class HLSProxyServer {
         self.baseURL = baseURL
         let params = NWParameters.tcp
         params.allowLocalEndpointReuse = true
-        listener = try NWListener(using: params, on: NWEndpoint.Port(rawValue: 0)!)
-        listener?.stateUpdateHandler = { state in
+        let nwPort = NWEndpoint.Port(rawValue: 0)!
+        listener = try NWListener(using: params, on: nwPort)
+        listener?.stateUpdateHandler = { [weak self] state in
+            guard let self = self else { return }
             if case .ready = state {
-                self.port = self.listener?.localPort ?? 0
-                NSLog("[HLSProxy] Server started on port \(self.port)")
+                // Extract port from local endpoint
+                if case .hostPort(let addr, let p) = self.listener?.localEndpoint {
+                    self.port = p.rawValue
+                    NSLog("[HLSProxy] Server started on port \(self.port)")
+                }
             }
         }
         listener?.newConnectionHandler = { [weak self] conn in
