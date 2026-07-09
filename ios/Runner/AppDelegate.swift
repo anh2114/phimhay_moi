@@ -191,10 +191,7 @@ import AVKit
                 return
             }
 
-            // 3. Notify Flutter: PiP starting (pause player to free bandwidth)
-            self.pipChannel?.invokeMethod("onPiPBuffering", arguments: nil)
-
-            // 4. Create overlay view — MUST be in window hierarchy for PiP to work
+            // 3. Create overlay view — MUST be in window hierarchy for PiP to work
             self.removePiPOverlay()
             let overlayView = UIView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
             overlayView.backgroundColor = .clear

@@ -753,18 +753,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   void _setupPiPListener() {
     _pipChannel.setMethodCallHandler((call) async {
       switch (call.method) {
-        case 'onPiPBuffering':
-          // Native AVPlayer đang buffer — pause Flutter player để free bandwidth
-          // KHÔNG show overlay (để native PiP window tự xử lý)
-          if (mounted) {
-            _showControls = false;
-            _autoHideControlsTimer?.cancel();
-            _player?.pause();
-            _webController?.evaluateJavascript(
-              source: "document.querySelector('video')?.pause();",
-            );
-          }
-          break;
         case 'onPiPModeChanged':
           final isPiP = call.arguments as bool;
           if (mounted) {
