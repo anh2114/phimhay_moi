@@ -834,10 +834,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         return;
       }
 
-      // iOS PiP: dùng proxy URL (VPS ở Việt Nam → proxy access CDN được)
+      // iOS PiP: dùng proxy URL qua IP trực tiếp (bypass DNS cho AVPlayer)
       String pipUrl = url;
       if (Platform.isIOS && !url.contains('hls_proxy.php')) {
-        pipUrl = AppConfig.proxyHlsFullUrl(url);
+        pipUrl = AppConfig.proxyHlsFullUrl(url).replaceAll('xiaofilm.site', '104.21.38.215');
       }
 
       debugPrint('[PiP] Sending URL: $pipUrl');
