@@ -733,12 +733,19 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   void _setupPiPListener() {
     _pipChannel.setMethodCallHandler((call) async {
       switch (call.method) {
+        case 'onPiPBuffering':
+          // Native AVPlayer đang pre-buffer — show overlay trên Flutter
+          if (mounted) setState(() => _isPiPTransitioning = true);
+          break;
         case 'onPiPModeChanged':
           final isPiP = call.arguments as bool;
           if (mounted) {
-            setState(() => _isPiPMode = isPiP);
+            setState(() {
+              _isPiPMode = isPiP;
+              _isPiPTransitioning = false;
+            });
             if (isPiP) {
-              // PiP mode ON — hide controls, pause Flutter player
+              // PiP ON — hide controls, pause Flutter player
               _showControls = false;
               _autoHideControlsTimer?.cancel();
               _player?.pause();
@@ -749,14 +756,19 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           }
           break;
         case 'onPiPRestore':
-          // PiP ended — restore Flutter player
+          // PiP ended — show restore overlay, then resume Flutter player
           final args = call.arguments as Map<dynamic, dynamic>?;
           final position = args?['position'] as int? ?? 0;
           if (mounted) {
-            setState(() => _isPiPMode = false);
+            setState(() {
+              _isPiPMode = false;
+              _isPiPTransitioning = true;
+            });
+            // Delay nhỏ để overlay hiện lên trước khi resume
+            await Future.delayed(const Duration(milliseconds: 300));
+            if (!mounted) return;
             // Resume player at position
             if (_playerMode == _PlayerMode.hls && _player != null) {
-              // Always restore audio session before playing
               if (Platform.isIOS) {
                 _audioChannel.invokeMethod('configureForPlayback').then((_) {}, onError: (_) {});
               }
@@ -770,10 +782,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 );
               }
             }
+            // Ẩn overlay sau 500ms
+            await Future.delayed(const Duration(milliseconds: 500));
+            if (mounted) setState(() => _isPiPTransitioning = false);
           }
           break;
         case 'onPiPError':
           if (mounted) {
+            setState(() => _isPiPTransitioning = false);
             final error = call.arguments?.toString() ?? 'Unknown error';
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -788,125 +804,50 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     });
   }
 
-  // ── Web-native PiP (approach 2) — dùng requestPictureInPicture() của chính
-  // thẻ <video> trong WebView, không cần đưa URL sang AVPlayer native nữa.
-  // Nhờ vậy tránh được lỗi TIMEOUT khi video.src là blob: URL (hls.js/MediaSource).
-  void _registerWebPiPHandlers(InAppWebViewController c) {
-    c.addJavaScriptHandler(
-      handlerName: 'onWebPiPStateChange',
-      callback: (args) {
-        final isPiP = args.isNotEmpty ? args[0] as bool : false;
-        if (!mounted) return;
-        setState(() => _isPiPMode = isPiP);
-        if (isPiP) {
-          _showControls = false;
-          _autoHideControlsTimer?.cancel();
-        } else {
-          // Video vẫn là cùng 1 <video> trong webview nên không cần seek lại vị trí
-          _showControlsWithAutoHide();
-        }
-      },
-    );
-    c.addJavaScriptHandler(
-      handlerName: 'onWebPiPError',
-      callback: (args) {
-        if (!mounted) return;
-        final error = args.isNotEmpty ? args[0].toString() : 'Unknown error';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('PiP lỗi: $error'), backgroundColor: Colors.red, duration: const Duration(seconds: 3)),
-        );
-      },
-    );
-  }
-
-  void _attachWebPiPListeners() {
-    _webController?.evaluateJavascript(source: '''
-      (function() {
-        function attach() {
-          var v = document.querySelector('video');
-          if (!v) { setTimeout(attach, 500); return; }
-          if (v.__pipListenerAttached) return;
-          v.__pipListenerAttached = true;
-          v.addEventListener('enterpictureinpicture', function() {
-            if (window.flutter_inappwebview) window.flutter_inappwebview.callHandler('onWebPiPStateChange', true);
-          });
-          v.addEventListener('leavepictureinpicture', function() {
-            if (window.flutter_inappwebview) window.flutter_inappwebview.callHandler('onWebPiPStateChange', false);
-          });
-        }
-        attach();
-      })();
-    ''');
-  }
-
   Future<void> _enterPiP() async {
     try {
       // Save current position first
       await _saveCurrentProgress();
 
-      if (_playerMode == _PlayerMode.embed && _webController != null) {
-        // ★ Approach 2: dùng PiP gốc của WebKit trên chính thẻ <video> trong webview.
-        // Không cần lấy/đưa URL sang AVPlayer native → tránh lỗi TIMEOUT với blob: URL.
-        final res = await _webController!.evaluateJavascript(source: '''
-          (function() {
-            var v = document.querySelector('video');
-            if (!v) return 'NO_VIDEO';
-            if (!('pictureInPictureEnabled' in document) || !document.pictureInPictureEnabled) return 'NOT_SUPPORTED';
-            if (v.disablePictureInPicture) return 'DISABLED';
-            if (document.pictureInPictureElement === v) return 'ALREADY';
-            v.requestPictureInPicture().catch(function(e) {
-              if (window.flutter_inappwebview) {
-                window.flutter_inappwebview.callHandler('onWebPiPError', (e && e.message) || String(e));
-              }
-            });
-            return 'OK';
-          })();
-        ''');
+      int position = 0;
+      String url = _currentUrl;
 
-        switch (res) {
-          case 'NO_VIDEO':
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Không có video để PiP'), backgroundColor: Colors.orange),
-            );
-            break;
-          case 'NOT_SUPPORTED':
-          case 'DISABLED':
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Thiết bị/phiên bản iOS này không hỗ trợ PiP'), backgroundColor: Colors.orange),
-            );
-            break;
-          // 'OK' / 'ALREADY' → trạng thái sẽ tự cập nhật qua sự kiện enterpictureinpicture
-        }
+      if (_playerMode == _PlayerMode.hls && _player != null) {
+        position = _currentPosition;
+      } else if (_playerMode == _PlayerMode.embed && _webController != null) {
+        try {
+          final posResult = await _webController!.evaluateJavascript(
+            source: "document.querySelector('video')?.currentTime || 0",
+          );
+          if (posResult != null) position = (posResult as num).toInt();
+        } catch (_) {}
+      }
+
+      if (url.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No video to PiP'), backgroundColor: Colors.orange),
+        );
         return;
       }
 
-      // ── Player HLS gốc (media_kit, không qua webview) — vẫn dùng AVPlayer native ──
-      if (_playerMode == _PlayerMode.hls && _player != null) {
-        final position = _currentPosition;
-        final url = _currentUrl;
-        if (url.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Không có video để PiP'), backgroundColor: Colors.orange),
-          );
-          return;
-        }
-        final result = await _pipChannel.invokeMethod('enterPiP', {
-          'url': url,
-          'position': position,
-          'width': 16,
-          'height': 9,
-          'headers': {
-            'Referer': AppConfig.baseUrl,
-            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-          },
-        });
-        if (result != true) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Không thể vào chế độ PiP'), backgroundColor: Colors.orange),
-          );
-        }
+      // Use proxy with full=1 for iOS (segments go through proxy too)
+      String pipUrl = url;
+      if (Platform.isIOS && !url.contains('hls_proxy.php')) {
+        pipUrl = AppConfig.proxyHlsFullUrl(url);
+      }
+
+      final result = await _pipChannel.invokeMethod('enterPiP', {
+        'url': pipUrl,
+        'position': position,
+      });
+
+      if (result != true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Không thể vào chế độ PiP'), backgroundColor: Colors.orange),
+        );
       }
     } catch (e) {
+      if (mounted) setState(() => _isPiPTransitioning = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Lỗi PiP: $e'), backgroundColor: Colors.red),
       );
@@ -1076,9 +1017,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   double _originalBrightness = 1.0;
   bool _brightnessLocked = false;
 
-  // ── PiP (Picture-in-Picture) ──
+  // ── PiP (Picture-in-Picture) — Android only ──
+  // iOS PiP暂不支持 (AVPlayer proxy issues with m3u8 streams)
   static const _pipChannel = MethodChannel('phimhay/pip');
   bool _isPiPMode = false;
+  bool _isPiPTransitioning = false; // Đang chuyển sang/từ PiP
 
   // ── Double-click visual feedback ──
   bool _showDoubleTapLeft = false;
@@ -1877,7 +1820,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 javaScriptEnabled: true,
                 mediaPlaybackRequiresUserGesture: false,
                 allowsInlineMediaPlayback: true,
-                allowsPictureInPictureMediaPlayback: true, // ★ Cho phép WKWebView tự quản lý PiP (approach 2)
                 allowUniversalAccessFromFileURLs: true,
                 mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
                 useWideViewPort: true,
@@ -1890,10 +1832,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                     ? _currentUrl
                     : widget.streamUrl ?? '${AppConfig.baseUrl}/phim/${widget.movieSlug ?? ''}'),
               ),
-              onWebViewCreated: (c) {
-                _webController = c;
-                _registerWebPiPHandlers(c);
-              },
+              onWebViewCreated: (c) => _webController = c,
               onLoadStart: (_, __) { if (mounted) setState(() => _isLoading = true); },
               onLoadStop:  (_, __) {
                 if (mounted) setState(() => _isLoading = false);
@@ -1902,7 +1841,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                     source: "var v=document.querySelector('video'); if(v){v.currentTime=$_currentPosition; v.play().catch(()=>{});}",
                   );
                 }
-                _attachWebPiPListeners();
                 _startProgressTimer();
                 _reportHealth('ok');
               },
@@ -2069,6 +2007,27 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 color: AppTheme.accent,
                 backgroundColor: Colors.white12,
                 minHeight: 3,
+              ),
+            ),
+
+          // ── PiP Transition overlay — hiện khi pre-buffer hoặc restore ──
+          if (_isPiPTransitioning)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black87,
+                child: const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                      SizedBox(height: 12),
+                      Text(
+                        'Đang chuyển...',
+                        style: TextStyle(color: Colors.white70, fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
 
@@ -2484,7 +2443,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             GestureDetector(
               onTap: () {
                 _restoreOrientations();
-                Future.delayed(const Duration(milliseconds: 300), () => _restoreOrientations());
+                Navigator.pop(context);
               },
               child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 24),
             ),

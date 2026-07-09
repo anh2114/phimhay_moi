@@ -17,7 +17,9 @@ class ApiClient {
   static Dio get dio => _dio!;
 
   static String? _token;
+  static String? _refreshToken;
   static String? get token => _token;
+  static String? get refreshToken => _refreshToken;
   static bool get isAuth => _token != null && _token!.isNotEmpty;
 
   // Secure storage thay SharedPreferences
@@ -25,6 +27,7 @@ class ApiClient {
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
   static const _keyToken = 'auth_token';
+  static const _keyRefreshToken = 'auth_refresh_token';
   static const _keyUser = 'auth_user';
 
   // Race condition lock: chỉ 1 request refresh tại 1 thời điểm
@@ -32,6 +35,7 @@ class ApiClient {
 
   static Future<void> init() async {
     _token = await _storage.read(key: _keyToken);
+    _refreshToken = await _storage.read(key: _keyRefreshToken);
 
     _dio = Dio(BaseOptions(
       baseUrl: AppConfig.apiUrl,
@@ -72,6 +76,9 @@ class ApiClient {
 
   // Race condition-safe refresh
   static Future<bool> _refresh() async {
+    // Không có refresh token → fail ngay
+    if (_refreshToken == null || _refreshToken!.isEmpty) return false;
+
     // Nếu đang có refresh khác chạy → đợi kết quả của nó
     if (_refreshCompleter != null && !_refreshCompleter!.isCompleted) {
       return _refreshCompleter!.future;
@@ -82,11 +89,13 @@ class ApiClient {
     try {
       final res = await Dio(BaseOptions(baseUrl: AppConfig.apiUrl)).post(
         '/auth_simple.php',
-        data: {'action': 'refresh', 'token': _token},
+        data: {'action': 'refresh', 'refresh_token': _refreshToken},
       );
       if (res.data['success'] == true) {
-        _token = res.data['token'];
+        _token = res.data['access_token'] ?? res.data['token'];
+        _refreshToken = res.data['refresh_token'];
         await _storage.write(key: _keyToken, value: _token!);
+        await _storage.write(key: _keyRefreshToken, value: _refreshToken!);
         _refreshCompleter!.complete(true);
         return true;
       }
@@ -170,9 +179,16 @@ class ApiClient {
     await _storage.write(key: _keyToken, value: t);
   }
 
+  static Future<void> saveRefreshToken(String t) async {
+    _refreshToken = t;
+    await _storage.write(key: _keyRefreshToken, value: t);
+  }
+
   static Future<void> clearToken() async {
     _token = null;
+    _refreshToken = null;
     await _storage.delete(key: _keyToken);
+    await _storage.delete(key: _keyRefreshToken);
     _refreshCompleter = null;
   }
 

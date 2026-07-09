@@ -65,7 +65,10 @@ class AuthProvider extends ChangeNotifier {
       });
       final d = res.data;
       if (d['success'] == true) {
-        await ApiClient.saveToken(d['token'] ?? '');
+        await ApiClient.saveToken(d['access_token'] ?? d['token'] ?? '');
+        if (d['refresh_token'] != null) {
+          await ApiClient.saveRefreshToken(d['refresh_token']);
+        }
         _user = Map<String, dynamic>.from(d['user'] ?? {});
         _user!['logged_in'] = true;
         await _save();
@@ -96,7 +99,10 @@ class AuthProvider extends ChangeNotifier {
       });
       final d = res.data;
       if (d['success'] == true) {
-        await ApiClient.saveToken(d['token'] ?? '');
+        await ApiClient.saveToken(d['access_token'] ?? d['token'] ?? '');
+        if (d['refresh_token'] != null) {
+          await ApiClient.saveRefreshToken(d['refresh_token']);
+        }
         _user = Map<String, dynamic>.from(d['user'] ?? {});
         _user!['logged_in'] = true;
         await _save();
