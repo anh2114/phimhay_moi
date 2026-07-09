@@ -14,21 +14,21 @@ class HLSProxyServer {
     private let queue = DispatchQueue(label: "hls-proxy", qos: .userInitiated)
     private(set) var port: UInt16 = 0
     private var baseURL: String = ""
+    private static let proxyPort: UInt16 = 18963
 
     func start(baseURL: String) throws {
         self.baseURL = baseURL
+        self.port = HLSProxyServer.proxyPort
         let params = NWParameters.tcp
         params.allowLocalEndpointReuse = true
-        let nwPort = NWEndpoint.Port(rawValue: 0)!
+        let nwPort = NWEndpoint.Port(rawValue: HLSProxyServer.proxyPort)!
         listener = try NWListener(using: params, on: nwPort)
-        listener?.stateUpdateHandler = { [weak self] state in
-            guard let self = self else { return }
+        listener?.stateUpdateHandler = { state in
             if case .ready = state {
-                // Extract port from local endpoint
-                if case .hostPort(let addr, let p) = self.listener?.localEndpoint {
-                    self.port = p.rawValue
-                    NSLog("[HLSProxy] Server started on port \(self.port)")
-                }
+                NSLog("[HLSProxy] Server started on port \(HLSProxyServer.proxyPort)")
+            }
+            if case .failed(let err) = state {
+                NSLog("[HLSProxy] Listener failed: \(err)")
             }
         }
         listener?.newConnectionHandler = { [weak self] conn in
