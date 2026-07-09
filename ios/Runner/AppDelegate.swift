@@ -3,80 +3,6 @@ import Flutter
 import AVFoundation
 import AVKit
 
-// MARK: - HLS Local File Creator
-// Fetches m3u8 via URLSession (bypasses AVPlayer networking), rewrites URLs to absolute, saves locally
-class HLSLocalProxy {
-    // CDN domain → IP mapping (bypass DNS issues for AVPlayer)
-    static let cdnDomainMap: [String: String] = [
-        "vip.upstream80.com": "163.61.183.246",
-    ]
-
-    static func createLocalM3U8(originalURL: String, completion: @escaping (URL?) -> Void) {
-        guard let url = URL(string: originalURL) else {
-            completion(nil)
-            return
-        }
-
-        NSLog("[HLSLocal] Fetching m3u8: \(url.absoluteString.prefix(80))")
-
-        // Build base URL (everything before the m3u8 filename)
-        var baseURL = url.deletingLastPathComponent().absoluteString
-        if !baseURL.hasSuffix("/") { baseURL += "/" }
-        // Replace CDN domain with IP in base URL
-        for (domain, ip) in cdnDomainMap {
-            baseURL = baseURL.replacingOccurrences(of: domain, with: ip)
-        }
-
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 10
-        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)", forHTTPHeaderField: "User-Agent")
-
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            guard let data = data, error == nil, let content = String(data: data, encoding: .utf8) else {
-                NSLog("[HLSLocal] Fetch failed: \(error?.localizedDescription ?? "unknown")")
-                completion(nil)
-                return
-            }
-
-            NSLog("[HLSLocal] Fetched \(data.count) bytes, rewriting URLs...")
-
-            // Rewrite relative URLs to absolute + replace CDN domain with IP
-            var lines = content.components(separatedBy: "\n")
-            for i in 0..<lines.count {
-                var line = lines[i].trimmingCharacters(in: .whitespacesAndNewlines)
-                // Skip non-URL lines (headers, blank, comments)
-                if line.isEmpty || line.hasPrefix("#") { continue }
-                // Already absolute
-                if line.hasPrefix("http://") || line.hasPrefix("https://") {
-                    // Replace CDN domain with IP for AVPlayer compatibility
-                    for (domain, ip) in cdnDomainMap {
-                        line = line.replacingOccurrences(of: domain, with: ip)
-                    }
-                    lines[i] = line
-                    continue
-                }
-                // Rewrite relative URL to absolute
-                var absoluteLine = baseURL + line
-                for (domain, ip) in cdnDomainMap {
-                    absoluteLine = absoluteLine.replacingOccurrences(of: domain, with: ip)
-                }
-                lines[i] = absoluteLine
-            }
-
-            let rewritten = lines.joined(separator: "\n")
-            NSLog("[HLSLocal] Rewritten content (first 200 chars): \(rewritten.prefix(200))")
-
-            // Save to temp file
-            let tempDir = FileManager.default.temporaryDirectory
-            let localFile = tempDir.appendingPathComponent("pip_\(UUID().uuidString).m3u8")
-            try? rewritten.write(to: localFile, atomically: true, encoding: .utf8)
-
-            NSLog("[HLSLocal] Saved to: \(localFile.path)")
-            completion(localFile)
-        }.resume()
-    }
-}
-
 @main
 @objc class AppDelegate: FlutterAppDelegate, AVPictureInPictureControllerDelegate {
 
@@ -268,74 +194,60 @@ class HLSLocalProxy {
             }
             NSLog("[PiP] URL scheme=\(streamURL.scheme ?? "nil") host=\(streamURL.host ?? "nil")")
 
-            // 3. Fetch m3u8 via URLSession → rewrite URLs → save local file for AVPlayer
-            // This bypasses AVPlayer's networking which fails with certain CDNs
-            HLSLocalProxy.createLocalM3U8(originalURL: url) { [weak self] localURL in
-                DispatchQueue.main.async {
-                    guard let self = self else { return }
+            // 3. Create overlay view — MUST be in window hierarchy for PiP to work
+            self.removePiPOverlay()
+            let overlayView = UIView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
+            overlayView.backgroundColor = .clear
+            overlayView.alpha = 0.01
+            overlayView.isUserInteractionEnabled = false
+            overlayView.tag = 8888
+            self.window?.rootViewController?.view.addSubview(overlayView)
+            self.pipOverlayView = overlayView
 
-                    let finalURL: URL
-                    if let localURL = localURL {
-                        finalURL = localURL
-                        NSLog("[PiP] Using local m3u8 file: \(localURL.path)")
-                    } else {
-                        // Fallback: use original URL directly
-                        finalURL = streamURL
-                        NSLog("[PiP] Local fetch failed, using direct URL")
-                    }
+            // 4. Create AVPlayerLayer and attach to overlay view
+            // URL is proxy URL (xiaofilm.site/api/hls_proxy.php?url=CDN_URL)
+            // VPS is in Vietnam → proxy can access CDN
+            let asset = AVURLAsset(url: streamURL)
+            let playerItem = AVPlayerItem(asset: asset)
+            playerItem.preferredForwardBufferDuration = 10
+            let player = AVPlayer(playerItem: playerItem)
+            player.allowsExternalPlayback = true
+            let playerLayer = AVPlayerLayer(player: player)
+            playerLayer.frame = overlayView.bounds
+            overlayView.layer.addSublayer(playerLayer)
+            self.pipPlayerLayer = playerLayer
+            self.pipPlayer = player
+            self.pipRestoreURL = url
 
-                    // 4. Create overlay view — MUST be in window hierarchy for PiP to work
-                    self.removePiPOverlay()
-                    let overlayView = UIView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
-                    overlayView.backgroundColor = .clear
-                    overlayView.alpha = 0.01
-                    overlayView.isUserInteractionEnabled = false
-                    overlayView.tag = 8888
-                    self.window?.rootViewController?.view.addSubview(overlayView)
-                    self.pipOverlayView = overlayView
+            // 5. Create PiP controller
+            guard let pipController = AVPictureInPictureController(playerLayer: playerLayer) else {
+                NSLog("[PiP] Failed to create AVPictureInPictureController")
+                self.removePiPOverlay()
+                self.pipChannel?.invokeMethod("onPiPError", arguments: "PiP not available on this device")
+                result(FlutterError(code: "NO_PIP", message: "AVPictureInPictureController not available", details: nil))
+                return
+            }
+            pipController.delegate = self
+            self.pipController = pipController
 
-                    // 5. Create AVPlayerLayer and attach to overlay view
-                    let asset = AVURLAsset(url: finalURL)
-                    let playerItem = AVPlayerItem(asset: asset)
-                    playerItem.preferredForwardBufferDuration = 10
-                    let player = AVPlayer(playerItem: playerItem)
-                    player.allowsExternalPlayback = true
-                    let playerLayer = AVPlayerLayer(player: player)
-                    playerLayer.frame = overlayView.bounds
-                    overlayView.layer.addSublayer(playerLayer)
-                    self.pipPlayerLayer = playerLayer
-                    self.pipPlayer = player
-                    self.pipRestoreURL = url
+            NSLog("[PiP] Player + controller created, waiting for player ready...")
 
-                    // 6. Create PiP controller
-                    guard let pipController = AVPictureInPictureController(playerLayer: playerLayer) else {
-                        NSLog("[PiP] Failed to create AVPictureInPictureController")
-                        self.removePiPOverlay()
-                        self.pipChannel?.invokeMethod("onPiPError", arguments: "PiP not available on this device")
-                        result(FlutterError(code: "NO_PIP", message: "AVPictureInPictureController not available", details: nil))
-                        return
-                    }
-                    pipController.delegate = self
-                    self.pipController = pipController
+            // 6. Wait for player to be ready
+            var observed = false
+            let timeoutWork = DispatchWorkItem { [weak self] in
+                guard !observed, let self = self else { return }
+                observed = true
+                NSLog("[PiP] TIMEOUT — player not ready in 20s")
+                self.removePiPOverlay()
+                self.pipChannel?.invokeMethod("onPiPError", arguments: "Player timeout")
+                result(FlutterError(code: "TIMEOUT", message: "Player timeout", details: nil))
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 20, execute: timeoutWork)
 
-                    NSLog("[PiP] Player + controller created, waiting for player ready...")
-
-                    // 7. Wait for player to be ready
-                    var observed = false
-                    let timeoutWork = DispatchWorkItem { [weak self] in
-                        guard !observed, let self = self else { return }
-                        observed = true
-                        NSLog("[PiP] TIMEOUT — player not ready in 20s")
-                        self.removePiPOverlay()
-                        self.pipChannel?.invokeMethod("onPiPError", arguments: "Player timeout")
-                        result(FlutterError(code: "TIMEOUT", message: "Player timeout", details: nil))
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 20, execute: timeoutWork)
-
-                    self.pipErrorLogObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.newErrorLogEntryNotification, object: playerItem, queue: .main) { _ in
-                        guard let entry = playerItem.errorLog()?.events.last else { return }
-                        NSLog("[PiP] HLS error — URI=\(entry.uri ?? "?") code=\(entry.errorStatusCode) \(entry.errorComment ?? "")")
-                    }
+            self.pipErrorLogObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.newErrorLogEntryNotification, object: playerItem, queue: .main) { _ in
+                guard let entry = playerItem.errorLog()?.events.last else { return }
+                NSLog("[PiP] HLS error — URI=\(entry.uri ?? "?") code=\(entry.errorStatusCode) \(entry.errorComment ?? "")")
+            }
 
                     let itemObservation = playerItem.observe(\.status, options: [.new]) { item, _ in
                         if item.status == .failed {
@@ -375,9 +287,6 @@ class HLSLocalProxy {
                         }
                     }
                     self.pipPlayerObservations.append(observation)
-                }
-            }
-            return // Early return — result handled in callback
         }
     }
 
