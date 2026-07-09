@@ -834,19 +834,15 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         return;
       }
 
-      // iOS PiP: AVPlayer load m3u8 trực tiếp (không cần proxy)
-      // Proxy yêu cầu auth token mà AVPlayer không có
+      // iOS PiP: dùng proxy URL (AVPlayer cần proxy để load HLS segments)
       String pipUrl = url;
-      Map<String, String> pipHeaders = {};
       if (Platform.isIOS && !url.contains('hls_proxy.php')) {
-        pipHeaders['Referer'] = AppConfig.baseUrl;
-        pipHeaders['User-Agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)';
+        pipUrl = AppConfig.proxyHlsFullUrl(url);
       }
 
       final result = await _pipChannel.invokeMethod('enterPiP', {
         'url': pipUrl,
         'position': position,
-        'headers': pipHeaders,
       });
 
       if (result != true) {
@@ -1512,6 +1508,66 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   // ── Build ──────────────────────────────────────────
   final GlobalKey _playerKey = GlobalKey();
   bool _isLandscape = false;
+  bool _showDebug = false; // Debug overlay
+
+  Widget _buildDebugOverlay() {
+    if (!_showDebug) return const SizedBox.shrink();
+    final pipState = _isPiPMode ? 'ACTIVE' : 'IDLE';
+    final playerState = _player != null ? (_isPlaying ? 'PLAYING' : 'PAUSED') : 'NULL';
+    final buffer = _currentDur.inSeconds > 0
+        ? '${_currentPos.inSeconds}/${_currentDur.inSeconds}s (${(_currentPos.inSeconds * 100 / _currentDur.inSeconds).toStringAsFixed(0)}%)'
+        : 'N/A';
+    final url = _currentUrl.length > 60 ? '${_currentUrl.substring(0, 60)}...' : _currentUrl;
+
+    return Positioned(
+      top: 4, left: 4, right: 4,
+      child: GestureDetector(
+        onTap: () => setState(() => _showDebug = false),
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.85),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.greenAccent.withOpacity(0.5)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('DEBUG', style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              _debugRow('Mode', _playerMode == _PlayerMode.hls ? 'HLS' : 'EMBED'),
+              _debugRow('Player', playerState),
+              _debugRow('Ready', _playerReady ? 'YES' : 'NO'),
+              _debugRow('Loading', _isLoading ? 'YES' : 'NO'),
+              _debugRow('PiP', pipState),
+              _debugRow('Landscape', _isLandscape ? 'YES' : 'NO'),
+              _debugRow('Buffer', buffer),
+              _debugRow('Speed', '${_playbackSpeed}x'),
+              _debugRow('Volume', _isMuted ? 'MUTED' : '${_volume.toInt()}%'),
+              _debugRow('Server', _servers.isNotEmpty ? (_servers[_selectedServer]['server_name']?.toString() ?? '?') : 'NONE'),
+              _debugRow('Ep', _currentEpName.isNotEmpty ? _currentEpName : 'N/A'),
+              const SizedBox(height: 2),
+              const Text('URL', style: TextStyle(color: Colors.white38, fontSize: 9)),
+              Text(url, style: const TextStyle(color: Colors.white54, fontSize: 8), maxLines: 2, overflow: TextOverflow.ellipsis),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _debugRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1),
+      child: Row(
+        children: [
+          SizedBox(width: 70, child: Text(label, style: const TextStyle(color: Colors.white38, fontSize: 10))),
+          Expanded(child: Text(value, style: const TextStyle(color: Colors.white70, fontSize: 10))),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1535,9 +1591,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       body: SafeArea(
         top: !isLandscape,
         child: isLandscape
-            ? Stack(children: [
-                Positioned.fill(child: _buildPlayer()),
-              ])
+            ? GestureDetector(
+                onLongPress: () => setState(() => _showDebug = !_showDebug),
+                child: Stack(children: [
+                  Positioned.fill(child: _buildPlayer()),
+                  _buildDebugOverlay(),
+                ]),
+              )
             : Column(children: [
                 // Header
                 Header(
@@ -1548,13 +1608,19 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   onAccountTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 3))),
                 ),
                 // Player — Auto: video tự fill width, video 16:9 vẫn giữ ratio
-                _aspectRatioIndex == 0
-                    ? SizedBox(
-                        width: double.infinity,
-                        height: MediaQuery.of(context).size.width * 9 / 16,
-                        child: _buildPlayer(),
-                      )
-                    : AspectRatio(aspectRatio: _aspectRatios[_aspectRatioIndex]!, child: _buildPlayer()),
+                GestureDetector(
+                  onLongPress: () => setState(() => _showDebug = !_showDebug),
+                  child: Stack(children: [
+                    _aspectRatioIndex == 0
+                        ? SizedBox(
+                            width: double.infinity,
+                            height: MediaQuery.of(context).size.width * 9 / 16,
+                            child: _buildPlayer(),
+                          )
+                        : AspectRatio(aspectRatio: _aspectRatios[_aspectRatioIndex]!, child: _buildPlayer()),
+                    _buildDebugOverlay(),
+                  ]),
+                ),
                 // Info + Episodes (padding đáy cho BottomNav)
                 Expanded(
                   child: Stack(
