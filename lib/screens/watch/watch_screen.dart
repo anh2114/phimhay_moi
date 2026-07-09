@@ -834,15 +834,19 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         return;
       }
 
-      // Use proxy with full=1 for iOS (segments go through proxy too)
+      // iOS PiP: AVPlayer load m3u8 trực tiếp (không cần proxy)
+      // Proxy yêu cầu auth token mà AVPlayer không có
       String pipUrl = url;
+      Map<String, String> pipHeaders = {};
       if (Platform.isIOS && !url.contains('hls_proxy.php')) {
-        pipUrl = AppConfig.proxyHlsFullUrl(url);
+        pipHeaders['Referer'] = AppConfig.baseUrl;
+        pipHeaders['User-Agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)';
       }
 
       final result = await _pipChannel.invokeMethod('enterPiP', {
         'url': pipUrl,
         'position': position,
+        'headers': pipHeaders,
       });
 
       if (result != true) {
