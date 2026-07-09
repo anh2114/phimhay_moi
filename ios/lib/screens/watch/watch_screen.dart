@@ -610,8 +610,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     } else if (state == AppLifecycleState.resumed) {
       // Skip resume logic if PiP is active — native player handles playback
       if (_isPiPMode) return;
-      // Skip if transitioning (PiP overlay still showing)
-      if (_isPiPTransitioning) return;
 
       _enableWakelockWithRetry();
       _lockBrightness();
@@ -679,7 +677,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _brightnessTimer?.cancel();
     _pendingServerSave?.cancel();
     _seekRetryTimer?.cancel();
-    _pipOverlayTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _saveProgressOnExit();
     ActivityService.stopWatching();
@@ -753,29 +750,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   // ── PiP (Picture-in-Picture) ──────────────────────────
-  Timer? _pipOverlayTimer;
   void _setupPiPListener() {
     _pipChannel.setMethodCallHandler((call) async {
       switch (call.method) {
-        case 'onPiPBuffering':
-          // Native AVPlayer đang buffer — show overlay
-          if (mounted) {
-            setState(() => _isPiPTransitioning = true);
-            // Auto-hide overlay sau 8s nếu native không respond (timeout safety)
-            _pipOverlayTimer?.cancel();
-            _pipOverlayTimer = Timer(const Duration(seconds: 8), () {
-              if (mounted) setState(() => _isPiPTransitioning = false);
-            });
-          }
-          break;
         case 'onPiPModeChanged':
           final isPiP = call.arguments as bool;
-          _pipOverlayTimer?.cancel();
           if (mounted) {
-            setState(() {
-              _isPiPMode = isPiP;
-              _isPiPTransitioning = false;
-            });
+            setState(() => _isPiPMode = isPiP);
             if (isPiP) {
               // PiP ON — hide controls, pause Flutter player
               _showControls = false;
@@ -788,28 +769,17 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           }
           break;
         case 'onPiPRestore':
-          // PiP ended — show restore overlay, then resume Flutter player
-          _pipOverlayTimer?.cancel();
+          // PiP ended — restore Flutter player
           final args = call.arguments as Map<dynamic, dynamic>?;
           final position = args?['position'] as int? ?? 0;
           if (mounted) {
-            setState(() {
-              _isPiPMode = false;
-              _isPiPTransitioning = true;
-            });
-            // Delay nhỏ để overlay hiện lên trước khi resume
-            await Future.delayed(const Duration(milliseconds: 300));
-            if (!mounted) return;
-            // Restore audio session TRƯỚC khi play
-            if (Platform.isIOS) {
-              try {
-                await _audioChannel.invokeMethod('configureForPlayback');
-              } catch (_) {}
-              await Future.delayed(const Duration(milliseconds: 200));
-              if (!mounted) return;
-            }
+            setState(() => _isPiPMode = false);
             // Resume player at position
             if (_playerMode == _PlayerMode.hls && _player != null) {
+              // Always restore audio session before playing
+              if (Platform.isIOS) {
+                _audioChannel.invokeMethod('configureForPlayback').then((_) {}, onError: (_) {});
+              }
               _currentPosition = position;
               _performSeekRetry(position);
               _player!.play();
@@ -820,15 +790,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 );
               }
             }
-            // Ẩn overlay sau 800ms (cho player time buffer)
-            await Future.delayed(const Duration(milliseconds: 800));
-            if (mounted) setState(() => _isPiPTransitioning = false);
           }
           break;
         case 'onPiPError':
-          _pipOverlayTimer?.cancel();
           if (mounted) {
-            setState(() => _isPiPTransitioning = false);
             final error = call.arguments?.toString() ?? 'Unknown error';
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -886,7 +851,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         );
       }
     } catch (e) {
-      if (mounted) setState(() => _isPiPTransitioning = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Lỗi PiP: $e'), backgroundColor: Colors.red),
       );
@@ -1060,7 +1024,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   // iOS PiP暂不支持 (AVPlayer proxy issues with m3u8 streams)
   static const _pipChannel = MethodChannel('phimhay/pip');
   bool _isPiPMode = false;
-  bool _isPiPTransitioning = false; // Đang chuyển sang/từ PiP
 
   // ── Double-click visual feedback ──
   bool _showDoubleTapLeft = false;
@@ -2046,27 +2009,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 color: AppTheme.accent,
                 backgroundColor: Colors.white12,
                 minHeight: 3,
-              ),
-            ),
-
-          // ── PiP Transition overlay — hiện khi pre-buffer hoặc restore ──
-          if (_isPiPTransitioning)
-            Positioned.fill(
-              child: Container(
-                color: Colors.black87,
-                child: const Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
-                      SizedBox(height: 12),
-                      Text(
-                        'Đang chuyển...',
-                        style: TextStyle(color: Colors.white70, fontSize: 13),
-                      ),
-                    ],
-                  ),
-                ),
               ),
             ),
 
