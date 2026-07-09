@@ -195,7 +195,8 @@ import AVKit
             self.removePiPOverlay()
             let overlayView = UIView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
             overlayView.backgroundColor = .clear
-            overlayView.isHidden = true
+            overlayView.alpha = 0.01   // must stay visible (not isHidden) for PiP to capture the layer
+            overlayView.isUserInteractionEnabled = false
             overlayView.tag = 8888
             self.window?.rootViewController?.view.addSubview(overlayView)
             self.pipOverlayView = overlayView
@@ -210,7 +211,6 @@ import AVKit
             let player = AVPlayer(playerItem: playerItem)
             let playerLayer = AVPlayerLayer(player: player)
             playerLayer.frame = overlayView.bounds
-            playerLayer.isHidden = true  // Hidden — PiP will create its own window
             overlayView.layer.addSublayer(playerLayer)
             self.pipPlayerLayer = playerLayer
             self.pipPlayer = player
