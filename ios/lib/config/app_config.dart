@@ -1,6 +1,6 @@
 class AppConfig {
-  static String get baseUrl => 'http://104.21.38.215';
-  static String get apiUrl  => 'http://104.21.38.215/api';
+  static String get baseUrl => 'http://163.61.183.246';
+  static String get apiUrl  => 'http://163.61.183.246/api';
   static const int connectTimeout = 15000;
   static const int receiveTimeout = 15000;
 
