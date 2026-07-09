@@ -6,6 +6,11 @@ import AVKit
 // MARK: - HLS Local File Creator
 // Fetches m3u8 via URLSession (bypasses AVPlayer networking), rewrites URLs to absolute, saves locally
 class HLSLocalProxy {
+    // CDN domain → IP mapping (bypass DNS issues for AVPlayer)
+    static let cdnDomainMap: [String: String] = [
+        "vip.upstream80.com": "163.61.183.246",
+    ]
+
     static func createLocalM3U8(originalURL: String, completion: @escaping (URL?) -> Void) {
         guard let url = URL(string: originalURL) else {
             completion(nil)
@@ -17,6 +22,10 @@ class HLSLocalProxy {
         // Build base URL (everything before the m3u8 filename)
         var baseURL = url.deletingLastPathComponent().absoluteString
         if !baseURL.hasSuffix("/") { baseURL += "/" }
+        // Replace CDN domain with IP in base URL
+        for (domain, ip) in cdnDomainMap {
+            baseURL = baseURL.replacingOccurrences(of: domain, with: ip)
+        }
 
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
@@ -31,16 +40,27 @@ class HLSLocalProxy {
 
             NSLog("[HLSLocal] Fetched \(data.count) bytes, rewriting URLs...")
 
-            // Rewrite relative URLs to absolute
+            // Rewrite relative URLs to absolute + replace CDN domain with IP
             var lines = content.components(separatedBy: "\n")
             for i in 0..<lines.count {
-                let line = lines[i].trimmingCharacters(in: .whitespacesAndNewlines)
+                var line = lines[i].trimmingCharacters(in: .whitespacesAndNewlines)
                 // Skip non-URL lines (headers, blank, comments)
                 if line.isEmpty || line.hasPrefix("#") { continue }
                 // Already absolute
-                if line.hasPrefix("http://") || line.hasPrefix("https://") { continue }
+                if line.hasPrefix("http://") || line.hasPrefix("https://") {
+                    // Replace CDN domain with IP for AVPlayer compatibility
+                    for (domain, ip) in cdnDomainMap {
+                        line = line.replacingOccurrences(of: domain, with: ip)
+                    }
+                    lines[i] = line
+                    continue
+                }
                 // Rewrite relative URL to absolute
-                lines[i] = baseURL + line
+                var absoluteLine = baseURL + line
+                for (domain, ip) in cdnDomainMap {
+                    absoluteLine = absoluteLine.replacingOccurrences(of: domain, with: ip)
+                }
+                lines[i] = absoluteLine
             }
 
             let rewritten = lines.joined(separator: "\n")
