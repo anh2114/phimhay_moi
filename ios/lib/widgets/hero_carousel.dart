@@ -26,15 +26,16 @@ class _HeroCarouselState extends State<HeroCarousel> {
   late int _currentPage;
 
   static const double _viewportFraction = 0.42;
+  static const double _viewportFractionTablet = 0.30;
 
   @override
   void initState() {
     super.initState();
     _currentPage = widget.initialPage;
-    // Start at initialPage so first frame renders immediately,
-    // then jump to offset position for infinite scroll in both directions
+    final screenW = MediaQueryData.fromView(View.of(context)).size.width;
+    final vf = screenW >= 600 ? _viewportFractionTablet : _viewportFraction;
     _pageController = PageController(
-      viewportFraction: _viewportFraction,
+      viewportFraction: vf,
       initialPage: widget.initialPage,
     );
     if (widget.movies.isNotEmpty) {
@@ -85,9 +86,8 @@ class _HeroCarouselState extends State<HeroCarousel> {
 
     final screenW = MediaQuery.of(context).size.width;
     final isTablet = screenW >= 600;
-    final rawSlideW = screenW * _viewportFraction;
-    // iPad: giới hạn kích thước slide để không bị to đùng
-    final slideW = isTablet ? rawSlideW.clamp(160.0, 260.0) : rawSlideW;
+    final vf = isTablet ? _viewportFractionTablet : _viewportFraction;
+    final slideW = screenW * vf;
     final slideH = slideW * 1.5;
     final sectionH = slideH + 20;
 
