@@ -197,7 +197,7 @@ import AVKit
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, mode: .moviePlayback,
-                options: [.allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
+                options: [.allowBluetooth, .allowBluetoothA2DP])
             try session.setActive(true)
         } catch {}
 
@@ -284,7 +284,7 @@ import AVKit
             do {
                 let session = AVAudioSession.sharedInstance()
                 try session.setCategory(.playback, mode: .moviePlayback,
-                    options: [.allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
+                    options: [.allowBluetooth, .allowBluetoothA2DP])
                 try session.setActive(true)
             } catch {}
 
@@ -403,11 +403,10 @@ import AVKit
         self.pipLog("Stopping — position=\(position)")
 
         // Giữ player + overlay → lần PiP tiếp theo instant
-        // Player vẫn play ngầm, overlay ẩn
+        // Pause pipPlayer khi PiP stop để tránh 2 âm thanh chạy cùng lúc
         DispatchQueue.main.async {
             self.pipOverlayView?.isHidden = true
-            // Đảm bảo player vẫn play (không bị pause khi PiP stop)
-            self.pipPlayer?.play()
+            self.pipPlayer?.pause()
         }
 
         // Notify Flutter to resume at position

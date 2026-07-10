@@ -252,9 +252,10 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       if (!mounted) return;
       _serverCache[tab] = data;
       _applyServerData(data, tab);
-      setState(() {});
+      setState(() { _isLoading = false; });
     } catch (_) {
       _fetchedTabs.remove(tab); // Cho phép retry nếu fail
+      if (mounted) setState(() { _isLoading = false; });
     }
   }
 

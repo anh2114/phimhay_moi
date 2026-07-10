@@ -137,6 +137,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   bool _isMuted = false;
   bool _isDragging = false;
   bool _isBuffering = false; // Đang buffer (seek, pause→play, network stall)
+  bool _userPaused = false; // User chủ động pause (không phải network stall)
   bool _showVolumeInline = false;
   double _dragValue = 0;
   int _lastPositionUpdate = 0;
@@ -1102,13 +1103,16 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (mounted) {
         final wasPlaying = _isPlaying;
         setState(() => _isPlaying = playing);
-        // Nếu đang play mà突然 stop → đang buffer (network stall)
-        if (!playing && wasPlaying && _playerReady && !_isSeeking) {
+        // Nếu user chủ động pause → không hiện spinner
+        if (!playing && wasPlaying && _playerReady && !_isSeeking && !_userPaused) {
           setState(() => _isBuffering = true);
         }
-        // Nếu start play lại → hết buffer
-        if (playing && _isBuffering) {
-          setState(() => _isBuffering = false);
+        // Nếu start play lại → hết buffer, clear userPaused
+        if (playing) {
+          setState(() {
+            _isBuffering = false;
+            _userPaused = false;
+          });
         }
       }
     });
@@ -1814,27 +1818,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           if (_subtitleEnabled && _subtitles.isNotEmpty && _playerMode == _PlayerMode.hls)
             _buildSubtitleZone(),
 
-          // ── Buffering indicator (hiện khi HLS đang load hoặc đang seek) ──
-          if (_playerMode == _PlayerMode.hls && _player != null && !_isLoading && (!_playerReady || _isSeeking))
-            Center(
-              child: _isSeeking
-                  ? Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.black54,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const SizedBox(
-                        width: 24, height: 24,
-                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
-                      ),
-                    )
-                  : const Column(mainAxisSize: MainAxisSize.min, children: [
-                      CircularProgressIndicator(color: AppTheme.accent, strokeWidth: 3),
-                      SizedBox(height: 12),
-                      Text('Đang tải video...', style: TextStyle(color: Colors.white54, fontSize: 13)),
-                    ]),
-            ),
+          // ── Buffering indicator — đã chuyển sang YouTube-style ở dưới ──
 
           // ── WebView embed ──
           if (_playerMode == _PlayerMode.embed && _error == null)
@@ -1895,7 +1879,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                             _isSeeking = true;
                           });
                           _player?.seek(Duration(seconds: target)).then((_) {
-                            if (mounted) setState(() => _isSeeking = false);
+                            if (mounted) setState(() {
+                              _isSeeking = false;
+                              
+                            });
                           });
                           _showDoubleTapFeedback(false);
                         },
@@ -1928,7 +1915,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                             _isSeeking = true;
                           });
                           _player?.seek(Duration(seconds: target)).then((_) {
-                            if (mounted) setState(() => _isSeeking = false);
+                            if (mounted) setState(() {
+                              _isSeeking = false;
+                              
+                            });
                           });
                           _showDoubleTapFeedback(true);
                         },
@@ -2023,56 +2013,21 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           if (_showControls && !_isLandscape && _playerMode == _PlayerMode.hls && _playerReady)
             Positioned(bottom: 0, left: 0, right: 0, child: _buildPortraitMiniControls()),
 
-          // ── Loading — shimmer effect khi video đang load hoặc buffer ──
+          // ── Loading — YouTube-style buffering indicator ──
           if ((_isLoading && !_playerReady) || _isBuffering || _isSeeking)
             Positioned.fill(
-              child: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFF1A1A2E), Color(0xFF16213E), Color(0xFF0F3460)],
-                  ),
-                ),
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Shimmer circles animation
-                      SizedBox(
-                        width: 80, height: 80,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            Container(
-                              width: 80, height: 80,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(color: AppTheme.accent.withOpacity(0.2), width: 2),
-                              ),
-                            ),
-                            SizedBox(
-                              width: 60, height: 60,
-                              child: CircularProgressIndicator(
-                                color: AppTheme.accent,
-                                strokeWidth: 2.5,
-                                backgroundColor: AppTheme.accent.withOpacity(0.1),
-                              ),
-                            ),
-                            Icon(Icons.play_arrow_rounded, color: AppTheme.accent, size: 32),
-                          ],
-                        ),
+              child: GestureDetector(
+                onTap: () {}, // Block taps during buffering
+                child: Container(
+                  color: Colors.black26,
+                  child: const Center(
+                    child: SizedBox(
+                      width: 48, height: 48,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 3,
                       ),
-                      const SizedBox(height: 16),
-                      Shimmer.fromColors(
-                        baseColor: Colors.white24,
-                        highlightColor: Colors.white60,
-                        child: const Text(
-                          'Đang tải video...',
-                          style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w500),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -2575,7 +2530,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 _isSeeking = true;
               });
               _player?.seek(Duration(seconds: target)).then((_) {
-                if (mounted) setState(() => _isSeeking = false);
+                if (mounted) setState(() {
+                  _isSeeking = false;
+                  
+                });
               });
               _showDoubleTapFeedback(false);
             },
@@ -2613,8 +2571,16 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   final pos = _currentPos;
                   final target = max(0, pos.inSeconds - 10);
                   _seekTargetTime = target;
-                  if (mounted) setState(() => _currentPos = Duration(seconds: target));
-                  _player?.seek(Duration(seconds: target));
+                  if (mounted) setState(() {
+                    _currentPos = Duration(seconds: target);
+                    _isSeeking = true;
+                  });
+                  _player?.seek(Duration(seconds: target)).then((_) {
+                    if (mounted) setState(() {
+                      _isSeeking = false;
+                      
+                    });
+                  });
                 },
                 child: const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 12),
@@ -2628,9 +2594,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 onTapCancel: () => setState(() => _playPressed = false),
                 onTap: () {
                   if (_isPlaying) {
+                    setState(() => _userPaused = true);
                     _player?.pause();
                   } else {
-                    setState(() => _isBuffering = true); // Hiện shimmer khi play lại
+                    setState(() => _isBuffering = true);
                     _player?.play();
                   }
                 },
@@ -2657,8 +2624,16 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   final pos = _currentPos;
                   final target = pos.inSeconds + 10;
                   _seekTargetTime = target;
-                  if (mounted) setState(() => _currentPos = Duration(seconds: target));
-                  _player?.seek(Duration(seconds: target));
+                  if (mounted) setState(() {
+                    _currentPos = Duration(seconds: target);
+                    _isSeeking = true;
+                  });
+                  _player?.seek(Duration(seconds: target)).then((_) {
+                    if (mounted) setState(() {
+                      _isSeeking = false;
+                      
+                    });
+                  });
                 },
                 child: const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 12),
@@ -2692,7 +2667,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 _isSeeking = true;
               });
               _player?.seek(Duration(seconds: target)).then((_) {
-                if (mounted) setState(() => _isSeeking = false);
+                if (mounted) setState(() {
+                  _isSeeking = false;
+                  
+                });
               });
               _showDoubleTapFeedback(true);
             },
@@ -2768,7 +2746,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                         _isSeeking = true;
                       });
                       _player?.seek(Duration(seconds: targetSec)).then((_) {
-                        if (mounted) setState(() => _isSeeking = false);
+                        if (mounted) setState(() {
+                          _isSeeking = false;
+                          
+                        });
                         Future.delayed(const Duration(milliseconds: 200), () {
                           if (mounted && !_isPlaying) {
                             _player?.play();
@@ -2852,6 +2833,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                     ),
                     child: Slider(
                       value: (_currentDur.inSeconds > 0 ? _currentPos.inSeconds / _currentDur.inSeconds : 0.0).clamp(0.0, 1.0),
+                      onChangeStart: (_) {
+                        setState(() => _isSeeking = true);
+                      },
+                      onChangeEnd: (_) {
+                        setState(() => _isSeeking = false);
+                      },
                       onChanged: (v) {
                         final t = (v * _currentDur.inSeconds).toInt();
                         _player?.seek(Duration(seconds: t));
@@ -2871,6 +2858,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 GestureDetector(
                   onTap: () {
                     if (_isPlaying) {
+                      setState(() => _userPaused = true);
                       _player?.pause();
                     } else {
                       setState(() => _isBuffering = true);
@@ -2993,7 +2981,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                           });
                         }
                         _player?.seek(Duration(seconds: targetSec)).then((_) {
-                          if (mounted) setState(() => _isSeeking = false);
+                          if (mounted) setState(() {
+                            _isSeeking = false;
+                            
+                          });
                           // ★ FIX: Đảm bảo play tiếp sau seek
                           Future.delayed(const Duration(milliseconds: 200), () {
                             if (mounted && !_isPlaying) {
@@ -3020,6 +3011,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               GestureDetector(
                 onTap: () {
                   if (_isPlaying) {
+                    setState(() => _userPaused = true);
                     _player?.pause();
                   } else {
                     _player?.play();
@@ -3040,8 +3032,16 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   final pos = _currentPos;
                   final target = max(0, pos.inSeconds - 10);
                   _seekTargetTime = target;
-                  if (mounted) setState(() => _currentPos = Duration(seconds: target));
-                  _player?.seek(Duration(seconds: target));
+                  if (mounted) setState(() {
+                    _currentPos = Duration(seconds: target);
+                    _isSeeking = true;
+                  });
+                  _player?.seek(Duration(seconds: target)).then((_) {
+                    if (mounted) setState(() {
+                      _isSeeking = false;
+                      
+                    });
+                  });
                 },
                 child: const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 6),
@@ -3054,8 +3054,16 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   final pos = _currentPos;
                   final target = pos.inSeconds + 10;
                   _seekTargetTime = target;
-                  if (mounted) setState(() => _currentPos = Duration(seconds: target));
-                  _player?.seek(Duration(seconds: target));
+                  if (mounted) setState(() {
+                    _currentPos = Duration(seconds: target);
+                    _isSeeking = true;
+                  });
+                  _player?.seek(Duration(seconds: target)).then((_) {
+                    if (mounted) setState(() {
+                      _isSeeking = false;
+                      
+                    });
+                  });
                 },
                 child: const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 6),

@@ -184,19 +184,20 @@ class _HeroCarouselState extends State<HeroCarousel> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
           child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: slideW + 40),
+            constraints: BoxConstraints(maxWidth: slideW + 100),
             child: Column(
             children: [
               Text(
                 m.name,
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  fontSize: 22,
+                  fontSize: 20,
                   fontWeight: FontWeight.w800,
                   color: AppTheme.textPrimary,
                   letterSpacing: -0.2,
+                  height: 1.2,
                 ),
               ),
               if ((m.originName ?? '').isNotEmpty)
@@ -345,7 +346,7 @@ class _HeroBtn extends StatelessWidget {
       return GestureDetector(
         onTap: onTap,
         child: Container(
-          height: 38,
+          height: 44,
           decoration: BoxDecoration(
             gradient: primary
                 ? const LinearGradient(
@@ -369,13 +370,13 @@ class _HeroBtn extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 16, color: const Color(0xFF1A1A1A)),
-              const SizedBox(width: 5),
+              Icon(icon, size: 18, color: const Color(0xFF1A1A1A)),
+              const SizedBox(width: 6),
               Text(
                 label,
                 style: const TextStyle(
                   color: Color(0xFF1A1A1A),
-                  fontSize: 13,
+                  fontSize: 14,
                   fontWeight: FontWeight.w700,
                 ),
             ),
