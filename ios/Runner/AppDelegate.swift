@@ -15,6 +15,12 @@ import AVKit
     private var pipPlayerObservations: [NSKeyValueObservation] = []
     private var pipErrorLogObserver: NSObjectProtocol?
 
+    // Send debug log to Flutter UI via method channel
+    func pipLog(_ msg: String) {
+        NSLog("[PiP] \(msg)")
+        pipChannel?.invokeMethod("onPiPLog", arguments: msg)
+    }
+
     override func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -134,14 +140,6 @@ import AVKit
 
         // PiP channel
         pipChannel = FlutterMethodChannel(name: "phimhay/pip", binaryMessenger: controller.binaryMessenger)
-
-        // Send debug logs to Flutter UI
-        func sendLog(_ msg: String) {
-            NSLog("[PiP] \(msg)")
-            DispatchQueue.main.async {
-                self.pipChannel?.invokeMethod("onPiPLog", arguments: msg)
-            }
-        }
         pipChannel?.setMethodCallHandler { [weak self] (call, result) in
             guard let self = self else { return }
             switch call.method {
@@ -181,7 +179,7 @@ import AVKit
                 return
             }
 
-            sendLog("enterPiP called — url=\(url.prefix(80))... pos=\(position)")
+            self.pipLog("enterPiP called — url=\(url.prefix(80))... pos=\(position)")
 
             // 1. Setup audio session for background playback
             do {
@@ -189,18 +187,18 @@ import AVKit
                 try session.setCategory(.playback, mode: .moviePlayback,
                     options: [.allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
                 try session.setActive(true)
-                sendLog("Audio session OK — category=\(session.category.rawValue)")
+                self.pipLog("Audio session OK — category=\(session.category.rawValue)")
             } catch {
-                sendLog("Audio session setup failed: \(error.localizedDescription)")
+                self.pipLog("Audio session setup failed: \(error.localizedDescription)")
             }
 
             // 2. Validate URL
             guard let streamURL = URL(string: url) else {
-                sendLog("Invalid URL")
+                self.pipLog("Invalid URL")
                 result(FlutterError(code: "INVALID_URL", message: "Cannot create URL", details: nil))
                 return
             }
-            sendLog("URL scheme=\(streamURL.scheme ?? "nil") host=\(streamURL.host ?? "nil")")
+            self.pipLog("URL scheme=\(streamURL.scheme ?? "nil") host=\(streamURL.host ?? "nil")")
 
             // 3. Create overlay view — MUST be in window hierarchy for PiP to work
             self.removePiPOverlay()
@@ -229,7 +227,7 @@ import AVKit
 
             // 5. Create PiP controller
             guard let pipController = AVPictureInPictureController(playerLayer: playerLayer) else {
-                sendLog("Failed to create AVPictureInPictureController")
+                self.pipLog("Failed to create AVPictureInPictureController")
                 self.removePiPOverlay()
                 self.pipChannel?.invokeMethod("onPiPError", arguments: "PiP not available on this device")
                 result(FlutterError(code: "NO_PIP", message: "AVPictureInPictureController not available", details: nil))
@@ -238,37 +236,37 @@ import AVKit
             pipController.delegate = self
             self.pipController = pipController
 
-            sendLog("Player + controller created, starting PiP...")
+            self.pipLog("Player + controller created, starting PiP...")
 
             // 6. Start PiP immediately
             self.pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
             player.play()
             let started = pipController.startPictureInPicture()
-            sendLog("startPictureInPicture returned: \(started)")
+            self.pipLog("startPictureInPicture returned: \(started)")
             result(true)
 
             // Detailed status logging for debugging
             self.pipErrorLogObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.newErrorLogEntryNotification, object: playerItem, queue: .main) { _ in
                 guard let entry = playerItem.errorLog()?.events.last else { return }
-                sendLog("HLS error — URI=\(entry.uri ?? "?") code=\(entry.errorStatusCode) \(entry.errorComment ?? "")")
+                self.pipLog("HLS error — URI=\(entry.uri ?? "?") code=\(entry.errorStatusCode) \(entry.errorComment ?? "")")
             }
 
             let itemObservation = playerItem.observe(\.status, options: [.new]) { item, _ in
                 switch item.status {
-                case .unknown: sendLog("PlayerItem status: UNKNOWN")
-                case .readyToPlay: sendLog("PlayerItem status: READY_TO_PLAY")
-                case .failed: sendLog("PlayerItem status: FAILED — \(item.error?.localizedDescription ?? "nil")")
-                @unknown default: sendLog("PlayerItem status: unknown case")
+                case .unknown: self.pipLog("PlayerItem status: UNKNOWN")
+                case .readyToPlay: self.pipLog("PlayerItem status: READY_TO_PLAY")
+                case .failed: self.pipLog("PlayerItem status: FAILED — \(item.error?.localizedDescription ?? "nil")")
+                @unknown default: self.pipLog("PlayerItem status: unknown case")
                 }
             }
             self.pipPlayerObservations.append(itemObservation)
 
             let playerObs = player.observe(\.status, options: [.new]) { p, _ in
                 switch p.status {
-                case .unknown: sendLog("Player status: UNKNOWN")
-                case .readyToPlay: sendLog("Player status: READY_TO_PLAY")
-                case .failed: sendLog("Player status: FAILED — \(p.error?.localizedDescription ?? "nil")")
-                @unknown default: sendLog("Player status: unknown case")
+                case .unknown: self.pipLog("Player status: UNKNOWN")
+                case .readyToPlay: self.pipLog("Player status: READY_TO_PLAY")
+                case .failed: self.pipLog("Player status: FAILED — \(p.error?.localizedDescription ?? "nil")")
+                @unknown default: self.pipLog("Player status: unknown case")
                 }
             }
             self.pipPlayerObservations.append(playerObs)
@@ -292,31 +290,31 @@ import AVKit
     // MARK: - AVPictureInPictureControllerDelegate
 
     func pictureInPictureControllerWillStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        sendLog("Will start — PiP is about to begin")
+        self.pipLog("Will start — PiP is about to begin")
         pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
     }
 
     func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        sendLog("Did start — PiP is ACTIVE and running")
+        self.pipLog("Did start — PiP is ACTIVE and running")
     }
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
-        sendLog("FAILED to start: \(error.localizedDescription)")
-        sendLog("Error type: \(type(of: error))")
+        self.pipLog("FAILED to start: \(error.localizedDescription)")
+        self.pipLog("Error type: \(type(of: error))")
         pipChannel?.invokeMethod("onPiPError", arguments: error.localizedDescription)
         removePiPOverlay()
     }
 
     func pictureInPictureControllerWillStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        sendLog("Will stop — user tapped restore")
+        self.pipLog("Will stop — user tapped restore")
         pipChannel?.invokeMethod("onPiPModeChanged", arguments: false)
     }
 
     func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        sendLog("Did stop")
+        self.pipLog("Did stop")
         // Get position before cleanup
         let position = Int(pipPlayer?.currentTime().seconds ?? 0)
-        sendLog("Stopping — position=\(position)")
+        self.pipLog("Stopping — position=\(position)")
 
         // Cleanup native player
         removePiPOverlay()
