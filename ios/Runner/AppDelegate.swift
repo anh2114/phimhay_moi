@@ -205,7 +205,7 @@ import AVKit
             self.pipOverlayView = overlayView
 
             // 4. Create AVPlayerLayer and attach to overlay view
-            // URL is proxy URL (xiaofilm.site/api/hls_proxy.php?url=CDN_URL)
+            // URL is proxy URL (xiaofilm.online/api/hls_proxy.php?url=CDN_URL)
             // VPS is in Vietnam → proxy can access CDN
             let asset = AVURLAsset(url: streamURL)
             let playerItem = AVPlayerItem(asset: asset)

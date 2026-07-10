@@ -101,7 +101,7 @@ class UpdateService {
         }
       } else {
         // iOS: dùng itms-services:// protocol cho OTA install
-        final manifestUrl = 'https://xiaofilm.site/downloads/manifest.php';
+        final manifestUrl = 'https://xiaofilm.online/downloads/manifest.php';
         final itmsUrl = 'itms-services://?action=download-manifest&url=${Uri.encodeComponent(manifestUrl)}';
         final uri = Uri.parse(itmsUrl);
         if (await canLaunchUrl(uri)) {
