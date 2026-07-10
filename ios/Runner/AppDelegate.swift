@@ -201,10 +201,12 @@ import AVKit
             self.pipLog("URL scheme=\(streamURL.scheme ?? "nil") host=\(streamURL.host ?? "nil")")
 
             // 3. Create overlay view with AVPlayerLayer for PiP
-            // Overlay 1x1 pixel, visible (not hidden) — PiP needs visible layer to capture
+            // Overlay full screen, visible — PiP needs this to capture video
+            // Will be hidden in WillStart delegate (reduces flash time)
             self.removePiPOverlay()
-            let overlayView = UIView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
-            overlayView.backgroundColor = .clear
+            let screenBounds = UIScreen.main.bounds
+            let overlayView = UIView(frame: screenBounds)
+            overlayView.backgroundColor = .black
             overlayView.tag = 8888
             self.window?.rootViewController?.view.addSubview(overlayView)
             self.pipOverlayView = overlayView
@@ -216,6 +218,7 @@ import AVKit
             player.allowsExternalPlayback = true
             let playerLayer = AVPlayerLayer(player: player)
             playerLayer.frame = overlayView.bounds
+            playerLayer.videoGravity = .resizeAspect
             overlayView.layer.addSublayer(playerLayer)
             self.pipPlayerLayer = playerLayer
             self.pipPlayer = player
@@ -286,8 +289,12 @@ import AVKit
     // MARK: - AVPictureInPictureControllerDelegate
 
     func pictureInPictureControllerWillStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        self.pipLog("Will start — PiP is about to begin")
+        self.pipLog("Will start — hiding overlay")
         pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
+        // Ẩn overlay NGAY khi PiP bắt đầu capture — giảm thời gian fullscreen
+        DispatchQueue.main.async {
+            self.pipOverlayView?.isHidden = true
+        }
     }
 
     func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
