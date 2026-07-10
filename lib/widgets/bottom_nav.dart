@@ -95,9 +95,14 @@ class _BottomNavState extends State<BottomNav> {
 
   @override
   Widget build(BuildContext context) {
+    final screenW = MediaQuery.of(context).size.width;
+    final isTablet = screenW >= 600;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8, left: 6, right: 6),
-      child: GlassBottomBar(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: isTablet ? 420 : double.infinity),
+          child: GlassBottomBar(
         barHeight: 60,
         iconSize: 24,
         spacing: 8,
@@ -141,6 +146,8 @@ class _BottomNavState extends State<BottomNav> {
           iconColor: Colors.white,
           size: 58,
           onTap: _showCommunityPopup,
+        ),
+      ),
         ),
       ),
     );
