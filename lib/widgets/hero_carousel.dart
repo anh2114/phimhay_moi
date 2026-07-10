@@ -86,7 +86,8 @@ class _HeroCarouselState extends State<HeroCarousel> {
     final screenW = MediaQuery.of(context).size.width;
     final isTablet = screenW >= 600;
     final rawSlideW = screenW * _viewportFraction;
-    final slideW = isTablet ? rawSlideW.clamp(200.0, 380.0) : rawSlideW;
+    // iPad: giới hạn kích thước slide để không bị to đùng
+    final slideW = isTablet ? rawSlideW.clamp(160.0, 260.0) : rawSlideW;
     final slideH = slideW * 1.5;
     final sectionH = slideH + 20;
 
