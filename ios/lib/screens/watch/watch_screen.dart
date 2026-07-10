@@ -795,9 +795,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         case 'onPiPError':
           if (mounted) {
             final error = call.arguments?.toString() ?? 'Unknown error';
-            _pipLogs.add('❌ $error');
-            if (_pipLogs.length > 20) _pipLogs.removeAt(0);
-            setState(() {});
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('PiP failed: $error'),
@@ -808,12 +805,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           }
           break;
         case 'onPiPLog':
-          if (mounted) {
-            final msg = call.arguments?.toString() ?? '';
-            _pipLogs.add(msg);
-            if (_pipLogs.length > 20) _pipLogs.removeAt(0);
-            setState(() {});
-          }
+          // Native debug logs — ignore in production
           break;
       }
     });
@@ -1521,86 +1513,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   // ── Build ──────────────────────────────────────────
   final GlobalKey _playerKey = GlobalKey();
   bool _isLandscape = false;
-  bool _showDebug = false; // Debug overlay
-  final List<String> _pipLogs = []; // Native PiP debug logs
-
-  Widget _buildDebugOverlay() {
-    if (!_showDebug) return const SizedBox.shrink();
-    final pipState = _isPiPMode ? 'ACTIVE' : 'IDLE';
-    final playerState = _player != null ? (_isPlaying ? 'PLAYING' : 'PAUSED') : 'NULL';
-    final buffer = _currentDur.inSeconds > 0
-        ? '${_currentPos.inSeconds}/${_currentDur.inSeconds}s (${(_currentPos.inSeconds * 100 / _currentDur.inSeconds).toStringAsFixed(0)}%)'
-        : 'N/A';
-    final url = _currentUrl.length > 60 ? '${_currentUrl.substring(0, 60)}...' : _currentUrl;
-
-    return Positioned(
-      top: 4, left: 4, right: 4,
-      child: GestureDetector(
-        onTap: () => setState(() => _showDebug = false),
-        child: Container(
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.9),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.greenAccent.withOpacity(0.5)),
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('DEBUG', style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                _debugRow('Mode', _playerMode == _PlayerMode.hls ? 'HLS' : 'EMBED'),
-                _debugRow('Player', playerState),
-                _debugRow('Ready', _playerReady ? 'YES' : 'NO'),
-                _debugRow('Loading', _isLoading ? 'YES' : 'NO'),
-                _debugRow('PiP', pipState),
-                _debugRow('Landscape', _isLandscape ? 'YES' : 'NO'),
-                _debugRow('Buffer', buffer),
-                _debugRow('Speed', '${_playbackSpeed}x'),
-                _debugRow('Volume', _isMuted ? 'MUTED' : '${_volume.toInt()}%'),
-                _debugRow('Server', _servers.isNotEmpty ? (_servers[_selectedServer]['server_name']?.toString() ?? '?') : 'NONE'),
-                _debugRow('Ep', _currentEpName.isNotEmpty ? _currentEpName : 'N/A'),
-                const SizedBox(height: 2),
-                const Text('URL', style: TextStyle(color: Colors.white38, fontSize: 9)),
-                Text(url, style: const TextStyle(color: Colors.white54, fontSize: 8), maxLines: 2, overflow: TextOverflow.ellipsis),
-                if (_pipLogs.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  const Text('PiP LOGS', style: TextStyle(color: Colors.orangeAccent, fontSize: 10, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 2),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 150),
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: _pipLogs.length,
-                      itemBuilder: (ctx, i) => Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 1),
-                        child: Text(_pipLogs[i], style: const TextStyle(color: Colors.white60, fontSize: 8), maxLines: 2, overflow: TextOverflow.ellipsis),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _debugRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1),
-      child: Row(
-        children: [
-          SizedBox(width: 70, child: Text(label, style: const TextStyle(color: Colors.white38, fontSize: 10))),
-          Expanded(child: Text(value, style: const TextStyle(color: Colors.white70, fontSize: 10))),
-        ],
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1624,13 +1536,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       body: SafeArea(
         top: !isLandscape,
         child: isLandscape
-            ? GestureDetector(
-                onLongPress: () => setState(() => _showDebug = !_showDebug),
-                child: Stack(children: [
-                  Positioned.fill(child: _buildPlayer()),
-                  _buildDebugOverlay(),
-                ]),
-              )
+            ? Stack(children: [
+                Positioned.fill(child: _buildPlayer()),
+              ])
             : Column(children: [
                 // Header
                 Header(
@@ -1641,19 +1549,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   onAccountTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 3))),
                 ),
                 // Player — Auto: video tự fill width, video 16:9 vẫn giữ ratio
-                GestureDetector(
-                  onLongPress: () => setState(() => _showDebug = !_showDebug),
-                  child: Stack(children: [
-                    _aspectRatioIndex == 0
-                        ? SizedBox(
-                            width: double.infinity,
-                            height: MediaQuery.of(context).size.width * 9 / 16,
-                            child: _buildPlayer(),
-                          )
-                        : AspectRatio(aspectRatio: _aspectRatios[_aspectRatioIndex]!, child: _buildPlayer()),
-                    _buildDebugOverlay(),
-                  ]),
-                ),
+                _aspectRatioIndex == 0
+                    ? SizedBox(
+                        width: double.infinity,
+                        height: MediaQuery.of(context).size.width * 9 / 16,
+                        child: _buildPlayer(),
+                      )
+                    : AspectRatio(aspectRatio: _aspectRatios[_aspectRatioIndex]!, child: _buildPlayer()),
                 // Info + Episodes (padding đáy cho BottomNav)
                 Expanded(
                   child: Stack(

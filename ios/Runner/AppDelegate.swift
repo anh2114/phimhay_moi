@@ -292,7 +292,11 @@ import AVKit
     }
 
     func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        self.pipLog("Did start — PiP is ACTIVE and running")
+        self.pipLog("Did start — PiP is ACTIVE")
+        // PiP đã capture video → ẩn overlay để không che màn hình
+        DispatchQueue.main.async {
+            self.pipOverlayView?.isHidden = true
+        }
     }
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
