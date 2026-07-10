@@ -84,7 +84,9 @@ class _HeroCarouselState extends State<HeroCarousel> {
     if (widget.movies.isEmpty) return const SizedBox.shrink();
 
     final screenW = MediaQuery.of(context).size.width;
-    final slideW = screenW * _viewportFraction;
+    final isTablet = screenW >= 600;
+    final rawSlideW = screenW * _viewportFraction;
+    final slideW = isTablet ? rawSlideW.clamp(200.0, 380.0) : rawSlideW;
     final slideH = slideW * 1.5;
     final sectionH = slideH + 20;
 
