@@ -193,57 +193,68 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     );
   }
 
-  Future<void> _loadTab(String tab) async {
-    setState(() { _currentTab = tab; _isLoading = true; _error = null; _successMsg = null; });
+  // Cache data server — không fetch lại khi chuyển tab
+  final Map<String, dynamic> _serverCache = {};
+  final Set<String> _fetchedTabs = {};
 
-    // Dùng data local từ auth_provider thay vì gọi API
+  Future<void> _loadTab(String tab) async {
+    setState(() { _currentTab = tab; _error = null; _successMsg = null; });
+
+    // 1. Hiển thị data local ngay lập tức (không loading)
     final auth = context.read<AuthProvider>();
     final userData = auth.user;
 
     if (userData != null) {
-      setState(() {
-        _profileData = {
-          'user': userData,
-          'stats': {'favorites': 0, 'history': 0, 'comments': 0},
-        };
-        _recentMovies = [];
-        _recentFavs = [];
-        _favorites = [];
-        _history = [];
-        _comments = [];
-        _isLoading = false;
-        if (tab == 'settings') {
-          _emailCtrl.text = userData['email']?.toString() ?? '';
-          _avatarCtrl.text = userData['avatar']?.toString() ?? '';
-        }
-      });
-    } else {
-      setState(() { _error = 'Không có dữ liệu người dùng'; _isLoading = false; });
+      _profileData = {
+        'user': userData,
+        'stats': {'favorites': 0, 'history': 0, 'comments': 0},
+      };
+      if (tab == 'settings') {
+        _emailCtrl.text = userData['email']?.toString() ?? '';
+        _avatarCtrl.text = userData['avatar']?.toString() ?? '';
+      }
     }
 
-    // Thử load thêm data từ server (fire-and-forget, không block UI)
-    _loadTabFromServer(tab);
+    // 2. Nếu đã cache server data → dùng cache ngay
+    if (_serverCache.containsKey(tab)) {
+      _applyServerData(_serverCache[tab], tab);
+      setState(() {});
+      return;
+    }
+
+    setState(() {});
+
+    // 3. Fetch từ server (chỉ nếu chưa fetch tab này)
+    if (!_fetchedTabs.contains(tab)) {
+      _loadTabFromServer(tab);
+    }
+  }
+
+  void _applyServerData(dynamic data, String tab) {
+    if (data == null) return;
+    _profileData = data;
+    _recentMovies = (data['recent'] as List<dynamic>?) ?? [];
+    _recentFavs = (data['recent_favorites'] as List<dynamic>?) ?? [];
+    _favorites = (data['favorites'] as List<dynamic>?) ?? [];
+    _history = (data['history'] as List<dynamic>?) ?? [];
+    _comments = (data['comments'] as List<dynamic>?) ?? [];
+    if (tab == 'settings') {
+      final u = data['user'] as Map<String, dynamic>?;
+      _emailCtrl.text = u?['email']?.toString() ?? '';
+      _avatarCtrl.text = u?['avatar']?.toString() ?? '';
+    }
   }
 
   Future<void> _loadTabFromServer(String tab) async {
+    _fetchedTabs.add(tab);
     try {
       final data = await _profileService.fetchProfile(tab);
       if (!mounted) return;
-      setState(() {
-        _profileData = data;
-        _recentMovies = (data['recent'] as List<dynamic>?) ?? [];
-        _recentFavs = (data['recent_favorites'] as List<dynamic>?) ?? [];
-        _favorites = (data['favorites'] as List<dynamic>?) ?? [];
-        _history = (data['history'] as List<dynamic>?) ?? [];
-        _comments = (data['comments'] as List<dynamic>?) ?? [];
-        if (tab == 'settings') {
-          final u = data['user'] as Map<String, dynamic>?;
-          _emailCtrl.text = u?['email']?.toString() ?? '';
-          _avatarCtrl.text = u?['avatar']?.toString() ?? '';
-        }
-      });
+      _serverCache[tab] = data;
+      _applyServerData(data, tab);
+      setState(() {});
     } catch (_) {
-      // Bỏ qua lỗi — data local vẫn hiển thị
+      _fetchedTabs.remove(tab); // Cho phép retry nếu fail
     }
   }
 
@@ -375,7 +386,11 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           // ── Scrollable body ──
           Expanded(
             child: RefreshIndicator(
-              onRefresh: () => _loadTab(_currentTab),
+              onRefresh: () async {
+                _serverCache.clear();
+                _fetchedTabs.clear();
+                await _loadTab(_currentTab);
+              },
               color: AppTheme.accent,
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
