@@ -218,6 +218,7 @@ import AVKit
             playerItem.preferredForwardBufferDuration = 10
             let player = AVPlayer(playerItem: playerItem)
             player.allowsExternalPlayback = true
+            player.volume = 1.0
             let playerLayer = AVPlayerLayer(player: player)
             playerLayer.frame = overlayView.bounds
             overlayView.layer.addSublayer(playerLayer)
