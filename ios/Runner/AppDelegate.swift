@@ -201,10 +201,12 @@ import AVKit
             self.pipLog("URL scheme=\(streamURL.scheme ?? "nil") host=\(streamURL.host ?? "nil")")
 
             // 3. Create overlay view with AVPlayerLayer for PiP
+            // Overlay phải trong view hierarchy nhưng ẩn để không che màn hình
+            // PiP vẫn capture được video từ player layer
             self.removePiPOverlay()
-            let screenBounds = UIScreen.main.bounds
-            let overlayView = UIView(frame: screenBounds)
-            overlayView.backgroundColor = .black
+            let overlayView = UIView(frame: CGRect(x: 0, y: 0, width: 320, height: 180))
+            overlayView.backgroundColor = .clear
+            overlayView.isHidden = true
             overlayView.tag = 8888
             self.window?.rootViewController?.view.addSubview(overlayView)
             self.pipOverlayView = overlayView
@@ -293,10 +295,6 @@ import AVKit
 
     func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
         self.pipLog("Did start — PiP is ACTIVE")
-        // PiP đã capture video → ẩn overlay để không che màn hình
-        DispatchQueue.main.async {
-            self.pipOverlayView?.isHidden = true
-        }
     }
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
