@@ -183,9 +183,15 @@ import AVKit
     // Pre-buffer AVPlayer khi video bắt đầu play
     // Khi bấm PiP → player đã ready → PiP start ngay không delay
     private var pipPrepared = false
-    private func preparePiP(url: String) {
-        guard !pipPrepared, let streamURL = URL(string: url) else { return }
-        NSLog("[PiP] Preparing PiP player for: \(url.prefix(60))")
+    private var pipPreparedPosition: Int = 0
+
+    private func preparePiP(url: String, position: Int = 0) {
+        //luôn cleanup trước khi prepare mới
+        removePiPOverlay()
+        pipPrepared = false
+
+        guard let streamURL = URL(string: url) else { return }
+        NSLog("[PiP] Preparing PiP player for: \(url.prefix(60)) pos=\(position)")
 
         // Setup audio session
         do {
@@ -196,12 +202,11 @@ import AVKit
         } catch {}
 
         // Create overlay + player + PiP controller
-        removePiPOverlay()
         let screenBounds = UIScreen.main.bounds
         let overlayView = UIView(frame: screenBounds)
         overlayView.backgroundColor = .black
         overlayView.tag = 8888
-        overlayView.isHidden = true // Ẩn — chỉ hiện khi user bấm PiP
+        overlayView.isHidden = true
         self.window?.rootViewController?.view.addSubview(overlayView)
         self.pipOverlayView = overlayView
 
@@ -217,6 +222,14 @@ import AVKit
         self.pipPlayerLayer = playerLayer
         self.pipPlayer = player
         self.pipRestoreURL = url
+        self.pipPreparedPosition = position
+
+        // Seek đến position ngay khi buffer xong
+        if position > 0 {
+            let targetTime = CMTime(seconds: Double(position), preferredTimescale: 600)
+            player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero)
+        }
+        player.play()
 
         guard let pipController = AVPictureInPictureController(playerLayer: playerLayer) else {
             NSLog("[PiP] Failed to create PiP controller during prepare")
@@ -226,7 +239,7 @@ import AVKit
         pipController.delegate = self
         self.pipController = pipController
         pipPrepared = true
-        NSLog("[PiP] PiP pre-buffered and ready")
+        NSLog("[PiP] PiP pre-buffered and ready at \(position)s")
     }
 
     private func enterPiP(url: String, position: Int, headers: [String: String], result: @escaping FlutterResult) {
@@ -239,17 +252,20 @@ import AVKit
             self.pipLog("enterPiP called — url=\(url.prefix(80))... pos=\(position)")
 
             // Use pre-buffered player if available → instant PiP
-            if let pipController = self.pipController, let player = self.pipPlayer {
-                self.pipLog("Using pre-buffered player — starting PiP instantly")
+            if self.pipPrepared, let pipController = self.pipController, let player = self.pipPlayer {
+                self.pipLog("Using pre-buffered player — seeking to \(position)s, starting PiP")
                 self.pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
-                // Show overlay briefly for PiP capture, then hide
                 self.pipOverlayView?.isHidden = false
-                player.seek(to: CMTime(seconds: Double(position), preferredTimescale: 600))
-                player.play()
-                let started = pipController.startPictureInPicture()
-                self.pipLog("startPictureInPicture returned: \(started)")
-                self.pipPrepared = false
-                result(true)
+                // Seek đến position hiện tại
+                let targetTime = CMTime(seconds: Double(position), preferredTimescale: 600)
+                player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+                    DispatchQueue.main.async {
+                        player.play()
+                        let started = pipController.startPictureInPicture()
+                        self.pipLog("startPictureInPicture returned: \(started)")
+                        result(true)
+                    }
+                }
                 return
             }
 
@@ -375,12 +391,14 @@ import AVKit
 
     func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
         self.pipLog("Did stop")
-        // Get position before cleanup
         let position = Int(pipPlayer?.currentTime().seconds ?? 0)
         self.pipLog("Stopping — position=\(position)")
 
-        // Cleanup native player
-        removePiPOverlay()
+        // KHÔNG removePiPOverlay — giữ overlay + player cho lần PiP tiếp theo
+        // Chỉ ẩn overlay
+        DispatchQueue.main.async {
+            self.pipOverlayView?.isHidden = true
+        }
 
         // Notify Flutter to resume at position
         DispatchQueue.main.async { [weak self] in
