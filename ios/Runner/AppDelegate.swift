@@ -152,6 +152,14 @@ import AVKit
                 }
                 let headers = args["headers"] as? [String: String] ?? [:]
                 self.enterPiP(url: url, position: position, headers: headers, result: result)
+            case "preparePiP":
+                guard let args = call.arguments as? [String: Any],
+                      let url = args["url"] as? String else {
+                    result(false)
+                    return
+                }
+                self.preparePiP(url: url)
+                result(true)
             case "isPiP":
                 result(self.pipController?.isPictureInPictureActive ?? false)
             case "exitPiP":
@@ -172,6 +180,55 @@ import AVKit
 
     // MARK: - PiP
 
+    // Pre-buffer AVPlayer khi video bắt đầu play
+    // Khi bấm PiP → player đã ready → PiP start ngay không delay
+    private var pipPrepared = false
+    private func preparePiP(url: String) {
+        guard !pipPrepared, let streamURL = URL(string: url) else { return }
+        NSLog("[PiP] Preparing PiP player for: \(url.prefix(60))")
+
+        // Setup audio session
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .moviePlayback,
+                options: [.allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
+            try session.setActive(true)
+        } catch {}
+
+        // Create overlay + player + PiP controller
+        removePiPOverlay()
+        let screenBounds = UIScreen.main.bounds
+        let overlayView = UIView(frame: screenBounds)
+        overlayView.backgroundColor = .black
+        overlayView.tag = 8888
+        overlayView.isHidden = true // Ẩn — chỉ hiện khi user bấm PiP
+        self.window?.rootViewController?.view.addSubview(overlayView)
+        self.pipOverlayView = overlayView
+
+        let asset = AVURLAsset(url: streamURL)
+        let playerItem = AVPlayerItem(asset: asset)
+        playerItem.preferredForwardBufferDuration = 10
+        let player = AVPlayer(playerItem: playerItem)
+        player.allowsExternalPlayback = true
+        let playerLayer = AVPlayerLayer(player: player)
+        playerLayer.frame = overlayView.bounds
+        playerLayer.videoGravity = .resizeAspect
+        overlayView.layer.addSublayer(playerLayer)
+        self.pipPlayerLayer = playerLayer
+        self.pipPlayer = player
+        self.pipRestoreURL = url
+
+        guard let pipController = AVPictureInPictureController(playerLayer: playerLayer) else {
+            NSLog("[PiP] Failed to create PiP controller during prepare")
+            removePiPOverlay()
+            return
+        }
+        pipController.delegate = self
+        self.pipController = pipController
+        pipPrepared = true
+        NSLog("[PiP] PiP pre-buffered and ready")
+    }
+
     private func enterPiP(url: String, position: Int, headers: [String: String], result: @escaping FlutterResult) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else {
@@ -181,28 +238,39 @@ import AVKit
 
             self.pipLog("enterPiP called — url=\(url.prefix(80))... pos=\(position)")
 
-            // 1. Setup audio session for background playback
+            // Use pre-buffered player if available → instant PiP
+            if let pipController = self.pipController, let player = self.pipPlayer {
+                self.pipLog("Using pre-buffered player — starting PiP instantly")
+                self.pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
+                // Show overlay briefly for PiP capture, then hide
+                self.pipOverlayView?.isHidden = false
+                player.seek(to: CMTime(seconds: Double(position), preferredTimescale: 600))
+                player.play()
+                let started = pipController.startPictureInPicture()
+                self.pipLog("startPictureInPicture returned: \(started)")
+                self.pipPrepared = false
+                result(true)
+                return
+            }
+
+            // Fallback: create player now (slow path)
+            self.pipLog("No pre-buffered player — creating new one (slow)")
+
+            // 1. Setup audio session
             do {
                 let session = AVAudioSession.sharedInstance()
                 try session.setCategory(.playback, mode: .moviePlayback,
                     options: [.allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
                 try session.setActive(true)
-                self.pipLog("Audio session OK — category=\(session.category.rawValue)")
-            } catch {
-                self.pipLog("Audio session setup failed: \(error.localizedDescription)")
-            }
+            } catch {}
 
             // 2. Validate URL
             guard let streamURL = URL(string: url) else {
-                self.pipLog("Invalid URL")
                 result(FlutterError(code: "INVALID_URL", message: "Cannot create URL", details: nil))
                 return
             }
-            self.pipLog("URL scheme=\(streamURL.scheme ?? "nil") host=\(streamURL.host ?? "nil")")
 
-            // 3. Create overlay view with AVPlayerLayer for PiP
-            // Overlay full screen, visible — PiP needs this to capture video
-            // Will be hidden in WillStart delegate (reduces flash time)
+            // 3. Create overlay + player
             self.removePiPOverlay()
             let screenBounds = UIScreen.main.bounds
             let overlayView = UIView(frame: screenBounds)
@@ -226,18 +294,14 @@ import AVKit
 
             // 4. Create PiP controller
             guard let pipController = AVPictureInPictureController(playerLayer: playerLayer) else {
-                self.pipLog("Failed to create AVPictureInPictureController")
                 self.removePiPOverlay()
-                self.pipChannel?.invokeMethod("onPiPError", arguments: "PiP not available on this device")
-                result(FlutterError(code: "NO_PIP", message: "AVPictureInPictureController not available", details: nil))
+                result(FlutterError(code: "NO_PIP", message: "PiP not available", details: nil))
                 return
             }
             pipController.delegate = self
             self.pipController = pipController
 
-            self.pipLog("Player + controller created, starting PiP...")
-
-            // 6. Start PiP immediately
+            // 5. Start PiP
             self.pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
             player.play()
             let started = pipController.startPictureInPicture()
@@ -289,12 +353,8 @@ import AVKit
     // MARK: - AVPictureInPictureControllerDelegate
 
     func pictureInPictureControllerWillStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        self.pipLog("Will start — hiding overlay")
+        self.pipLog("Will start — PiP capturing")
         pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
-        // Ẩn overlay NGAY khi PiP bắt đầu capture — giảm thời gian fullscreen
-        DispatchQueue.main.async {
-            self.pipOverlayView?.isHidden = true
-        }
     }
 
     func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {

@@ -1188,9 +1188,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       }
 
       if (targetPosition > 0 && !_seekCompleted) {
-        // ★ FIX: HLS seek có thể bị player ignore nếu chưa buffer đủ
-        // → Retry seek cho đến khi position thực sự nhảy tới target
         _performSeekRetry(targetPosition);
+      }
+
+      // Pre-buffer PiP player trên iOS (sau khi video bắt đầu play)
+      if (Platform.isIOS && _playerMode == _PlayerMode.hls) {
+        final pipUrl = playUrl.contains('hls_proxy.php') ? playUrl : AppConfig.proxyHlsFullUrl(playUrl);
+        _pipChannel.invokeMethod('preparePiP', {'url': pipUrl});
       }
     }).catchError((e) {
 
