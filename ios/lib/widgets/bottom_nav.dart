@@ -30,6 +30,7 @@ class _BottomNavState extends State<BottomNav> {
   ];
 
   static const _telegramUrl = 'https://t.me/xiaophimc';
+  static const _discordUrl = 'https://discord.gg/77aBStuUXg';
 
   final GlobalKey _groupBtnKey = GlobalKey();
 
@@ -73,6 +74,21 @@ class _BottomNavState extends State<BottomNav> {
             ],
           ),
         ),
+        PopupMenuItem(
+          height: 44,
+          onTap: () => launchUrl(Uri.parse(_discordUrl), mode: LaunchMode.externalApplication),
+          child: Row(
+            children: [
+              SvgPicture.asset(
+                'assets/svg_ui_controls/discord-icon-svgrepo-com.svg',
+                width: 20, height: 20,
+                colorFilter: const ColorFilter.mode(Color(0xFF5865F2), BlendMode.srcIn),
+              ),
+              const SizedBox(width: 10),
+              const Text('Discord', style: TextStyle(color: Colors.white, fontSize: 14)),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -87,6 +103,11 @@ class _BottomNavState extends State<BottomNav> {
         spacing: 6,
         horizontalPadding: 12,
         verticalPadding: 12,
+        indicatorPinchStrength: 0.15,
+        glowBlurRadius: 20,
+        glowSpreadRadius: 4,
+        glowOpacity: 0.4,
+        glowDuration: Duration(milliseconds: 200),
         selectedIndex: widget.currentIndex,
         onTabSelected: widget.onTabSelected,
         tabs: List.generate(_tabs.length, (i) {

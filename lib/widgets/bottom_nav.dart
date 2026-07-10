@@ -103,6 +103,11 @@ class _BottomNavState extends State<BottomNav> {
         spacing: 6,
         horizontalPadding: 12,
         verticalPadding: 12,
+        indicatorPinchStrength: 0.15,
+        glowBlurRadius: 20,
+        glowSpreadRadius: 4,
+        glowOpacity: 0.4,
+        glowDuration: Duration(milliseconds: 200),
         selectedIndex: widget.currentIndex,
         onTabSelected: widget.onTabSelected,
         tabs: List.generate(_tabs.length, (i) {
