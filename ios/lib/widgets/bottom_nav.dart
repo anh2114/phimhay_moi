@@ -99,7 +99,8 @@ class _BottomNavState extends State<BottomNav> {
     final isTablet = screenW >= 600;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8, left: 6, right: 6),
-      child: Center(
+      child: Align(
+        alignment: Alignment.bottomCenter,
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: isTablet ? 420 : double.infinity),
           child: GlassBottomBar(
