@@ -96,7 +96,7 @@ class _BottomNavState extends State<BottomNav> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8, left: 20, right: 20),
+      padding: const EdgeInsets.only(bottom: 8, left: 6, right: 6),
       child: GlassBottomBar(
         barHeight: 60,
         iconSize: 24,
