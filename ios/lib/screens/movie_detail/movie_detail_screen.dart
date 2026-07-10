@@ -2314,11 +2314,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           padding: const EdgeInsets.all(14),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 4,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: Responsive.isMobile(context) ? 4 : 6,
             mainAxisSpacing: 8,
             crossAxisSpacing: 8,
-            childAspectRatio: 2.2,
+            childAspectRatio: Responsive.isMobile(context) ? 2.2 : 2.0,
           ),
           itemCount: pagedEps.length,
           itemBuilder: (context, index) {
