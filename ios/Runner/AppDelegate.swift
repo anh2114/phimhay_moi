@@ -230,29 +230,40 @@ import AVKit
             pipController.delegate = self
             self.pipController = pipController
 
-            NSLog("[PiP] Player + controller created, starting PiP immediately...")
+            NSLog("[PiP] Player + controller created, starting PiP...")
 
-            // 6. Start PiP immediately — don't wait for readyToPlay
-            // AVPlayer will buffer in PiP window (showing loading state is OK)
-            // Waiting for readyToPlay causes timeout on slow networks
+            // 6. Start PiP immediately
+            self.pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
             player.play()
-            pipController.startPictureInPicture()
+            let started = pipController.startPictureInPicture()
+            NSLog("[PiP] startPictureInPicture returned: \(started)")
             result(true)
 
-            // Log errors in background for debugging
+            // Detailed status logging for debugging
             self.pipErrorLogObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.newErrorLogEntryNotification, object: playerItem, queue: .main) { _ in
                 guard let entry = playerItem.errorLog()?.events.last else { return }
                 NSLog("[PiP] HLS error — URI=\(entry.uri ?? "?") code=\(entry.errorStatusCode) \(entry.errorComment ?? "")")
             }
 
             let itemObservation = playerItem.observe(\.status, options: [.new]) { item, _ in
-                if item.status == .failed {
-                    NSLog("[PiP] PlayerItem FAILED: \(item.error?.localizedDescription ?? "unknown")")
-                } else if item.status == .readyToPlay {
-                    NSLog("[PiP] PlayerItem READY")
+                switch item.status {
+                case .unknown: NSLog("[PiP] PlayerItem status: UNKNOWN")
+                case .readyToPlay: NSLog("[PiP] PlayerItem status: READY_TO_PLAY")
+                case .failed: NSLog("[PiP] PlayerItem status: FAILED — \(item.error?.localizedDescription ?? "nil")")
+                @unknown default: NSLog("[PiP] PlayerItem status: unknown case")
                 }
             }
             self.pipPlayerObservations.append(itemObservation)
+
+            let playerObs = player.observe(\.status, options: [.new]) { p, _ in
+                switch p.status {
+                case .unknown: NSLog("[PiP] Player status: UNKNOWN")
+                case .readyToPlay: NSLog("[PiP] Player status: READY_TO_PLAY")
+                case .failed: NSLog("[PiP] Player status: FAILED — \(p.error?.localizedDescription ?? "nil")")
+                @unknown default: NSLog("[PiP] Player status: unknown case")
+                }
+            }
+            self.pipPlayerObservations.append(playerObs)
         }
     }
 
@@ -273,16 +284,17 @@ import AVKit
     // MARK: - AVPictureInPictureControllerDelegate
 
     func pictureInPictureControllerWillStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        NSLog("[PiP] Will start")
+        NSLog("[PiP] Will start — PiP is about to begin")
         pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
     }
 
     func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        NSLog("[PiP] Did start — PiP is active")
+        NSLog("[PiP] Did start — PiP is ACTIVE and running")
     }
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
         NSLog("[PiP] FAILED to start: \(error.localizedDescription)")
+        NSLog("[PiP] Error type: \(type(of: error))")
         pipChannel?.invokeMethod("onPiPError", arguments: error.localizedDescription)
         removePiPOverlay()
     }
