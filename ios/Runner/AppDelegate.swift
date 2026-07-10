@@ -200,33 +200,23 @@ import AVKit
             }
             self.pipLog("URL scheme=\(streamURL.scheme ?? "nil") host=\(streamURL.host ?? "nil")")
 
-            // 3. Create overlay view — MUST be in window hierarchy for PiP to work
-            // Size must be large enough for PiP to capture video content
+            // 3. Create AVPlayerLayer directly in window hierarchy
             self.removePiPOverlay()
-            let screenBounds = UIScreen.main.bounds
-            let overlayView = UIView(frame: CGRect(x: 0, y: 0, width: screenBounds.width, height: screenBounds.height))
-            overlayView.backgroundColor = .black
-            overlayView.alpha = 0.01
-            overlayView.isUserInteractionEnabled = false
-            overlayView.tag = 8888
-            self.window?.rootViewController?.view.addSubview(overlayView)
-            self.pipOverlayView = overlayView
-
-            // 4. Create AVPlayerLayer and attach to overlay view
             let asset = AVURLAsset(url: streamURL)
             let playerItem = AVPlayerItem(asset: asset)
             playerItem.preferredForwardBufferDuration = 10
             let player = AVPlayer(playerItem: playerItem)
             player.allowsExternalPlayback = true
             let playerLayer = AVPlayerLayer(player: player)
-            playerLayer.frame = overlayView.bounds
-            playerLayer.videoGravity = .resizeAspect
-            overlayView.layer.addSublayer(playerLayer)
+            playerLayer.frame = CGRect(x: 0, y: 0, width: 1, height: 1)
+            playerLayer.isHidden = true
+            // Add directly to root view controller (not overlay)
+            self.window?.rootViewController?.view.layer.addSublayer(playerLayer)
             self.pipPlayerLayer = playerLayer
             self.pipPlayer = player
             self.pipRestoreURL = url
 
-            // 5. Create PiP controller
+            // 4. Create PiP controller
             guard let pipController = AVPictureInPictureController(playerLayer: playerLayer) else {
                 self.pipLog("Failed to create AVPictureInPictureController")
                 self.removePiPOverlay()
@@ -284,8 +274,6 @@ import AVKit
         pipPlayerLayer = nil
         pipPlayer?.pause()
         pipPlayer = nil
-        pipOverlayView?.removeFromSuperview()
-        pipOverlayView = nil
     }
 
     // MARK: - AVPictureInPictureControllerDelegate
