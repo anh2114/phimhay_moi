@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -2010,14 +2011,58 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           if (_showControls && !_isLandscape && _playerMode == _PlayerMode.hls && _playerReady)
             Positioned(bottom: 0, left: 0, right: 0, child: _buildPortraitMiniControls()),
 
-          // ── Loading — subtle bottom bar instead of full-screen spinner ──
+          // ── Loading — shimmer effect khi video đang load ──
           if (_isLoading && !_playerReady)
-            Positioned(
-              bottom: 0, left: 0, right: 0,
-              child: LinearProgressIndicator(
-                color: AppTheme.accent,
-                backgroundColor: Colors.white12,
-                minHeight: 3,
+            Positioned.fill(
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF1A1A2E), Color(0xFF16213E), Color(0xFF0F3460)],
+                  ),
+                ),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Shimmer circles animation
+                      SizedBox(
+                        width: 80, height: 80,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Container(
+                              width: 80, height: 80,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(color: AppTheme.accent.withOpacity(0.2), width: 2),
+                              ),
+                            ),
+                            SizedBox(
+                              width: 60, height: 60,
+                              child: CircularProgressIndicator(
+                                color: AppTheme.accent,
+                                strokeWidth: 2.5,
+                                backgroundColor: AppTheme.accent.withOpacity(0.1),
+                              ),
+                            ),
+                            Icon(Icons.play_arrow_rounded, color: AppTheme.accent, size: 32),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Shimmer.fromColors(
+                        baseColor: Colors.white24,
+                        highlightColor: Colors.white60,
+                        child: const Text(
+                          'Đang tải video...',
+                          style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
 

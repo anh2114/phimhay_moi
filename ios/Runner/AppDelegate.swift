@@ -253,18 +253,26 @@ import AVKit
 
             // Use pre-buffered player if available → instant PiP
             if self.pipPrepared, let pipController = self.pipController, let player = self.pipPlayer {
-                self.pipLog("Using pre-buffered player — seeking to \(position)s, starting PiP")
+                self.pipLog("Using pre-buffered player — instant PiP")
                 self.pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
                 self.pipOverlayView?.isHidden = false
-                // Seek đến position hiện tại
-                let targetTime = CMTime(seconds: Double(position), preferredTimescale: 600)
-                player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
-                    DispatchQueue.main.async {
-                        player.play()
-                        let started = pipController.startPictureInPicture()
-                        self.pipLog("startPictureInPicture returned: \(started)")
-                        result(true)
+
+                // Chỉ seek nếu position khác significantly (> 3s)
+                let currentPos = Int(player.currentTime().seconds)
+                if abs(currentPos - position) > 3 {
+                    let targetTime = CMTime(seconds: Double(position), preferredTimescale: 600)
+                    player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+                        DispatchQueue.main.async {
+                            let started = pipController.startPictureInPicture()
+                            self.pipLog("startPictureInPicture returned: \(started)")
+                            result(true)
+                        }
                     }
+                } else {
+                    // Đã ở đúng position → start PiP ngay
+                    let started = pipController.startPictureInPicture()
+                    self.pipLog("startPictureInPicture returned: \(started)")
+                    result(true)
                 }
                 return
             }
@@ -394,10 +402,12 @@ import AVKit
         let position = Int(pipPlayer?.currentTime().seconds ?? 0)
         self.pipLog("Stopping — position=\(position)")
 
-        // KHÔNG removePiPOverlay — giữ overlay + player cho lần PiP tiếp theo
-        // Chỉ ẩn overlay
+        // Giữ player + overlay → lần PiP tiếp theo instant
+        // Player vẫn play ngầm, overlay ẩn
         DispatchQueue.main.async {
             self.pipOverlayView?.isHidden = true
+            // Đảm bảo player vẫn play (không bị pause khi PiP stop)
+            self.pipPlayer?.play()
         }
 
         // Notify Flutter to resume at position
