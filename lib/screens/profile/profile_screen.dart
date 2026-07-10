@@ -842,6 +842,8 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                 email: _emailCtrl.text.trim(),
                 avatar: url,
               );
+              _serverCache.clear();
+              _fetchedTabs.clear();
 
               if (!mounted) return;
 
@@ -1050,7 +1052,11 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     try {
       final res = await _profileService.updateProfile(email: _emailCtrl.text.trim(), avatar: _avatarCtrl.text.trim());
       if (!mounted) return;
-      if (res['success'] == true) setState(() => _successMsg = res['message']?.toString() ?? 'Cập nhật thành công!');
+      if (res['success'] == true) {
+        _serverCache.clear();
+        _fetchedTabs.clear();
+        setState(() => _successMsg = res['message']?.toString() ?? 'Cập nhật thành công!');
+      }
       else _showErr(res['error']?.toString() ?? 'Lỗi cập nhật');
     } catch (_) { if (mounted) _showErr('Lỗi kết nối'); }
     if (mounted) setState(() => _isSaving = false);
