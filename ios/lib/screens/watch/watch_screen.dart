@@ -136,6 +136,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   double _volume = 100.0;
   bool _isMuted = false;
   bool _isDragging = false;
+  bool _isBuffering = false; // Đang buffer (seek, pause→play, network stall)
   bool _showVolumeInline = false;
   double _dragValue = 0;
   int _lastPositionUpdate = 0;
@@ -1098,7 +1099,18 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     });
 
     _subPlaying = _player!.stream.playing.listen((playing) {
-      if (mounted) setState(() => _isPlaying = playing);
+      if (mounted) {
+        final wasPlaying = _isPlaying;
+        setState(() => _isPlaying = playing);
+        // Nếu đang play mà突然 stop → đang buffer (network stall)
+        if (!playing && wasPlaying && _playerReady && !_isSeeking) {
+          setState(() => _isBuffering = true);
+        }
+        // Nếu start play lại → hết buffer
+        if (playing && _isBuffering) {
+          setState(() => _isBuffering = false);
+        }
+      }
     });
 
     _subDuration = _player!.stream.duration.listen((dur) {
@@ -2011,8 +2023,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           if (_showControls && !_isLandscape && _playerMode == _PlayerMode.hls && _playerReady)
             Positioned(bottom: 0, left: 0, right: 0, child: _buildPortraitMiniControls()),
 
-          // ── Loading — shimmer effect khi video đang load ──
-          if (_isLoading && !_playerReady)
+          // ── Loading — shimmer effect khi video đang load hoặc buffer ──
+          if ((_isLoading && !_playerReady) || _isBuffering || _isSeeking)
             Positioned.fill(
               child: Container(
                 decoration: const BoxDecoration(
@@ -2615,7 +2627,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 onTapUp: (_) => setState(() => _playPressed = false),
                 onTapCancel: () => setState(() => _playPressed = false),
                 onTap: () {
-                  if (_isPlaying) { _player?.pause(); } else { _player?.play(); }
+                  if (_isPlaying) {
+                    _player?.pause();
+                  } else {
+                    setState(() => _isBuffering = true); // Hiện shimmer khi play lại
+                    _player?.play();
+                  }
                 },
                 child: AnimatedScale(
                   scale: _playPressed ? 0.88 : 1.0,
@@ -2853,7 +2870,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 // Play/Pause
                 GestureDetector(
                   onTap: () {
-                    if (_isPlaying) { _player?.pause(); } else { _player?.play(); }
+                    if (_isPlaying) {
+                      _player?.pause();
+                    } else {
+                      setState(() => _isBuffering = true);
+                      _player?.play();
+                    }
                   },
                   child: Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 28),
                 ),
