@@ -134,6 +134,14 @@ import AVKit
 
         // PiP channel
         pipChannel = FlutterMethodChannel(name: "phimhay/pip", binaryMessenger: controller.binaryMessenger)
+
+        // Send debug logs to Flutter UI
+        func sendLog(_ msg: String) {
+            NSLog("[PiP] \(msg)")
+            DispatchQueue.main.async {
+                self.pipChannel?.invokeMethod("onPiPLog", arguments: msg)
+            }
+        }
         pipChannel?.setMethodCallHandler { [weak self] (call, result) in
             guard let self = self else { return }
             switch call.method {
@@ -173,7 +181,7 @@ import AVKit
                 return
             }
 
-            NSLog("[PiP] enterPiP called — url=\(url.prefix(80))... pos=\(position)")
+            sendLog("enterPiP called — url=\(url.prefix(80))... pos=\(position)")
 
             // 1. Setup audio session for background playback
             do {
@@ -181,18 +189,18 @@ import AVKit
                 try session.setCategory(.playback, mode: .moviePlayback,
                     options: [.allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
                 try session.setActive(true)
-                NSLog("[PiP] Audio session OK — category=\(session.category.rawValue)")
+                sendLog("Audio session OK — category=\(session.category.rawValue)")
             } catch {
-                NSLog("[PiP] Audio session setup failed: \(error.localizedDescription)")
+                sendLog("Audio session setup failed: \(error.localizedDescription)")
             }
 
             // 2. Validate URL
             guard let streamURL = URL(string: url) else {
-                NSLog("[PiP] Invalid URL")
+                sendLog("Invalid URL")
                 result(FlutterError(code: "INVALID_URL", message: "Cannot create URL", details: nil))
                 return
             }
-            NSLog("[PiP] URL scheme=\(streamURL.scheme ?? "nil") host=\(streamURL.host ?? "nil")")
+            sendLog("URL scheme=\(streamURL.scheme ?? "nil") host=\(streamURL.host ?? "nil")")
 
             // 3. Create overlay view — MUST be in window hierarchy for PiP to work
             self.removePiPOverlay()
@@ -221,7 +229,7 @@ import AVKit
 
             // 5. Create PiP controller
             guard let pipController = AVPictureInPictureController(playerLayer: playerLayer) else {
-                NSLog("[PiP] Failed to create AVPictureInPictureController")
+                sendLog("Failed to create AVPictureInPictureController")
                 self.removePiPOverlay()
                 self.pipChannel?.invokeMethod("onPiPError", arguments: "PiP not available on this device")
                 result(FlutterError(code: "NO_PIP", message: "AVPictureInPictureController not available", details: nil))
@@ -230,37 +238,37 @@ import AVKit
             pipController.delegate = self
             self.pipController = pipController
 
-            NSLog("[PiP] Player + controller created, starting PiP...")
+            sendLog("Player + controller created, starting PiP...")
 
             // 6. Start PiP immediately
             self.pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
             player.play()
             let started = pipController.startPictureInPicture()
-            NSLog("[PiP] startPictureInPicture returned: \(started)")
+            sendLog("startPictureInPicture returned: \(started)")
             result(true)
 
             // Detailed status logging for debugging
             self.pipErrorLogObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.newErrorLogEntryNotification, object: playerItem, queue: .main) { _ in
                 guard let entry = playerItem.errorLog()?.events.last else { return }
-                NSLog("[PiP] HLS error — URI=\(entry.uri ?? "?") code=\(entry.errorStatusCode) \(entry.errorComment ?? "")")
+                sendLog("HLS error — URI=\(entry.uri ?? "?") code=\(entry.errorStatusCode) \(entry.errorComment ?? "")")
             }
 
             let itemObservation = playerItem.observe(\.status, options: [.new]) { item, _ in
                 switch item.status {
-                case .unknown: NSLog("[PiP] PlayerItem status: UNKNOWN")
-                case .readyToPlay: NSLog("[PiP] PlayerItem status: READY_TO_PLAY")
-                case .failed: NSLog("[PiP] PlayerItem status: FAILED — \(item.error?.localizedDescription ?? "nil")")
-                @unknown default: NSLog("[PiP] PlayerItem status: unknown case")
+                case .unknown: sendLog("PlayerItem status: UNKNOWN")
+                case .readyToPlay: sendLog("PlayerItem status: READY_TO_PLAY")
+                case .failed: sendLog("PlayerItem status: FAILED — \(item.error?.localizedDescription ?? "nil")")
+                @unknown default: sendLog("PlayerItem status: unknown case")
                 }
             }
             self.pipPlayerObservations.append(itemObservation)
 
             let playerObs = player.observe(\.status, options: [.new]) { p, _ in
                 switch p.status {
-                case .unknown: NSLog("[PiP] Player status: UNKNOWN")
-                case .readyToPlay: NSLog("[PiP] Player status: READY_TO_PLAY")
-                case .failed: NSLog("[PiP] Player status: FAILED — \(p.error?.localizedDescription ?? "nil")")
-                @unknown default: NSLog("[PiP] Player status: unknown case")
+                case .unknown: sendLog("Player status: UNKNOWN")
+                case .readyToPlay: sendLog("Player status: READY_TO_PLAY")
+                case .failed: sendLog("Player status: FAILED — \(p.error?.localizedDescription ?? "nil")")
+                @unknown default: sendLog("Player status: unknown case")
                 }
             }
             self.pipPlayerObservations.append(playerObs)
@@ -284,31 +292,31 @@ import AVKit
     // MARK: - AVPictureInPictureControllerDelegate
 
     func pictureInPictureControllerWillStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        NSLog("[PiP] Will start — PiP is about to begin")
+        sendLog("Will start — PiP is about to begin")
         pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
     }
 
     func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        NSLog("[PiP] Did start — PiP is ACTIVE and running")
+        sendLog("Did start — PiP is ACTIVE and running")
     }
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
-        NSLog("[PiP] FAILED to start: \(error.localizedDescription)")
-        NSLog("[PiP] Error type: \(type(of: error))")
+        sendLog("FAILED to start: \(error.localizedDescription)")
+        sendLog("Error type: \(type(of: error))")
         pipChannel?.invokeMethod("onPiPError", arguments: error.localizedDescription)
         removePiPOverlay()
     }
 
     func pictureInPictureControllerWillStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        NSLog("[PiP] Will stop — user tapped restore")
+        sendLog("Will stop — user tapped restore")
         pipChannel?.invokeMethod("onPiPModeChanged", arguments: false)
     }
 
     func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        NSLog("[PiP] Did stop")
+        sendLog("Did stop")
         // Get position before cleanup
         let position = Int(pipPlayer?.currentTime().seconds ?? 0)
-        NSLog("[PiP] Stopping — position=\(position)")
+        sendLog("Stopping — position=\(position)")
 
         // Cleanup native player
         removePiPOverlay()

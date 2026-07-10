@@ -795,6 +795,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         case 'onPiPError':
           if (mounted) {
             final error = call.arguments?.toString() ?? 'Unknown error';
+            _pipLogs.add('❌ $error');
+            if (_pipLogs.length > 20) _pipLogs.removeAt(0);
+            setState(() {});
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('PiP failed: $error'),
@@ -802,6 +805,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 duration: const Duration(seconds: 3),
               ),
             );
+          }
+          break;
+        case 'onPiPLog':
+          if (mounted) {
+            final msg = call.arguments?.toString() ?? '';
+            _pipLogs.add(msg);
+            if (_pipLogs.length > 20) _pipLogs.removeAt(0);
+            setState(() {});
           }
           break;
       }
@@ -1511,6 +1522,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   final GlobalKey _playerKey = GlobalKey();
   bool _isLandscape = false;
   bool _showDebug = false; // Debug overlay
+  final List<String> _pipLogs = []; // Native PiP debug logs
 
   Widget _buildDebugOverlay() {
     if (!_showDebug) return const SizedBox.shrink();
@@ -1526,33 +1538,45 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       child: GestureDetector(
         onTap: () => setState(() => _showDebug = false),
         child: Container(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.85),
+            color: Colors.black.withOpacity(0.9),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: Colors.greenAccent.withOpacity(0.5)),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('DEBUG', style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 4),
-              _debugRow('Mode', _playerMode == _PlayerMode.hls ? 'HLS' : 'EMBED'),
-              _debugRow('Player', playerState),
-              _debugRow('Ready', _playerReady ? 'YES' : 'NO'),
-              _debugRow('Loading', _isLoading ? 'YES' : 'NO'),
-              _debugRow('PiP', pipState),
-              _debugRow('Landscape', _isLandscape ? 'YES' : 'NO'),
-              _debugRow('Buffer', buffer),
-              _debugRow('Speed', '${_playbackSpeed}x'),
-              _debugRow('Volume', _isMuted ? 'MUTED' : '${_volume.toInt()}%'),
-              _debugRow('Server', _servers.isNotEmpty ? (_servers[_selectedServer]['server_name']?.toString() ?? '?') : 'NONE'),
-              _debugRow('Ep', _currentEpName.isNotEmpty ? _currentEpName : 'N/A'),
-              const SizedBox(height: 2),
-              const Text('URL', style: TextStyle(color: Colors.white38, fontSize: 9)),
-              Text(url, style: const TextStyle(color: Colors.white54, fontSize: 8), maxLines: 2, overflow: TextOverflow.ellipsis),
-            ],
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('DEBUG', style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                _debugRow('Mode', _playerMode == _PlayerMode.hls ? 'HLS' : 'EMBED'),
+                _debugRow('Player', playerState),
+                _debugRow('Ready', _playerReady ? 'YES' : 'NO'),
+                _debugRow('Loading', _isLoading ? 'YES' : 'NO'),
+                _debugRow('PiP', pipState),
+                _debugRow('Landscape', _isLandscape ? 'YES' : 'NO'),
+                _debugRow('Buffer', buffer),
+                _debugRow('Speed', '${_playbackSpeed}x'),
+                _debugRow('Volume', _isMuted ? 'MUTED' : '${_volume.toInt()}%'),
+                _debugRow('Server', _servers.isNotEmpty ? (_servers[_selectedServer]['server_name']?.toString() ?? '?') : 'NONE'),
+                _debugRow('Ep', _currentEpName.isNotEmpty ? _currentEpName : 'N/A'),
+                const SizedBox(height: 2),
+                const Text('URL', style: TextStyle(color: Colors.white38, fontSize: 9)),
+                Text(url, style: const TextStyle(color: Colors.white54, fontSize: 8), maxLines: 2, overflow: TextOverflow.ellipsis),
+                if (_pipLogs.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  const Text('PiP LOGS', style: TextStyle(color: Colors.orangeAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 2),
+                  ..._pipLogs.map((log) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 1),
+                    child: Text(log, style: const TextStyle(color: Colors.white60, fontSize: 8), maxLines: 2, overflow: TextOverflow.ellipsis),
+                  )),
+                ],
+              ],
+            ),
           ),
         ),
       ),
