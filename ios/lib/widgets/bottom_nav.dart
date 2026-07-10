@@ -30,7 +30,6 @@ class _BottomNavState extends State<BottomNav> {
   ];
 
   static const _telegramUrl = 'https://t.me/xiaophimc';
-  static const _discordUrl = 'https://discord.gg/77aBStuUXg';
 
   final GlobalKey _groupBtnKey = GlobalKey();
 
@@ -74,21 +73,6 @@ class _BottomNavState extends State<BottomNav> {
             ],
           ),
         ),
-        PopupMenuItem(
-          height: 44,
-          onTap: () => launchUrl(Uri.parse(_discordUrl), mode: LaunchMode.externalApplication),
-          child: Row(
-            children: [
-              SvgPicture.asset(
-                'assets/svg_ui_controls/discord-icon-svgrepo-com.svg',
-                width: 20, height: 20,
-                colorFilter: const ColorFilter.mode(Color(0xFF5865F2), BlendMode.srcIn),
-              ),
-              const SizedBox(width: 10),
-              const Text('Discord', style: TextStyle(color: Colors.white, fontSize: 14)),
-            ],
-          ),
-        ),
       ],
     );
   }
@@ -98,6 +82,11 @@ class _BottomNavState extends State<BottomNav> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8, left: 10, right: 10),
       child: GlassBottomBar(
+        barHeight: 54,
+        iconSize: 22,
+        spacing: 6,
+        horizontalPadding: 12,
+        verticalPadding: 12,
         selectedIndex: widget.currentIndex,
         onTabSelected: widget.onTabSelected,
         tabs: List.generate(_tabs.length, (i) {
@@ -107,29 +96,29 @@ class _BottomNavState extends State<BottomNav> {
                 ? ClipOval(
                     child: CachedNetworkImage(
                       imageUrl: widget.avatarUrl!,
-                      width: 32, height: 32, fit: BoxFit.cover,
+                      width: 26, height: 26, fit: BoxFit.cover,
                       errorWidget: (_, __, ___) => Icon(
                         tab.icon,
                         color: i == widget.currentIndex ? AppTheme.accent : Colors.white,
-                        size: 30,
+                        size: 22,
                       ),
                     ),
                   )
                 : Icon(
                     tab.icon,
                     color: i == widget.currentIndex ? AppTheme.accent : Colors.white,
-                    size: 30,
+                    size: 22,
                   ),
           );
         }),
         extraButton: GlassBottomBarExtraButton(
           icon: KeyedSubtree(
             key: _groupBtnKey,
-            child: const Icon(Icons.groups_rounded, color: Colors.white, size: 28),
+            child: const Icon(Icons.groups_rounded, color: Colors.white, size: 22),
           ),
           label: 'Community',
           iconColor: Colors.white,
-          size: 64,
+          size: 48,
           onTap: _showCommunityPopup,
         ),
       ),
