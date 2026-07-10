@@ -201,9 +201,11 @@ import AVKit
             self.pipLog("URL scheme=\(streamURL.scheme ?? "nil") host=\(streamURL.host ?? "nil")")
 
             // 3. Create overlay view — MUST be in window hierarchy for PiP to work
+            // Size must be large enough for PiP to capture video content
             self.removePiPOverlay()
-            let overlayView = UIView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
-            overlayView.backgroundColor = .clear
+            let screenBounds = UIScreen.main.bounds
+            let overlayView = UIView(frame: CGRect(x: 0, y: 0, width: screenBounds.width, height: screenBounds.height))
+            overlayView.backgroundColor = .black
             overlayView.alpha = 0.01
             overlayView.isUserInteractionEnabled = false
             overlayView.tag = 8888
@@ -211,16 +213,14 @@ import AVKit
             self.pipOverlayView = overlayView
 
             // 4. Create AVPlayerLayer and attach to overlay view
-            // URL is proxy URL (xiaofilm.online/api/hls_proxy.php?url=CDN_URL)
-            // VPS is in Vietnam → proxy can access CDN
             let asset = AVURLAsset(url: streamURL)
             let playerItem = AVPlayerItem(asset: asset)
             playerItem.preferredForwardBufferDuration = 10
             let player = AVPlayer(playerItem: playerItem)
             player.allowsExternalPlayback = true
-            player.volume = 1.0
             let playerLayer = AVPlayerLayer(player: player)
             playerLayer.frame = overlayView.bounds
+            playerLayer.videoGravity = .resizeAspect
             overlayView.layer.addSublayer(playerLayer)
             self.pipPlayerLayer = playerLayer
             self.pipPlayer = player

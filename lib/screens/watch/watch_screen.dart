@@ -1570,10 +1570,17 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   const SizedBox(height: 6),
                   const Text('PiP LOGS', style: TextStyle(color: Colors.orangeAccent, fontSize: 10, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 2),
-                  ..._pipLogs.map((log) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 1),
-                    child: Text(log, style: const TextStyle(color: Colors.white60, fontSize: 8), maxLines: 2, overflow: TextOverflow.ellipsis),
-                  )),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 150),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: _pipLogs.length,
+                      itemBuilder: (ctx, i) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 1),
+                        child: Text(_pipLogs[i], style: const TextStyle(color: Colors.white60, fontSize: 8), maxLines: 2, overflow: TextOverflow.ellipsis),
+                      ),
+                    ),
+                  ),
                 ],
               ],
             ),
