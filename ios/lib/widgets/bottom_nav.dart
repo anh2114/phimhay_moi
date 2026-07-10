@@ -96,13 +96,13 @@ class _BottomNavState extends State<BottomNav> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8, left: 10, right: 10),
+      padding: const EdgeInsets.only(bottom: 8, left: 20, right: 20),
       child: GlassBottomBar(
-        barHeight: 54,
-        iconSize: 22,
-        spacing: 6,
-        horizontalPadding: 12,
-        verticalPadding: 12,
+        barHeight: 60,
+        iconSize: 24,
+        spacing: 8,
+        horizontalPadding: 16,
+        verticalPadding: 14,
         indicatorPinchStrength: 0.15,
         glowBlurRadius: 20,
         glowSpreadRadius: 4,
@@ -135,11 +135,11 @@ class _BottomNavState extends State<BottomNav> {
         extraButton: GlassBottomBarExtraButton(
           icon: KeyedSubtree(
             key: _groupBtnKey,
-            child: const Icon(Icons.groups_rounded, color: Colors.white, size: 22),
+            child: const Icon(Icons.groups_rounded, color: Colors.white, size: 24),
           ),
           label: 'Community',
           iconColor: Colors.white,
-          size: 48,
+          size: 58,
           onTap: _showCommunityPopup,
         ),
       ),
