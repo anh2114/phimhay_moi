@@ -180,10 +180,12 @@ class _HeroCarouselState extends State<HeroCarousel> {
           ),
         ),
 
-        // ── Info panel ──
+        // ── Info panel — giới hạn width bằng carousel slide ──
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-          child: Column(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: slideW + 40),
+            child: Column(
             children: [
               Text(
                 m.name,
@@ -285,6 +287,7 @@ class _HeroCarouselState extends State<HeroCarousel> {
                   ),
                 ),
             ],
+          ),
           ),
         ),
       ],
