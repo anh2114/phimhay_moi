@@ -402,7 +402,7 @@ class _HeroPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         gradient: style == PillStyle.gradient ? const LinearGradient(
-          colors: [Color(0xFEFCF559), Color(0xFFFFF1CC)],
+          colors: [Color(0xFFFECF59), Color(0xFFFFF1CC)],
           begin: Alignment(-0.7, 0),
           end: Alignment(1.0, 0),
         ) : null,
