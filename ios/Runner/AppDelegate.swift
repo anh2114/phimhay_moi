@@ -230,63 +230,29 @@ import AVKit
             pipController.delegate = self
             self.pipController = pipController
 
-            NSLog("[PiP] Player + controller created, waiting for player ready...")
+            NSLog("[PiP] Player + controller created, starting PiP immediately...")
 
-            // 6. Wait for player to be ready
-            var observed = false
-            let timeoutWork = DispatchWorkItem { [weak self] in
-                guard !observed, let self = self else { return }
-                observed = true
-                NSLog("[PiP] TIMEOUT — player not ready in 20s")
-                self.removePiPOverlay()
-                self.pipChannel?.invokeMethod("onPiPError", arguments: "Player timeout")
-                result(FlutterError(code: "TIMEOUT", message: "Player timeout", details: nil))
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 20, execute: timeoutWork)
+            // 6. Start PiP immediately — don't wait for readyToPlay
+            // AVPlayer will buffer in PiP window (showing loading state is OK)
+            // Waiting for readyToPlay causes timeout on slow networks
+            player.play()
+            pipController.startPictureInPicture()
+            result(true)
 
+            // Log errors in background for debugging
             self.pipErrorLogObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.newErrorLogEntryNotification, object: playerItem, queue: .main) { _ in
                 guard let entry = playerItem.errorLog()?.events.last else { return }
                 NSLog("[PiP] HLS error — URI=\(entry.uri ?? "?") code=\(entry.errorStatusCode) \(entry.errorComment ?? "")")
             }
 
-                    let itemObservation = playerItem.observe(\.status, options: [.new]) { item, _ in
-                        if item.status == .failed {
-                            NSLog("[PiP] PlayerItem FAILED: \(item.error?.localizedDescription ?? "unknown")")
-                        }
-                    }
-                    self.pipPlayerObservations.append(itemObservation)
-
-                    let observation = player.observe(\.status, options: [.new]) { [weak self] player, change in
-                        guard let self = self, !observed else { return }
-                        guard change.newValue == .readyToPlay else {
-                            if change.newValue == .failed {
-                                observed = true
-                                timeoutWork.cancel()
-                                NSLog("[PiP] Player FAILED: \(player.error?.localizedDescription ?? "unknown")")
-                                self.removePiPOverlay()
-                                DispatchQueue.main.async {
-                                    self.pipChannel?.invokeMethod("onPiPError", arguments: player.error?.localizedDescription ?? "Player failed")
-                                    result(FlutterError(code: "PLAYER_FAILED", message: player.error?.localizedDescription ?? "Player failed", details: nil))
-                                }
-                            }
-                            return
-                        }
-
-                        observed = true
-                        timeoutWork.cancel()
-                        NSLog("[PiP] Player ready — seeking to \(position)s")
-
-                        let targetTime = CMTime(seconds: Double(position), preferredTimescale: 600)
-                        player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
-                            DispatchQueue.main.async {
-                                NSLog("[PiP] Seek done — starting PiP")
-                                player.play()
-                                pipController.startPictureInPicture()
-                                result(true)
-                            }
-                        }
-                    }
-                    self.pipPlayerObservations.append(observation)
+            let itemObservation = playerItem.observe(\.status, options: [.new]) { item, _ in
+                if item.status == .failed {
+                    NSLog("[PiP] PlayerItem FAILED: \(item.error?.localizedDescription ?? "unknown")")
+                } else if item.status == .readyToPlay {
+                    NSLog("[PiP] PlayerItem READY")
+                }
+            }
+            self.pipPlayerObservations.append(itemObservation)
         }
     }
 
