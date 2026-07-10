@@ -102,7 +102,7 @@ class _BottomNavState extends State<BottomNav> {
       child: Align(
         alignment: Alignment.bottomCenter,
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: isTablet ? 420 : double.infinity),
+          constraints: BoxConstraints(maxWidth: isTablet ? 480 : double.infinity),
           child: GlassBottomBar(
         barHeight: 60,
         iconSize: 24,
