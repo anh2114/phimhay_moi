@@ -800,9 +800,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       const SizedBox(height: 14),
       _field('Email *', TextField(controller: _emailCtrl, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14), decoration: _deco('Nhập email'))),
       const SizedBox(height: 14),
-      _field('URL Avatar', Row(children: [
-        Expanded(child: TextField(controller: _avatarCtrl, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14), decoration: _deco('https://example.com/avatar.jpg'))),
-        const SizedBox(width: 8),
+      _field('Avatar', Row(children: [
         GestureDetector(
           onTap: () async {
             final picker = ImagePicker();
