@@ -229,7 +229,8 @@ import AVKit
             let targetTime = CMTime(seconds: Double(position), preferredTimescale: 600)
             player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero)
         }
-        player.play()
+        // KHÔNG play() ở đây — chỉ pre-buffer. Play khi user bấm PiP.
+        // player.play() sẽ được gọi trong enterPiP()
 
         guard let pipController = AVPictureInPictureController(playerLayer: playerLayer) else {
             NSLog("[PiP] Failed to create PiP controller during prepare")
@@ -256,6 +257,9 @@ import AVKit
                 self.pipLog("Using pre-buffered player — instant PiP")
                 self.pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
                 self.pipOverlayView?.isHidden = false
+
+                // Play TRƯỚC khi start PiP
+                player.play()
 
                 // Chỉ seek nếu position khác significantly (> 3s)
                 let currentPos = Int(player.currentTime().seconds)
