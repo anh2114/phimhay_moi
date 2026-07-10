@@ -1,6 +1,6 @@
 class AppConfig {
-  static String get baseUrl => 'http://163.61.183.246';
-  static String get apiUrl  => 'http://163.61.183.246/api';
+  static String get baseUrl => 'https://xiaofilm.site';
+  static String get apiUrl  => 'https://xiaofilm.site/api';
   static const int connectTimeout = 15000;
   static const int receiveTimeout = 15000;
 
