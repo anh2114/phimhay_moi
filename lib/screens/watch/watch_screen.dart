@@ -1048,8 +1048,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   double _speedBeforeLongPress = 1.0;
 
   // ── Aspect ratio ──
-  static const List<double?> _aspectRatios = [null, 16/9, 4/3, 1/1, -1]; // -1 = fill (maximize)
-  static const List<String> _aspectRatioLabels = ['Tự động', '16:9', '4:3', '1:1', 'Phóng to'];
+  static const List<double?> _aspectRatios = [null, 16/9, 4/3, 1/1];
+  static const List<String> _aspectRatioLabels = ['Tự động', '16:9', '4:3', '1:1'];
   int _aspectRatioIndex = 0;
   double? _videoAspectRatio; // Detected from video tracks
 
@@ -1592,7 +1592,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         top: !isLandscape,
         child: isLandscape
             ? Stack(children: [
-                Positioned.fill(child: _buildPlayer()),
+                Positioned.fill(child: _buildPlayer(expandToFill: true)),
               ])
             : Column(children: [
                 // Header
@@ -1822,43 +1822,34 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     );
   }
 
-  // ── Portrait player — smart aspect ratio ─────────
+  // ── Portrait player — sized by stream's aspect ratio ─────────
   Widget _buildPortraitPlayer() {
-    final screenWidth = MediaQuery.of(context).size.width;
+    final screenW = MediaQuery.of(context).size.width;
+    final screenH = MediaQuery.of(context).size.height;
 
-    // Fill mode: maximize video, fill width, use detected ratio or fallback
-    if (_aspectRatios[_aspectRatioIndex] == -1) {
-      final ratio = _videoAspectRatio ?? 16/9;
-      final height = screenWidth / ratio;
-      return SizedBox(
-        width: double.infinity,
-        height: height,
-        child: _buildPlayer(),
-      );
-    }
+    // Use detected video ratio, fallback to 16:9
+    final ratio = _videoAspectRatio ?? 16/9;
+    final videoH = screenW / ratio;
 
-    // Auto mode: use detected video ratio, fallback to 16:9
-    if (_aspectRatioIndex == 0) {
-      final ratio = _videoAspectRatio ?? 16/9;
-      // Cap height so old 4:3 videos don't take over the screen
-      final maxH = screenWidth * 0.75;
-      final height = (screenWidth / ratio).clamp(0.0, maxH);
-      return SizedBox(
-        width: double.infinity,
-        height: height,
-        child: _buildPlayer(),
-      );
-    }
+    // Cap so video doesn't exceed 75% screen height
+    final maxH = screenH * 0.75;
+    final clampedH = videoH.clamp(0.0, maxH);
 
-    // Manual ratio
-    return AspectRatio(
-      aspectRatio: _aspectRatios[_aspectRatioIndex]!,
+    return SizedBox(
+      width: double.infinity,
+      height: clampedH,
       child: _buildPlayer(),
     );
   }
 
   // ── Player — hybrid HLS / WebView ─────────────────
-  Widget _buildPlayer() {
+  // ignore: unused_element_parameter
+  Widget _buildPlayer({bool expandToFill = false}) {
+    // In landscape: let video fill available space (no AspectRatio constraint)
+    // In portrait manual mode: constrain to selected ratio
+    final useAspectRatio = !expandToFill && !_isLandscape
+        && _aspectRatioIndex > 0;
+
     return Stack(
         fit: StackFit.expand,
         children: [
@@ -1867,7 +1858,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             AnimatedOpacity(
               opacity: _playerReady ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 300),
-              child: (_aspectRatios[_aspectRatioIndex] != null && _aspectRatios[_aspectRatioIndex] != -1)
+              child: useAspectRatio
                   ? Center(
                       child: AspectRatio(
                         aspectRatio: _aspectRatios[_aspectRatioIndex]!,
