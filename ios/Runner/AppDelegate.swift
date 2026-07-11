@@ -158,7 +158,8 @@ import AVKit
                     result(false)
                     return
                 }
-                self.preparePiP(url: url)
+                let headers = args["headers"] as? [String: String] ?? [:]
+                self.preparePiP(url: url, headers: headers)
                 result(true)
             case "isPiP":
                 result(self.pipController?.isPictureInPictureActive ?? false)
@@ -185,13 +186,13 @@ import AVKit
     private var pipPrepared = false
     private var pipPreparedPosition: Int = 0
 
-    private func preparePiP(url: String, position: Int = 0) {
+    private func preparePiP(url: String, position: Int = 0, headers: [String: String] = [:]) {
         //luôn cleanup trước khi prepare mới
         removePiPOverlay()
         pipPrepared = false
 
         guard let streamURL = URL(string: url) else { return }
-        NSLog("[PiP] Preparing PiP player for: \(url.prefix(60)) pos=\(position)")
+        NSLog("[PiP] Preparing PiP player for: \(url.prefix(60)) pos=\(position) headers=\(headers.keys.joined(separator: ","))")
 
         // Setup audio session
         do {
@@ -210,7 +211,13 @@ import AVKit
         self.window?.rootViewController?.view.addSubview(overlayView)
         self.pipOverlayView = overlayView
 
-        let asset = AVURLAsset(url: streamURL)
+        // Create AVURLAsset with headers (needed for CLF/Cloudflare streams)
+        let asset: AVURLAsset
+        if headers.isEmpty {
+            asset = AVURLAsset(url: streamURL)
+        } else {
+            asset = AVURLAsset(url: streamURL, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
+        }
         let playerItem = AVPlayerItem(asset: asset)
         playerItem.preferredForwardBufferDuration = 10
         let player = AVPlayer(playerItem: playerItem)
@@ -307,7 +314,13 @@ import AVKit
             self.window?.rootViewController?.view.addSubview(overlayView)
             self.pipOverlayView = overlayView
 
-            let asset = AVURLAsset(url: streamURL)
+            // Create AVURLAsset with headers (needed for CLF/Cloudflare streams)
+            let asset: AVURLAsset
+            if headers.isEmpty {
+                asset = AVURLAsset(url: streamURL)
+            } else {
+                asset = AVURLAsset(url: streamURL, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
+            }
             let playerItem = AVPlayerItem(asset: asset)
             playerItem.preferredForwardBufferDuration = 10
             let player = AVPlayer(playerItem: playerItem)

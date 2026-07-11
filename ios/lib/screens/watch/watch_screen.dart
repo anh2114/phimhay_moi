@@ -851,6 +851,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       final result = await _pipChannel.invokeMethod('enterPiP', {
         'url': pipUrl,
         'position': position,
+        'headers': {
+          'Referer': AppConfig.baseUrl,
+          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+        },
       });
 
       if (result != true) {
@@ -1044,9 +1048,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   double _speedBeforeLongPress = 1.0;
 
   // ── Aspect ratio ──
-  static const List<double?> _aspectRatios = [null, 16/9, 4/3, 1/1];
-  static const List<String> _aspectRatioLabels = ['Tự động', '16:9', '4:3', '1:1'];
+  static const List<double?> _aspectRatios = [null, 16/9, 4/3, 1/1, -1]; // -1 = fill (maximize)
+  static const List<String> _aspectRatioLabels = ['Tự động', '16:9', '4:3', '1:1', 'Phóng to'];
   int _aspectRatioIndex = 0;
+  double? _videoAspectRatio; // Detected from video tracks
 
   // ── Screen lock ──
   bool _isScreenLocked = false;
@@ -1131,6 +1136,20 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
       }
     });
+
+    // Listen to tracks for video dimension detection
+    _player!.stream.tracks.listen((tracks) {
+      if (!mounted) return;
+      for (final track in tracks) {
+        if (track is VideoTrack && track.width != null && track.height != null && track.width! > 0 && track.height! > 0) {
+          final ratio = track.width! / track.height!;
+          if (_videoAspectRatio != ratio) {
+            setState(() => _videoAspectRatio = ratio);
+          }
+          break;
+        }
+      }
+    });
   }
 
   static const _audioChannel = MethodChannel('phimhay_app/audio');
@@ -1211,7 +1230,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       // Pre-buffer PiP player trên iOS (sau khi video bắt đầu play)
       if (Platform.isIOS && _playerMode == _PlayerMode.hls) {
         final pipUrl = playUrl.contains('hls_proxy.php') ? playUrl : AppConfig.proxyHlsFullUrl(playUrl);
-        _pipChannel.invokeMethod('preparePiP', {'url': pipUrl, 'position': _currentPosition});
+        _pipChannel.invokeMethod('preparePiP', {
+          'url': pipUrl,
+          'position': _currentPosition,
+          'headers': {
+            'Referer': AppConfig.baseUrl,
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+          },
+        });
       }
     }).catchError((e) {
 
@@ -1569,14 +1595,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   onActorsTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ActorsListScreen())),
                   onAccountTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 3))),
                 ),
-                // Player — Auto: video tự fill width, video 16:9 vẫn giữ ratio
-                _aspectRatioIndex == 0
-                    ? SizedBox(
-                        width: double.infinity,
-                        height: MediaQuery.of(context).size.width * 9 / 16,
-                        child: _buildPlayer(),
-                      )
-                    : AspectRatio(aspectRatio: _aspectRatios[_aspectRatioIndex]!, child: _buildPlayer()),
+                // Player — Auto: detect video ratio, Fill: maximize, Manual: fixed ratio
+                _buildPortraitPlayer(),
                 // Info + Episodes (padding đáy cho BottomNav)
                 Expanded(
                   child: Stack(
@@ -1794,6 +1814,41 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     );
   }
 
+  // ── Portrait player — smart aspect ratio ─────────
+  Widget _buildPortraitPlayer() {
+    final screenWidth = MediaQuery.of(context).size.width;
+
+    // Fill mode: maximize video, fill width, use detected ratio or fallback
+    if (_aspectRatios[_aspectRatioIndex] == -1) {
+      final ratio = _videoAspectRatio ?? 16/9;
+      final height = screenWidth / ratio;
+      return SizedBox(
+        width: double.infinity,
+        height: height,
+        child: _buildPlayer(),
+      );
+    }
+
+    // Auto mode: use detected video ratio, fallback to 16:9
+    if (_aspectRatioIndex == 0) {
+      final ratio = _videoAspectRatio ?? 16/9;
+      // Cap height so old 4:3 videos don't take over the screen
+      final maxH = screenWidth * 0.75;
+      final height = (screenWidth / ratio).clamp(0.0, maxH);
+      return SizedBox(
+        width: double.infinity,
+        height: height,
+        child: _buildPlayer(),
+      );
+    }
+
+    // Manual ratio
+    return AspectRatio(
+      aspectRatio: _aspectRatios[_aspectRatioIndex]!,
+      child: _buildPlayer(),
+    );
+  }
+
   // ── Player — hybrid HLS / WebView ─────────────────
   Widget _buildPlayer() {
     return Stack(
@@ -1804,7 +1859,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             AnimatedOpacity(
               opacity: _playerReady ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 300),
-              child: _aspectRatios[_aspectRatioIndex] != null
+              child: (_aspectRatios[_aspectRatioIndex] != null && _aspectRatios[_aspectRatioIndex] != -1)
                   ? Center(
                       child: AspectRatio(
                         aspectRatio: _aspectRatios[_aspectRatioIndex]!,
