@@ -1137,16 +1137,24 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       }
     });
 
-    // Listen to tracks for video dimension detection
-    _player!.stream.tracks.listen((tracks) {
-      if (!mounted) return;
-      for (final track in tracks) {
-        if (track is VideoTrack && track.width != null && track.height != null && track.width! > 0 && track.height! > 0) {
-          final ratio = track.width! / track.height!;
-          if (_videoAspectRatio != ratio) {
-            setState(() => _videoAspectRatio = ratio);
-          }
-          break;
+    // Listen to player stream for video dimension detection
+    _player!.stream.width.listen((w) {
+      if (!mounted || w == null || w <= 0) return;
+      final h = _player!.state.height;
+      if (h != null && h > 0) {
+        final ratio = w / h;
+        if (_videoAspectRatio != ratio) {
+          setState(() => _videoAspectRatio = ratio);
+        }
+      }
+    });
+    _player!.stream.height.listen((h) {
+      if (!mounted || h == null || h <= 0) return;
+      final w = _player!.state.width;
+      if (w != null && w > 0) {
+        final ratio = w / h;
+        if (_videoAspectRatio != ratio) {
+          setState(() => _videoAspectRatio = ratio);
         }
       }
     });
