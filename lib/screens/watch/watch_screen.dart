@@ -626,10 +626,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (_player != null && _playerMode == _PlayerMode.hls) {
         final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
         final pos = _positionBeforePause;
-        final wasPlaying = _isPlaying;
+        // ★ FIX: Capture wasPlaying BEFORE any delay — iOS may reset player state
+        final wasPlaying = pos > 0; // If we had a position, we were playing
 
         // ★ FIX: Delay 500ms trên iOS (hệ thống cần time stabilize sau background)
-        // Android 300ms là đủ
         final delay = Platform.isIOS
             ? const Duration(milliseconds: 500)
             : const Duration(milliseconds: 300);
@@ -641,13 +641,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           _player!.setVolume(restoreVol);
           if (_playbackSpeed != 1.0) _player!.setRate(_playbackSpeed);
 
-          // ★ FIX: Nếu position bị reset về 0 mà trước đó > 5s → seek lại
+          // ★ FIX: Always seek back if position was saved, then play
           if (pos > 5 && _currentPosition < 3) {
             _player!.seek(Duration(seconds: pos)).then((_) {
-              if (mounted && !_isPlaying) _player!.play();
+              if (mounted) _player!.play();
             });
-          } else if (wasPlaying && !_isPlaying) {
-            // ★ FIX: Chỉ play nếu TRƯỚC KHI pause đang play
+          } else if (wasPlaying) {
+            // ★ FIX: Always try to resume — player might be in stuck state
             _player!.play();
           }
         });
