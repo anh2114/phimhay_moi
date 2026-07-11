@@ -1846,12 +1846,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   // ── Player — hybrid HLS / WebView ─────────────────
-  // ignore: unused_element_parameter
   Widget _buildPlayer({bool expandToFill = false}) {
-    // In landscape or expandToFill: video fills entire space, no constraint
-    // In portrait manual mode: constrain to selected ratio
-    final useAspectRatio = !expandToFill && !_isLandscape
-        && _aspectRatioIndex > 0;
+    // Manual ratio selected → apply everywhere (portrait + landscape)
+    // Auto (index 0) + landscape → fill entire space
+    final useAspectRatio = _aspectRatioIndex > 0;
 
     return Stack(
         fit: StackFit.expand,
@@ -1925,7 +1923,15 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                     Expanded(
                       child: GestureDetector(
                         behavior: HitTestBehavior.translucent,
-                        onTap: _showControlsWithAutoHide,
+                        onTap: () {
+                          // Buffering → tap to pause (like YouTube)
+                          if (_isBuffering && _isPlaying) {
+                            _player?.pause();
+                            setState(() { _isBuffering = false; _userPaused = true; });
+                            return;
+                          }
+                          _showControlsWithAutoHide();
+                        },
                         onDoubleTap: () {
                           final pos = _currentPos;
                           final target = max(0, pos.inSeconds - 10);
@@ -1938,7 +1944,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                           _player?.seek(Duration(seconds: target)).then((_) {
                             if (mounted) setState(() {
                               _isSeeking = false;
-                              
+
                             });
                           });
                           _showDoubleTapFeedback(false);
@@ -1949,11 +1955,18 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                         child: const SizedBox.expand(),
                       ),
                     ),
-                    // CENTER zone: tap = toggle controls
+                    // CENTER zone: tap = toggle controls (or pause if buffering)
                     Expanded(
                       child: GestureDetector(
                         behavior: HitTestBehavior.translucent,
-                        onTap: _showControlsWithAutoHide,
+                        onTap: () {
+                          if (_isBuffering && _isPlaying) {
+                            _player?.pause();
+                            setState(() { _isBuffering = false; _userPaused = true; });
+                            return;
+                          }
+                          _showControlsWithAutoHide();
+                        },
                         child: const SizedBox.expand(),
                       ),
                     ),
@@ -1961,7 +1974,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                     Expanded(
                       child: GestureDetector(
                         behavior: HitTestBehavior.translucent,
-                        onTap: _showControlsWithAutoHide,
+                        onTap: () {
+                          if (_isBuffering && _isPlaying) {
+                            _player?.pause();
+                            setState(() { _isBuffering = false; _userPaused = true; });
+                            return;
+                          }
+                          _showControlsWithAutoHide();
+                        },
                         onDoubleTap: () {
                           final pos = _currentPos;
                           final target = pos.inSeconds + 10;
@@ -2074,7 +2094,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           if ((_isLoading && !_playerReady) || _isBuffering || _isSeeking)
             Positioned.fill(
               child: GestureDetector(
-                onTap: () {}, // Block taps during buffering
+                onTap: () {
+                  // Tap to pause during buffering (like YouTube)
+                  if (_isBuffering && _isPlaying) {
+                    _player?.pause();
+                    setState(() { _isBuffering = false; _userPaused = true; });
+                  }
+                },
                 child: Container(
                   color: Colors.black26,
                   child: const Center(
