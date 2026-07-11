@@ -1822,17 +1822,17 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     );
   }
 
-  // ── Portrait player — sized by stream's aspect ratio ─────────
+  // ── Portrait player — fills available width, height from stream ratio ─────────
   Widget _buildPortraitPlayer() {
     final screenW = MediaQuery.of(context).size.width;
     final screenH = MediaQuery.of(context).size.height;
 
-    // Use detected video ratio, fallback to 16:9
-    final ratio = _videoAspectRatio ?? 16/9;
+    // Use detected video ratio, fallback to 2.35:1 (cinematic default)
+    final ratio = _videoAspectRatio ?? (2.35);
     final videoH = screenW / ratio;
 
-    // Cap so video doesn't exceed 75% screen height
-    final maxH = screenH * 0.75;
+    // Cap height but allow generous space — video fills width naturally
+    final maxH = screenH * 0.85;
     final clampedH = videoH.clamp(0.0, maxH);
 
     return SizedBox(
@@ -1845,7 +1845,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   // ── Player — hybrid HLS / WebView ─────────────────
   // ignore: unused_element_parameter
   Widget _buildPlayer({bool expandToFill = false}) {
-    // In landscape: let video fill available space (no AspectRatio constraint)
+    // In landscape or expandToFill: video fills entire space, no constraint
     // In portrait manual mode: constrain to selected ratio
     final useAspectRatio = !expandToFill && !_isLandscape
         && _aspectRatioIndex > 0;
