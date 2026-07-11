@@ -1590,6 +1590,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       backgroundColor: Colors.black,
       body: SafeArea(
         top: !isLandscape,
+        left: !isLandscape,
+        right: !isLandscape,
+        bottom: !isLandscape,
         child: isLandscape
             ? Stack(children: [
                 Positioned.fill(child: _buildPlayer(expandToFill: true)),
