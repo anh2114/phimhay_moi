@@ -138,13 +138,13 @@ class MovieCard extends StatelessWidget {
                         spacing: 4,
                         runSpacing: 4,
                         children: [
-                          // PĐ badge — web .film-badge-pd
+                          // PĐ badge — white/light bg
                           if (_shortLang(movie.lang).isNotEmpty && _isVietsub(movie.lang))
                             _BadgeChip(
                               label: '${_shortLang(movie.lang!)}${_shortEp(movie.episodeCurrent).isNotEmpty ? '. ${_shortEp(movie.episodeCurrent)}' : ''}',
-                              bgColor: const Color(0xD1121218),
+                              bgColor: Colors.white.withValues(alpha: 0.15),
                               textColor: const Color(0xFFF1F5F9),
-                              borderColor: const Color(0x14FFFFFF),
+                              borderColor: Colors.white.withValues(alpha: 0.2),
                             ),
                           // TM badge — web .film-badge-tm (green)
                           if (_shortLang(movie.lang).isNotEmpty && _isThuyetMinh(movie.lang))
@@ -158,9 +158,9 @@ class MovieCard extends StatelessWidget {
                           if (_shortLang(movie.lang).isEmpty && _shortEp(movie.episodeCurrent).isNotEmpty)
                             _BadgeChip(
                               label: _shortEp(movie.episodeCurrent!),
-                              bgColor: const Color(0xD1121218),
+                              bgColor: Colors.white.withValues(alpha: 0.15),
                               textColor: const Color(0xFFF1F5F9),
-                              borderColor: const Color(0x14FFFFFF),
+                              borderColor: Colors.white.withValues(alpha: 0.2),
                             ),
                         ],
                       ),

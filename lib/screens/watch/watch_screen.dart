@@ -1127,6 +1127,20 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   bool _adReportedCurrentAd = false;
   static const int _adSkipCooldownMs = 3000;
 
+  /// Show ad duration when inside ad zone, else total duration
+  Duration get _effectiveDur {
+    if (_adMarkers.isEmpty) return _currentDur;
+    final pos = _currentPosition;
+    for (final ad in _adMarkers) {
+      final adStart = (ad['start_time'] as num?)?.toInt() ?? 0;
+      final adDur = (ad['duration'] as num?)?.toInt() ?? 0;
+      if (pos >= adStart && pos < adStart + adDur) {
+        return Duration(seconds: adDur);
+      }
+    }
+    return _currentDur;
+  }
+
   // ── Brightness lock ──
   double _originalBrightness = 1.0;
   bool _brightnessLocked = false;
@@ -2878,12 +2892,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   // ── Bottom Bar (landscape fullscreen) ───────────────
   Widget _buildBottomBar() {
-    final progress = _currentDur.inSeconds > 0
-        ? _currentPos.inSeconds / _currentDur.inSeconds
+    final progress = _effectiveDur.inSeconds > 0
+        ? _currentPos.inSeconds / _effectiveDur.inSeconds
         : 0.0;
     final displayValue = _isDragging ? _dragValue : progress;
     final currentTime = _isDragging
-        ? Duration(seconds: (_dragValue * _currentDur.inSeconds).toInt())
+        ? Duration(seconds: (_dragValue * _effectiveDur.inSeconds).toInt())
         : _currentPos;
 
     return Container(
@@ -2930,7 +2944,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                     onChangeEnd: (value) {
                       _isDragging = false;
                       _showControlsWithAutoHide();
-                      final targetSec = (value * _currentDur.inSeconds).toInt();
+                      final targetSec = (value * _effectiveDur.inSeconds).toInt();
                       _seekTargetTime = targetSec;
                       _lastSeekByUser = DateTime.now().millisecondsSinceEpoch;
                       if (mounted) setState(() {
@@ -2953,7 +2967,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 ),
               ),
               Text(
-                _formatDuration(_currentDur),
+                _formatDuration(_effectiveDur),
                 style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 12, fontFamily: 'monospace', fontWeight: FontWeight.w500),
               ),
             ],
@@ -3022,7 +3036,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                       thumbColor: AppTheme.accent,
                     ),
                     child: Slider(
-                      value: (_currentDur.inSeconds > 0 ? _currentPos.inSeconds / _currentDur.inSeconds : 0.0).clamp(0.0, 1.0),
+                      value: (_effectiveDur.inSeconds > 0 ? _currentPos.inSeconds / _effectiveDur.inSeconds : 0.0).clamp(0.0, 1.0),
                       onChangeStart: (_) {
                         setState(() => _isSeeking = true);
                       },
@@ -3030,14 +3044,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                         setState(() => _isSeeking = false);
                       },
                       onChanged: (v) {
-                        final t = (v * _currentDur.inSeconds).toInt();
+                        final t = (v * _effectiveDur.inSeconds).toInt();
                         _player?.seek(Duration(seconds: t));
                         if (mounted) setState(() => _currentPos = Duration(seconds: t));
                       },
                     ),
                   ),
                 ),
-                Text(_formatDuration(_currentDur), style: TextStyle(color: Colors.white38, fontSize: 10, fontFamily: 'monospace')),
+                Text(_formatDuration(_effectiveDur), style: TextStyle(color: Colors.white38, fontSize: 10, fontFamily: 'monospace')),
               ],
             ),
             // Controls row
@@ -3104,12 +3118,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildToolbarItemLegacy(String label, String value, IconData icon, VoidCallback onTap) {
-    final progress = _currentDur.inSeconds > 0
-        ? _currentPos.inSeconds / _currentDur.inSeconds
+    final progress = _effectiveDur.inSeconds > 0
+        ? _currentPos.inSeconds / _effectiveDur.inSeconds
         : 0.0;
     final displayValue = _isDragging ? _dragValue : progress;
     final currentTime = _isDragging
-        ? Duration(seconds: (_dragValue * _currentDur.inSeconds).toInt())
+        ? Duration(seconds: (_dragValue * _effectiveDur.inSeconds).toInt())
         : _currentPos;
 
     return Container(
@@ -3160,7 +3174,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                       onChangeEnd: (value) {
                         _isDragging = false;
                         _showControlsWithAutoHide();
-                        final targetSec = (value * _currentDur.inSeconds).toInt();
+                        final targetSec = (value * _effectiveDur.inSeconds).toInt();
                         _seekTargetTime = targetSec;
                         _lastSeekByUser = DateTime.now().millisecondsSinceEpoch;
                         // Optimistic update + seeking indicator
@@ -3188,7 +3202,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 ),
                 // Total duration
                 Text(
-                  _formatDuration(_currentDur),
+                  _formatDuration(_effectiveDur),
                   style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11, fontFamily: 'monospace', fontWeight: FontWeight.w500),
                 ),
               ],
