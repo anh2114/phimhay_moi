@@ -142,14 +142,13 @@ class MovieCard extends StatelessWidget {
                           ),
                         ),
                       ),
-                    // Episode + Language badges
+                    // Quality + Episode badges
                     Positioned(
                       bottom: 7, left: 7, right: 7,
-                      child: Wrap(
-                        spacing: 4,
-                        runSpacing: 4,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Quality badge — solid white bg, black text
+                          // Quality — white bg, black text
                           if (_qualityBadge(movie.quality).isNotEmpty)
                             _BadgeChip(
                               label: _qualityBadge(movie.quality),
@@ -157,18 +156,12 @@ class MovieCard extends StatelessWidget {
                               textColor: const Color(0xFF1A1100),
                               borderColor: Colors.transparent,
                             ),
-                          // Episode badge — green bg, white text
+                          if (_qualityBadge(movie.quality).isNotEmpty && _shortEp(movie.episodeCurrent).isNotEmpty)
+                            const SizedBox(width: 4),
+                          // Episode — green bg, white text
                           if (_shortEp(movie.episodeCurrent).isNotEmpty)
                             _BadgeChip(
                               label: _shortEp(movie.episodeCurrent!),
-                              bgColor: const Color(0xFF10B981),
-                              textColor: Colors.white,
-                              borderColor: Colors.transparent,
-                            ),
-                          // TM badge — green bg
-                          if (_shortLang(movie.lang).isNotEmpty && _isThuyetMinh(movie.lang))
-                            _BadgeChip(
-                              label: _shortLang(movie.lang!),
                               bgColor: const Color(0xFF10B981),
                               textColor: Colors.white,
                               borderColor: Colors.transparent,
