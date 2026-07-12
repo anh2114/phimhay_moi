@@ -360,10 +360,10 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
       if (m3u8Url.contains('r2.dev') || m3u8Url.contains('cloudflarestorage.com')) {
         playUrl = AppConfig.proxyHlsUrl(m3u8Url);
       }
-      // ★ Proxy m3u8 through ad-stripper
-      if (m3u8Url.contains('.m3u8')) {
-        playUrl = AppConfig.proxyM3u8Url(playUrl);
-      }
+      // ★ Proxy m3u8 through ad-stripper (DISABLED — causes playback issues)
+      // if (m3u8Url.contains('.m3u8')) {
+      //   playUrl = AppConfig.proxyM3u8Url(playUrl);
+      // }
 
       final headers = {
         'Referer': AppConfig.baseUrl,
