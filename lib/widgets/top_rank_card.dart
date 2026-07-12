@@ -180,16 +180,16 @@ class TopRankCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    // Episode + Quality badges — bottom center
+                    // Episode + Language badges — bottom center
                     Positioned(
                       bottom: 10, left: 0, right: 0,
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          // Quality badge — solid white bg
-                          if (_qualityBadge(movie.quality).isNotEmpty)
+                          // Episode badge — solid white bg
+                          if (_shortEp(movie.episodeCurrent).isNotEmpty)
                             _RankBadge(
-                              label: _qualityBadge(movie.quality),
+                              label: _shortEp(movie.episodeCurrent!),
                               bgColor: Colors.white,
                               textColor: const Color(0xFF1A1100),
                               borderColor: Colors.transparent,
@@ -198,7 +198,7 @@ class TopRankCard extends StatelessWidget {
                           if (_shortLang(movie.lang).isNotEmpty && _isThuyetMinh(movie.lang)) ...[
                             const SizedBox(width: 4),
                             _RankBadge(
-                              label: '${_shortLang(movie.lang!)}${_shortEp(movie.episodeCurrent).isNotEmpty ? '. ${_shortEp(movie.episodeCurrent)}' : ''}',
+                              label: _shortLang(movie.lang!),
                               bgColor: const Color(0xFF10B981),
                               textColor: Colors.white,
                               borderColor: Colors.transparent,
