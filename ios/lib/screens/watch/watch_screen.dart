@@ -369,16 +369,37 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     if (_adMarkers.isEmpty || _adSkipCooldown || _isSeeking) return;
     final pos = position.inSeconds;
 
+    // Detect ad playing: position jumped backward > 30s (ad stream starts at 0)
+    if (_lastPositionBeforeAd > 30 && pos < 10 && (_lastPositionBeforeAd - pos) > 30) {
+      // Find which ad zone we were in
+      for (final ad in _adMarkers) {
+        final adStart = (ad['start_time'] as num?)?.toInt() ?? 0;
+        final adDur = (ad['duration'] as num?)?.toInt() ?? 0;
+        final adEnd = adStart + adDur;
+        final confidence = (ad['confidence'] as num?)?.toDouble() ?? 0.0;
+
+        if (_lastPositionBeforeAd >= adStart - 5 && _lastPositionBeforeAd <= adEnd + 10 && confidence >= 0.4) {
+          _adSkipCooldown = true;
+          _seekTargetTime = adEnd;
+          _player!.seek(Duration(seconds: adEnd));
+          if (mounted) setState(() {});
+          Future.delayed(const Duration(milliseconds: _adSkipCooldownMs), () {
+            if (mounted) _adSkipCooldown = false;
+          });
+          return;
+        }
+      }
+    }
+
+    // Also check direct position match (fallback)
     for (final ad in _adMarkers) {
       final adStart = (ad['start_time'] as num?)?.toInt() ?? 0;
       final adDur = (ad['duration'] as num?)?.toInt() ?? 0;
       final adEnd = adStart + adDur;
       final confidence = (ad['confidence'] as num?)?.toDouble() ?? 0.0;
 
-      // Inside ad zone OR within 3s of ad start → skip
       if (pos >= adStart - 3 && pos < adEnd && confidence >= 0.5) {
         _adSkipCooldown = true;
-        _adReportedCurrentAd = false;
         _seekTargetTime = adEnd;
         _player!.seek(Duration(seconds: adEnd));
         if (mounted) setState(() {});
@@ -388,6 +409,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         return;
       }
     }
+
+    _lastPositionBeforeAd = pos;
   }
 
   /// Report missed ad to crowdsource DB
@@ -1121,16 +1144,22 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   bool _adSkipCooldown = false;
   bool _adReportedCurrentAd = false;
   static const int _adSkipCooldownMs = 3000;
+  int _lastPositionBeforeAd = 0; // Track position before ad jump
 
   /// Show ad duration when inside ad zone, else total duration
   Duration get _effectiveDur {
     if (_adMarkers.isEmpty) return _currentDur;
     final pos = _currentPosition;
-    for (final ad in _adMarkers) {
-      final adStart = (ad['start_time'] as num?)?.toInt() ?? 0;
-      final adDur = (ad['duration'] as num?)?.toInt() ?? 0;
-      if (pos >= adStart && pos < adStart + adDur) {
-        return Duration(seconds: adDur);
+    // If position jumped to near 0 from a high value → ad is playing
+    // Show remaining ad duration based on where we were
+    if (pos < 10 && _lastPositionBeforeAd > 30) {
+      for (final ad in _adMarkers) {
+        final adStart = (ad['start_time'] as num?)?.toInt() ?? 0;
+        final adDur = (ad['duration'] as num?)?.toInt() ?? 0;
+        final adEnd = adStart + adDur;
+        if (_lastPositionBeforeAd >= adStart && _lastPositionBeforeAd <= adEnd + 10) {
+          return Duration(seconds: adDur);
+        }
       }
     }
     return _currentDur;
