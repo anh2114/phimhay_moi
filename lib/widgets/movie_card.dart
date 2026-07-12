@@ -122,51 +122,14 @@ class MovieCard extends StatelessWidget {
                           ),
                         ),
                       ),
-                    // Quality badge — .m-movie-quality (top-right)
-                    if ((movie.quality ?? '').isNotEmpty)
-                      Positioned(
-                        top: 7, right: 7,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFFFECF59), Color(0xFFFFF1CC)],
-                              begin: Alignment(-0.7, 0),
-                              end: Alignment(1.0, 0),
-                            ),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            movie.quality!.toUpperCase(),
-                            style: const TextStyle(color: Color(0xFF1A1100), fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.5),
-                          ),
-                        ),
-                      ),
-                    // Quality + Episode badges
+                    // Episode badge — green bg, white text
                     Positioned(
-                      bottom: 7, left: 7, right: 7,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Quality — white bg, black text
-                          if (_qualityBadge(movie.quality).isNotEmpty)
-                            _BadgeChip(
-                              label: _qualityBadge(movie.quality),
-                              bgColor: Colors.white,
-                              textColor: const Color(0xFF1A1100),
-                              borderColor: Colors.transparent,
-                            ),
-                          if (_qualityBadge(movie.quality).isNotEmpty && _shortEp(movie.episodeCurrent).isNotEmpty)
-                            const SizedBox(width: 4),
-                          // Episode — green bg, white text
-                          if (_shortEp(movie.episodeCurrent).isNotEmpty)
-                            _BadgeChip(
-                              label: _shortEp(movie.episodeCurrent!),
-                              bgColor: const Color(0xFF10B981),
-                              textColor: Colors.white,
-                              borderColor: Colors.transparent,
-                            ),
-                        ],
+                      bottom: 7, left: 7,
+                      child: _BadgeChip(
+                        label: _shortEp(movie.episodeCurrent),
+                        bgColor: const Color(0xFF10B981),
+                        textColor: Colors.white,
+                        borderColor: Colors.transparent,
                       ),
                     ),
                   ],
