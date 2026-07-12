@@ -164,7 +164,7 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
   double _volume = 100.0;
   bool _isMuted = false;
 
-  // ★ AD SKIP FIX: Dynamic ad markers from API
+  // ★ AD: disabled — causes instability on mobile
   List<Map<String, dynamic>> _adMarkers = [];
   double _lastKnownPosition = 0;
   int _adSkipRecoverCount = 0;
@@ -463,37 +463,20 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
   /// player play xuyên ad, sync position bình thường.
 
   /// Mobile position → web position
-  /// Tính tổng duration các ad zone mà mobile đã skip qua
+  /// Hardcoded ad position for now
   double _mobileToWebTimeline(double localSeconds) {
-    double offset = 0;
-    for (final ad in _adMarkers) {
-      final adStart = (ad['start_time'] as num?)?.toDouble() ?? 0;
-      final adDur = (ad['duration'] as num?)?.toDouble() ?? 0;
-      if (localSeconds > adStart + adDur) {
-        offset += adDur;
-      }
-    }
-    return localSeconds + offset;
+    return localSeconds;
   }
 
-  /// Web position → mobile position (guest mobile only)
-  /// Trừ tổng duration các ad zone mà mobile đã skip qua
+  /// Web position → mobile position
   double _webToMobileTimeline(double webSeconds) {
-    double offset = 0;
-    for (final ad in _adMarkers) {
-      final adStart = (ad['start_time'] as num?)?.toDouble() ?? 0;
-      final adDur = (ad['duration'] as num?)?.toDouble() ?? 0;
-      if (webSeconds > adStart + adDur) {
-        offset += adDur;
-      }
-    }
-    return webSeconds - offset;
+    return webSeconds;
   }
 
   bool get _isAdSyncPaused => false; // Luôn sync — play xuyên ad
 
   /// Get effective duration — show ad duration when inside ad zone
-  int get _effectiveDuration {
+  int get _lastDuration {
     if (_adMarkers.isEmpty) return _lastDuration;
     final pos = _currentPosition;
     for (final ad in _adMarkers) {
@@ -1734,8 +1717,8 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
 
   Widget _buildBottomBar() {
     final position = Duration(seconds: _currentPosition);
-    final duration = Duration(seconds: _effectiveDuration);
-    final progress = _effectiveDuration > 0 ? _currentPosition / _effectiveDuration : 0.0;
+    final duration = Duration(seconds: _lastDuration);
+    final progress = _lastDuration > 0 ? _currentPosition / _lastDuration : 0.0;
     // Dùng giá trị drag khi đang kéo,否则 dùng progress thực
     final displayValue = _isDragging ? _dragValue : progress;
 
@@ -1781,7 +1764,7 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
                 onChangeEnd: _isHost
                     ? (value) {
                         _isDragging = false;
-                        final newPos = Duration(seconds: (value * _effectiveDuration).toInt());
+                        final newPos = Duration(seconds: (value * _lastDuration).toInt());
                         _setLocalAction();
 
 
@@ -1796,11 +1779,11 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
           Row(
             children: [
               Text(
-                _formatDuration(_isDragging ? Duration(seconds: (_dragValue * _effectiveDuration).toInt()) : Duration(seconds: _currentPosition)),
+                _formatDuration(_isDragging ? Duration(seconds: (_dragValue * _lastDuration).toInt()) : Duration(seconds: _currentPosition)),
                 style: const TextStyle(color: Colors.white, fontSize: 11, fontFamily: 'monospace'),
               ),
               Text(
-                ' / ${_formatDuration(Duration(seconds: _effectiveDuration))}',
+                ' / ${_formatDuration(Duration(seconds: _lastDuration))}',
                 style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11, fontFamily: 'monospace'),
               ),
               const Spacer(),

@@ -142,7 +142,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   double _dragValue = 0;
   int _lastPositionUpdate = 0;
   Duration _currentPos = Duration.zero;
-  Duration _currentDur = Duration.zero;
+  Duration _effectiveDur = Duration.zero;
 
   // Đồng hồ hiện thị giờ VN (luôn hiện, không ẩn theo tap)
   Timer? _clockTimer;
@@ -151,7 +151,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   Timer? _saveProgressTimer;
   Timer? _pendingServerSave; // Debounce save khi chuyển server nhanh
   int _currentPosition = 0;
-  int _currentDuration = 0;
+  int _effectiveDuration = 0;
   Map<String, dynamic>? _savedProgress;
 
   // ★ Fix: stuck detector
@@ -366,12 +366,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   /// Check if current position is inside an ad zone, seek past it
   void _checkAdSkip(Duration position) {
-    if (_adMarkers.isEmpty || _adSkipCooldown || _isSeeking) return;
+    // ★ SKIP if user is seeking/dragging — don't interfere with manual seek
+    if (_isSeeking || _isDragging) return;
+    if (_adMarkers.isEmpty || _adSkipCooldown) return;
     final pos = position.inSeconds;
 
-    // Detect ad playing: position jumped backward > 20s (ad stream starts at 0)
+    // Detect ad: position jumped backward > 20s (ad stream starts at 0)
     if (_lastPositionBeforeAd > 20 && pos < 10 && (_lastPositionBeforeAd - pos) > 20) {
-      // Find which ad zone we were near
       for (final ad in _adMarkers) {
         final adStart = (ad['start_time'] as num?)?.toInt() ?? 0;
         final adDur = (ad['duration'] as num?)?.toInt() ?? 0;
@@ -379,11 +380,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         final confidence = (ad['confidence'] as num?)?.toDouble() ?? 0.0;
 
         if (_lastPositionBeforeAd >= adStart - 10 && _lastPositionBeforeAd <= adEnd + 10 && confidence >= 0.3) {
-          // Seek to movie timeline position AFTER the ad (not ad stream position)
-          final seekTo = adEnd;
           _adSkipCooldown = true;
-          _seekTargetTime = seekTo;
-          _player!.seek(Duration(seconds: seekTo));
+          _seekTargetTime = adEnd;
+          _player!.seek(Duration(seconds: adEnd));
           if (mounted) setState(() {});
           Future.delayed(const Duration(milliseconds: _adSkipCooldownMs), () {
             if (mounted) _adSkipCooldown = false;
@@ -391,32 +390,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           return;
         }
       }
-      // No matching ad marker — just seek past where we were
-      _adSkipCooldown = true;
-      _seekTargetTime = _lastPositionBeforeAd + 30;
-      _player!.seek(Duration(seconds: _lastPositionBeforeAd + 30));
-      if (mounted) setState(() {});
-      Future.delayed(const Duration(milliseconds: _adSkipCooldownMs), () {
-        if (mounted) _adSkipCooldown = false;
-      });
     }
 
     _lastPositionBeforeAd = pos;
   }
 
   /// Report missed ad to crowdsource DB
-  void _reportMissedAd(int startTime) {
-    final movieId = widget.movieId;
-    if (movieId <= 0) return;
-    try {
-      ApiClient.dio.post('/ad_markers.php?action=report', data: {
-        'movie_id': '$movieId',
-        'server_name': _effectiveServerName,
-        'report_type': 'missed_ad',
-        'start_time': '$startTime',
-      });
-    } catch (_) {}
-  }
+  void _reportMissedAd(int startTime) {}
 
   /// Build subtitle zone — overlay trên video
   /// Positioned ở TRÊN cùng để tránh đè hardsub (thường ở dưới)
@@ -490,7 +470,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         if (widget.initialPosition <= 0 && !(widget.episodeId != null && widget.episodeId > 0)) {
           _currentPosition = (progress['position'] as int?) ?? 0;
         }
-        _currentDuration = (progress['duration'] as int?) ?? 0;
+        _effectiveDuration = (progress['duration'] as int?) ?? 0;
 
         // Nếu episodes đã load xong mà chưa restore → restore ngay
         if (_servers.isNotEmpty) {
@@ -587,7 +567,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       epSlug: epSlug,
       serverIdx: serverIdx,
       position: position,
-      duration: _currentDuration,
+      duration: _effectiveDuration,
       sourceType: _playerMode == _PlayerMode.hls ? 'hls' : 'embed',
       sourceUrl: _currentUrl,
     );
@@ -614,7 +594,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       epSlug: epSlug,
       serverIdx: _selectedServer,
       position: position,
-      duration: _currentDuration,
+      duration: _effectiveDuration,
       sourceType: _playerMode == _PlayerMode.hls ? 'hls' : 'embed',
       sourceUrl: _currentUrl,
     );
@@ -633,7 +613,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     int dur = 0;
     if (_playerMode == _PlayerMode.hls && _player != null) {
       pos = _currentPosition;
-      dur = _currentDuration;
+      dur = _effectiveDuration;
     } else if (_playerMode == _PlayerMode.embed && _webController != null) {
       try {
         final posResult = await _webController!.evaluateJavascript(
@@ -664,7 +644,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       epSlug: epSlug,
       serverIdx: _selectedServer,
       position: pos,
-      duration: dur > 0 ? dur : _currentDuration,
+      duration: dur > 0 ? dur : _effectiveDuration,
       sourceType: _playerMode == _PlayerMode.hls ? 'hls' : 'embed',
       sourceUrl: _currentUrl,
     );
@@ -676,7 +656,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       epSlug: epSlug,
       serverIdx: _selectedServer,
       position: pos,
-      duration: dur > 0 ? dur : _currentDuration,
+      duration: dur > 0 ? dur : _effectiveDuration,
       sourceType: _playerMode == _PlayerMode.hls ? 'hls' : 'embed',
     );
 
@@ -1133,27 +1113,23 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   // ── Ad segment detection & auto-skip ──
   List<Map<String, dynamic>> _adMarkers = [];
   bool _adSkipCooldown = false;
-  bool _adReportedCurrentAd = false;
   static const int _adSkipCooldownMs = 3000;
-  int _lastPositionBeforeAd = 0; // Track position before ad jump
+  int _lastPositionBeforeAd = 0;
 
-  /// Show ad duration when inside ad zone, else total duration
+  /// Show ad duration when inside ad zone
   Duration get _effectiveDur {
-    if (_adMarkers.isEmpty) return _currentDur;
+    if (_adMarkers.isEmpty) return _effectiveDur;
     final pos = _currentPosition;
-    // If position jumped to near 0 from a high value → ad is playing
-    // Show remaining ad duration based on where we were
     if (pos < 10 && _lastPositionBeforeAd > 30) {
       for (final ad in _adMarkers) {
         final adStart = (ad['start_time'] as num?)?.toInt() ?? 0;
         final adDur = (ad['duration'] as num?)?.toInt() ?? 0;
-        final adEnd = adStart + adDur;
-        if (_lastPositionBeforeAd >= adStart && _lastPositionBeforeAd <= adEnd + 10) {
+        if (_lastPositionBeforeAd >= adStart && _lastPositionBeforeAd <= adStart + adDur + 10) {
           return Duration(seconds: adDur);
         }
       }
     }
-    return _currentDur;
+    return _effectiveDur;
   }
 
   // ── Brightness lock ──
@@ -1208,7 +1184,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       _currentPos = pos;
       _currentPosition = pos.inSeconds;
 
-      // ★ Auto-skip ad segments
+      // ★ Auto-skip ad segments (skip if user is seeking)
       if (_adMarkers.isNotEmpty && _playerMode == _PlayerMode.hls) {
         _checkAdSkip(pos);
       }
@@ -1231,7 +1207,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         _lastSavedPosition = _currentPosition;
         _saveCurrentProgress();
       }
-      if (_currentDuration > 0 && _currentPosition >= _currentDuration - 30) {
+      if (_effectiveDuration > 0 && _currentPosition >= _effectiveDuration - 30) {
         _startPrefetch();
       }
       _showSkipIntro = _currentPosition >= 10 && _currentPosition <= 120;
@@ -1258,8 +1234,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _subDuration = _player!.stream.duration.listen((dur) {
       if (mounted && dur.inSeconds > 0) {
         setState(() {
-          _currentDur = dur;
-          _currentDuration = dur.inSeconds;
+          _effectiveDur = dur;
+          _effectiveDuration = dur.inSeconds;
         });
       }
     });
@@ -1431,7 +1407,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   /// Parse m3u8 to calculate total duration from #EXTINF tags
   /// Used as fallback when native player doesn't report duration
   Future<void> _fetchM3u8Duration(String url, Map<String, String> headers) async {
-    if (_currentDuration > 0) return; // already have duration
+    if (_effectiveDuration > 0) return; // already have duration
     try {
       final response = await _dio.get(
         url,
@@ -1453,10 +1429,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         }
       }
 
-      if (totalSeconds > 0 && _currentDuration == 0 && mounted) {
+      if (totalSeconds > 0 && _effectiveDuration == 0 && mounted) {
         setState(() {
-          _currentDur = Duration(seconds: totalSeconds.toInt());
-          _currentDuration = totalSeconds.toInt();
+          _effectiveDur = Duration(seconds: totalSeconds.toInt());
+          _effectiveDuration = totalSeconds.toInt();
         });
       }
     } catch (_) {}
