@@ -149,12 +149,20 @@ class MovieCard extends StatelessWidget {
                         spacing: 4,
                         runSpacing: 4,
                         children: [
-                          // Episode badge — solid white bg
+                          // Quality badge — solid white bg, black text
+                          if (_qualityBadge(movie.quality).isNotEmpty)
+                            _BadgeChip(
+                              label: _qualityBadge(movie.quality),
+                              bgColor: Colors.white,
+                              textColor: const Color(0xFF1A1100),
+                              borderColor: Colors.transparent,
+                            ),
+                          // Episode badge — green bg, white text
                           if (_shortEp(movie.episodeCurrent).isNotEmpty)
                             _BadgeChip(
                               label: _shortEp(movie.episodeCurrent!),
-                              bgColor: Colors.white,
-                              textColor: const Color(0xFF1A1100),
+                              bgColor: const Color(0xFF10B981),
+                              textColor: Colors.white,
                               borderColor: Colors.transparent,
                             ),
                           // TM badge — green bg
