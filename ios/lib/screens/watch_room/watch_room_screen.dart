@@ -164,14 +164,11 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
   double _volume = 100.0;
   bool _isMuted = false;
 
-  // ★ AD SKIP FIX: media_kit/libmpv tự skip ad segments trong HLS stream
-  // Mobile: position nhảy 900→930 (skip 30s ad) → mobile bị lệch +30s so với web
-  // Solution: subtract 30s từ mobile position khi past ad zone
+  // ★ AD SKIP FIX: Dynamic ad markers from API
+  List<Map<String, dynamic>> _adMarkers = [];
   double _lastKnownPosition = 0;
   int _adSkipRecoverCount = 0;
   static const int _adSkipMaxRecover = 5;
-  static const int _adPosition = 900; // vị trí ad bắt đầu (15:00)
-  static const int _adDuration = 30;  // ad dài 30s
 
   // Host vắng mặt
   bool _waitingHostShown = false;
@@ -382,6 +379,9 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
         _isPlaying = false;
       });
 
+      // Load ad markers for timeline sync
+      _loadAdMarkers(m3u8Url);
+
       // Seek to initial position if needed
       final seekTo = widget.initialPosition > 3
           ? widget.initialPosition
@@ -459,27 +459,58 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
   /// player play xuyên ad, sync position bình thường.
 
   /// Mobile position → web position
-  /// Mobile skip 30s ad → mobile position bị lệch +30s so với web
-  /// Mobile 930s = Web 960s (mobile đã chạy 30s post-ad, web mới bắt đầu)
-  /// → CỘNG 30s để convert sang web timeline
+  /// Tính tổng duration các ad zone mà mobile đã skip qua
   double _mobileToWebTimeline(double localSeconds) {
-    if (localSeconds > _adPosition + _adDuration) {
-      return localSeconds + _adDuration; // 930 → 960, 960 → 990
+    double offset = 0;
+    for (final ad in _adMarkers) {
+      final adStart = (ad['start_time'] as num?)?.toDouble() ?? 0;
+      final adDur = (ad['duration'] as num?)?.toDouble() ?? 0;
+      if (localSeconds > adStart + adDur) {
+        offset += adDur;
+      }
     }
-    return localSeconds;
+    return localSeconds + offset;
   }
 
   /// Web position → mobile position (guest mobile only)
-  /// Web 960s = Mobile 930s
-  /// → Subtract 30s để convert sang mobile timeline
+  /// Trừ tổng duration các ad zone mà mobile đã skip qua
   double _webToMobileTimeline(double webSeconds) {
-    if (webSeconds > _adPosition + _adDuration) {
-      return webSeconds - _adDuration; // 960 → 930, 990 → 960
+    double offset = 0;
+    for (final ad in _adMarkers) {
+      final adStart = (ad['start_time'] as num?)?.toDouble() ?? 0;
+      final adDur = (ad['duration'] as num?)?.toDouble() ?? 0;
+      if (webSeconds > adStart + adDur) {
+        offset += adDur;
+      }
     }
-    return webSeconds;
+    return webSeconds - offset;
   }
 
   bool get _isAdSyncPaused => false; // Luôn sync — play xuyên ad
+
+  /// Load ad markers from API for timeline sync
+  Future<void> _loadAdMarkers(String m3u8Url) async {
+    if (m3u8Url.isEmpty || _movieId <= 0) return;
+    final serverName = _servers.isNotEmpty
+        ? (_servers[_selectedServer]['server_name'] ?? '').toString()
+        : '';
+    try {
+      final res = await ApiClient.get('/ad_markers.php', params: {
+        'url': m3u8Url,
+        'movie_id': '$_movieId',
+        'server_name': serverName,
+      });
+      final data = res.data;
+      if (data is Map<String, dynamic> && data['success'] == true) {
+        final ads = data['ads'] as List<dynamic>? ?? [];
+        if (mounted) {
+          setState(() {
+            _adMarkers = ads.cast<Map<String, dynamic>>();
+          });
+        }
+      }
+    } catch (_) {}
+  }
 
   Future<void> _updateHostState(String state, {double? position}) async {
     if (!_isHost) return;

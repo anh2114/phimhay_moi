@@ -334,6 +334,81 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     return null;
   }
 
+  String get _effectiveServerName {
+    if (_servers.isEmpty || _selectedServer >= _servers.length) return '';
+    return (_servers[_selectedServer]['server_name'] ?? '').toString();
+  }
+
+  // ── Ad segment detection & auto-skip ──────────────────
+
+  /// Fetch ad markers from API for current movie + server
+  Future<void> _loadAdMarkers(String m3u8Url, int movieId, String serverName) async {
+    if (movieId <= 0 || m3u8Url.isEmpty) return;
+    try {
+      final res = await ApiClient.get('/ad_markers.php', params: {
+        'url': m3u8Url,
+        'movie_id': '$movieId',
+        'server_name': serverName,
+      });
+      final data = res.data;
+      if (data is Map<String, dynamic> && data['success'] == true) {
+        final ads = data['ads'] as List<dynamic>? ?? [];
+        if (mounted) {
+          setState(() {
+            _adMarkers = ads.cast<Map<String, dynamic>>();
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  /// Check if current position is inside an ad zone, seek past it
+  void _checkAdSkip(Duration position) {
+    if (_adMarkers.isEmpty || _adSkipCooldown || _isSeeking) return;
+    final pos = position.inSeconds;
+
+    for (final ad in _adMarkers) {
+      final adStart = (ad['start_time'] as num?)?.toInt() ?? 0;
+      final adDur = (ad['duration'] as num?)?.toInt() ?? 0;
+      final adEnd = adStart + adDur;
+      final confidence = (ad['confidence'] as num?)?.toDouble() ?? 0.0;
+
+      if (pos >= adStart && pos < adEnd && confidence >= 0.6) {
+        // Inside ad zone → skip to end
+        _adSkipCooldown = true;
+        _adReportedCurrentAd = false;
+        _seekTargetTime = adEnd;
+        _player!.seek(Duration(seconds: adEnd));
+        if (mounted) setState(() {});
+        // Cooldown
+        Future.delayed(const Duration(milliseconds: _adSkipCooldownMs), () {
+          if (mounted) _adSkipCooldown = false;
+        });
+        return;
+      }
+
+      // If we're right after an ad and haven't reported — this was a missed ad
+      if (pos >= adStart && pos < adEnd + 5 && !_adReportedCurrentAd && confidence >= 0.6) {
+        _adReportedCurrentAd = true;
+        _reportMissedAd(adStart);
+      }
+    }
+  }
+
+  /// Report missed ad to crowdsource DB
+  void _reportMissedAd(int startTime) {
+    final movieId = widget.movieId;
+    if (movieId <= 0) return;
+    try {
+      ApiClient.dio.post('/ad_markers.php?action=report', data: {
+        'movie_id': '$movieId',
+        'server_name': _effectiveServerName,
+        'report_type': 'missed_ad',
+        'start_time': '$startTime',
+      });
+    } catch (_) {}
+  }
+
   /// Build subtitle zone — overlay trên video
   /// Positioned ở TRÊN cùng để tránh đè hardsub (thường ở dưới)
   Widget _buildSubtitleZone() {
@@ -1001,6 +1076,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       final embed = (currentEp['link_embed'] ?? '').toString().trim();
       _currentEmbedUrl = embed; // lưu để fallback khi HLS fail
       _loadSubtitles(currentEp);
+      // Load ad markers for auto-skip
+      if (m3u8.isNotEmpty) {
+        _loadAdMarkers(m3u8, widget.movieId, _effectiveServerName);
+      }
 
       // Ưu tiên HLS cho tất cả (mobile chạy được hết)
       if (m3u8.isNotEmpty) {
@@ -1032,7 +1111,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   DateTime? _lastSaveTime; // Minimum interval between saves
 
   int _lastSeekByUser = 0;
-  String _currentServerName = '';
   bool _isSeeking = false; // Đang seek → hiện buffering
 
   // ── Subtitles ──
@@ -1042,6 +1120,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   List<SubtitleEntry> _subtitles = [];
   bool _subtitleEnabled = false;
   String? _currentSubtitleUrl;
+
+  // ── Ad segment detection & auto-skip ──
+  List<Map<String, dynamic>> _adMarkers = [];
+  bool _adSkipCooldown = false;
+  bool _adReportedCurrentAd = false;
+  static const int _adSkipCooldownMs = 3000;
 
   // ── Brightness lock ──
   double _originalBrightness = 1.0;
@@ -1094,6 +1178,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
       _currentPos = pos;
       _currentPosition = pos.inSeconds;
+
+      // ★ Auto-skip ad segments
+      if (_adMarkers.isNotEmpty && _playerMode == _PlayerMode.hls) {
+        _checkAdSkip(pos);
+      }
 
       // ★ Subtitle cần update nhanh (mỗi frame) để ẩn đúng lúc khi cue kết thúc
       if (_subtitleEnabled && _subtitles.isNotEmpty) {
@@ -1551,9 +1640,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       _seekTargetTime = savedPosition;
       _seekCompleted = false; // Luôn cần seek lại
       _subtitles = [];
+      _adMarkers = []; // Reset ad markers for new episode
     });
 
     _loadSubtitles(ep);
+    // Load ad markers for new episode
+    if (url.isNotEmpty && useHls) {
+      _loadAdMarkers(url, widget.movieId, _effectiveServerName);
+    }
 
     if (useHls) {
       if (!_tryUsePrefetched(ep)) {
