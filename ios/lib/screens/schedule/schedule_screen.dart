@@ -414,13 +414,13 @@ class _ScheduleScreenState extends State<ScheduleScreen> with AutomaticKeepAlive
 
   Widget _pill(String text) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: const Color(0x0FFFFFFF),
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: AppTheme.border),
+        border: Border.all(color: const Color(0x14FFFFFF)),
       ),
-      child: Text(text, style: const TextStyle(color: AppTheme.textSub, fontSize: 10, fontWeight: FontWeight.w600)),
+      child: Text(text, style: const TextStyle(color: Color(0xFFD7D7E5), fontSize: 10, fontWeight: FontWeight.w700)),
     );
   }
 }

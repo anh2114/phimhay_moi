@@ -31,35 +31,35 @@ class AppTheme {
       scaffoldBackgroundColor: bg,
       dividerColor: border,
 
-      // Headings
-      textTheme: GoogleFonts.outfitTextTheme(
+      // Headings — Inter cho nét gọn, dễ đọc trên mobile
+      textTheme: GoogleFonts.interTextTheme(
         ThemeData.dark().textTheme.copyWith(
-              displayLarge: GoogleFonts.outfit(
+              displayLarge: GoogleFonts.inter(
                 fontSize: 28,
                 fontWeight: FontWeight.w700,
                 color: textPrimary,
               ),
-              displayMedium: GoogleFonts.outfit(
+              displayMedium: GoogleFonts.inter(
                 fontSize: 24,
                 fontWeight: FontWeight.w700,
                 color: textPrimary,
               ),
-              displaySmall: GoogleFonts.outfit(
+              displaySmall: GoogleFonts.inter(
                 fontSize: 20,
                 fontWeight: FontWeight.w600,
                 color: textPrimary,
               ),
-              headlineLarge: GoogleFonts.outfit(
+              headlineLarge: GoogleFonts.inter(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
                 color: textPrimary,
               ),
-              headlineMedium: GoogleFonts.outfit(
+              headlineMedium: GoogleFonts.inter(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
                 color: textPrimary,
               ),
-              headlineSmall: GoogleFonts.outfit(
+              headlineSmall: GoogleFonts.inter(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: textPrimary,
@@ -67,7 +67,7 @@ class AppTheme {
             ),
       ),
 
-      // Body
+      // Body — BeVietnamPro giữ nguyên cho tiếng Việt
       primaryTextTheme: GoogleFonts.beVietnamProTextTheme(
         ThemeData.dark().primaryTextTheme,
       ),
@@ -88,7 +88,7 @@ class AppTheme {
         foregroundColor: textPrimary,
         elevation: 0,
         centerTitle: true,
-        titleTextStyle: GoogleFonts.outfit(
+        titleTextStyle: GoogleFonts.inter(
           fontSize: 18,
           fontWeight: FontWeight.w600,
           color: textPrimary,
@@ -131,7 +131,7 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
-          textStyle: GoogleFonts.beVietnamPro(
+          textStyle: GoogleFonts.inter(
             fontWeight: FontWeight.w600,
           ),
         ),

@@ -34,6 +34,18 @@ class MovieCard extends StatelessWidget {
     return raw;
   }
 
+  static bool _isVietsub(String? raw) {
+    if (raw == null) return false;
+    final s = raw.toLowerCase();
+    return s.contains('vietsub') || s.contains('phụ đề') || s.contains('sub');
+  }
+
+  static bool _isThuyetMinh(String? raw) {
+    if (raw == null) return false;
+    final s = raw.toLowerCase();
+    return s.contains('thuyết minh') || s.contains('lồng tiếng') || s.contains('tm') || s.contains('lt');
+  }
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -119,26 +131,36 @@ class MovieCard extends StatelessWidget {
                           ),
                         ),
                       ),
-                    // Episode + lang badges — .m-movie-badges (bottom-left)
+                    // Episode + lang badges — web .film-badge style
                     Positioned(
                       bottom: 7, left: 7, right: 7,
                       child: Wrap(
                         spacing: 4,
                         runSpacing: 4,
                         children: [
-                          if (_shortEp(movie.episodeCurrent).isNotEmpty)
+                          // PĐ badge — web .film-badge-pd
+                          if (_shortLang(movie.lang).isNotEmpty && _isVietsub(movie.lang))
+                            _BadgeChip(
+                              label: '${_shortLang(movie.lang!)}${_shortEp(movie.episodeCurrent).isNotEmpty ? '. ${_shortEp(movie.episodeCurrent)}' : ''}',
+                              bgColor: const Color(0xD1121218),
+                              textColor: const Color(0xFFF1F5F9),
+                              borderColor: const Color(0x14FFFFFF),
+                            ),
+                          // TM badge — web .film-badge-tm (green)
+                          if (_shortLang(movie.lang).isNotEmpty && _isThuyetMinh(movie.lang))
+                            _BadgeChip(
+                              label: '${_shortLang(movie.lang!)}${_shortEp(movie.episodeCurrent).isNotEmpty ? '. ${_shortEp(movie.episodeCurrent)}' : ''}',
+                              bgColor: const Color(0xFF10B981),
+                              textColor: Colors.white,
+                              borderColor: Colors.transparent,
+                            ),
+                          // Fallback: no lang → show episode only
+                          if (_shortLang(movie.lang).isEmpty && _shortEp(movie.episodeCurrent).isNotEmpty)
                             _BadgeChip(
                               label: _shortEp(movie.episodeCurrent!),
-                              bgColor: const Color(0xFF065F46),
-                              textColor: const Color(0xFF6EE7B7),
-                              borderColor: const Color(0xFF10B981),
-                            ),
-                          if (_shortLang(movie.lang).isNotEmpty)
-                            _BadgeChip(
-                              label: _shortLang(movie.lang!),
-                              bgColor: const Color(0xFF92400E),
-                              textColor: const Color(0xFFFDE68A),
-                              borderColor: const Color(0xFFF59E0B),
+                              bgColor: const Color(0xD1121218),
+                              textColor: const Color(0xFFF1F5F9),
+                              borderColor: const Color(0x14FFFFFF),
                             ),
                         ],
                       ),
@@ -194,15 +216,28 @@ class _BadgeChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: borderColor, width: 1),
+        border: borderColor != Colors.transparent
+            ? Border.all(color: borderColor, width: 1)
+            : null,
+        boxShadow: const [
+          BoxShadow(color: Color(0x66000000), blurRadius: 8, offset: Offset(0, 2)),
+        ],
       ),
       child: Text(
         label,
-        style: TextStyle(color: textColor, fontSize: 9.5, fontWeight: FontWeight.w700, letterSpacing: 0.3),
+        style: TextStyle(
+          color: textColor,
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          height: 1.2,
+          shadows: const [
+            Shadow(color: Colors.black54, blurRadius: 2, offset: Offset(0, 1)),
+          ],
+        ),
       ),
     );
   }

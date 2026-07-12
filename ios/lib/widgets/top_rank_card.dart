@@ -112,6 +112,23 @@ class TopRankCard extends StatelessWidget {
     return raw;
   }
 
+  // Web .m-badge color mapping
+  static Color _langTextColor(String? raw) {
+    if (raw == null) return const Color(0xFFCDD5FF);
+    final s = raw.toLowerCase();
+    if (s.contains('vietsub') || s.contains('phụ đề') || s.contains('sub')) return const Color(0xFFCDD5FF); // PĐ blue
+    if (s.contains('thuyết minh') || s.contains('lồng tiếng') || s.contains('tm') || s.contains('lt')) return const Color(0xFFA8F0C6); // TM green
+    return const Color(0xFFCDD5FF);
+  }
+
+  static Color _langBorderColor(String? raw) {
+    if (raw == null) return const Color(0x598296FF);
+    final s = raw.toLowerCase();
+    if (s.contains('vietsub') || s.contains('phụ đề') || s.contains('sub')) return const Color(0x598296FF); // PĐ blue border
+    if (s.contains('thuyết minh') || s.contains('lồng tiếng') || s.contains('tm') || s.contains('lt')) return const Color(0x5964DCA0); // TM green border
+    return const Color(0x598296FF);
+  }
+
   @override
   Widget build(BuildContext context) {
     final isEven = rank % 2 == 0;
@@ -158,7 +175,7 @@ class TopRankCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    // Episode + Language badges — bottom center
+                    // Episode + Language badges — bottom center (web .m-badge style)
                     Positioned(
                       bottom: 10, left: 0, right: 0,
                       child: Row(
@@ -167,18 +184,18 @@ class TopRankCard extends StatelessWidget {
                           if (_shortEp(movie.episodeCurrent).isNotEmpty)
                             _RankBadge(
                               label: _shortEp(movie.episodeCurrent!),
-                              bgColor: const Color(0xFF065F46),
-                              textColor: const Color(0xFF6EE7B7),
-                              borderColor: const Color(0xFF10B981),
+                              bgColor: const Color(0xD9141423),
+                              textColor: const Color(0xFFCDD5FF),
+                              borderColor: const Color(0x598296FF),
                             ),
                           if (_shortEp(movie.episodeCurrent).isNotEmpty && _shortLang(movie.lang).isNotEmpty)
                             const SizedBox(width: 4),
                           if (_shortLang(movie.lang).isNotEmpty)
                             _RankBadge(
                               label: _shortLang(movie.lang!),
-                              bgColor: const Color(0xFF92400E),
-                              textColor: const Color(0xFFFDE68A),
-                              borderColor: const Color(0xFFF59E0B),
+                              bgColor: const Color(0xD9141423),
+                              textColor: _langTextColor(movie.lang),
+                              borderColor: _langBorderColor(movie.lang),
                             ),
                         ],
                       ),
@@ -196,7 +213,7 @@ class TopRankCard extends StatelessWidget {
                 Text(
                   '$rank',
                   style: const TextStyle(
-                    fontFamily: 'Outfit',
+                    fontFamily: 'Inter',
                     color: Color(0xFFFFD875),
                     fontSize: 22,
                     fontWeight: FontWeight.w900,
