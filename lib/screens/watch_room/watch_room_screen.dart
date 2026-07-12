@@ -488,6 +488,21 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
 
   bool get _isAdSyncPaused => false; // Luôn sync — play xuyên ad
 
+  /// Get effective duration — show ad duration when inside ad zone
+  int get _effectiveDuration {
+    if (_adMarkers.isEmpty) return _lastDuration;
+    final pos = _currentPosition;
+    for (final ad in _adMarkers) {
+      final adStart = (ad['start_time'] as num?)?.toInt() ?? 0;
+      final adDur = (ad['duration'] as num?)?.toInt() ?? 0;
+      final adEnd = adStart + adDur;
+      if (pos >= adStart && pos < adEnd) {
+        return adDur; // Show ad segment duration
+      }
+    }
+    return _lastDuration;
+  }
+
   /// Load ad markers from API for timeline sync
   Future<void> _loadAdMarkers(String m3u8Url) async {
     if (m3u8Url.isEmpty || _movieId <= 0) return;
@@ -1498,7 +1513,7 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
                             width: 56, height: 56,
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.5),
+                              color: Colors.white.withValues(alpha: 0.15),
                               shape: BoxShape.circle,
                             ),
                             child: const Icon(Icons.replay_10_rounded, color: Colors.white, size: 28),
@@ -1525,7 +1540,7 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
                             width: 56, height: 56,
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.5),
+                              color: Colors.white.withValues(alpha: 0.15),
                               shape: BoxShape.circle,
                             ),
                             child: const Icon(Icons.forward_10_rounded, color: Colors.white, size: 28),
@@ -1715,8 +1730,8 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
 
   Widget _buildBottomBar() {
     final position = Duration(seconds: _currentPosition);
-    final duration = Duration(seconds: _lastDuration);
-    final progress = _lastDuration > 0 ? _currentPosition / _lastDuration : 0.0;
+    final duration = Duration(seconds: _effectiveDuration);
+    final progress = _effectiveDuration > 0 ? _currentPosition / _effectiveDuration : 0.0;
     // Dùng giá trị drag khi đang kéo,否则 dùng progress thực
     final displayValue = _isDragging ? _dragValue : progress;
 
@@ -1762,7 +1777,7 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
                 onChangeEnd: _isHost
                     ? (value) {
                         _isDragging = false;
-                        final newPos = Duration(seconds: (value * _lastDuration).toInt());
+                        final newPos = Duration(seconds: (value * _effectiveDuration).toInt());
                         _setLocalAction();
 
 
@@ -1777,11 +1792,11 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
           Row(
             children: [
               Text(
-                _formatDuration(_isDragging ? Duration(seconds: (_dragValue * _lastDuration).toInt()) : Duration(seconds: _currentPosition)),
+                _formatDuration(_isDragging ? Duration(seconds: (_dragValue * _effectiveDuration).toInt()) : Duration(seconds: _currentPosition)),
                 style: const TextStyle(color: Colors.white, fontSize: 11, fontFamily: 'monospace'),
               ),
               Text(
-                ' / ${_formatDuration(Duration(seconds: _lastDuration))}',
+                ' / ${_formatDuration(Duration(seconds: _effectiveDuration))}',
                 style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11, fontFamily: 'monospace'),
               ),
               const Spacer(),
