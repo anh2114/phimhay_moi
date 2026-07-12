@@ -151,7 +151,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   Timer? _saveProgressTimer;
   Timer? _pendingServerSave; // Debounce save khi chuyển server nhanh
   int _currentPosition = 0;
-  int _effectiveDuration = 0;
+  int _currentDuration = 0;
   Map<String, dynamic>? _savedProgress;
 
   // ★ Fix: stuck detector
@@ -470,7 +470,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         if (widget.initialPosition <= 0 && !(widget.episodeId != null && widget.episodeId > 0)) {
           _currentPosition = (progress['position'] as int?) ?? 0;
         }
-        _effectiveDuration = (progress['duration'] as int?) ?? 0;
+        _currentDuration = (progress['duration'] as int?) ?? 0;
 
         // Nếu episodes đã load xong mà chưa restore → restore ngay
         if (_servers.isNotEmpty) {
@@ -567,7 +567,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       epSlug: epSlug,
       serverIdx: serverIdx,
       position: position,
-      duration: _effectiveDuration,
+      duration: _currentDuration,
       sourceType: _playerMode == _PlayerMode.hls ? 'hls' : 'embed',
       sourceUrl: _currentUrl,
     );
@@ -594,7 +594,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       epSlug: epSlug,
       serverIdx: _selectedServer,
       position: position,
-      duration: _effectiveDuration,
+      duration: _currentDuration,
       sourceType: _playerMode == _PlayerMode.hls ? 'hls' : 'embed',
       sourceUrl: _currentUrl,
     );
@@ -613,7 +613,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     int dur = 0;
     if (_playerMode == _PlayerMode.hls && _player != null) {
       pos = _currentPosition;
-      dur = _effectiveDuration;
+      dur = _currentDuration;
     } else if (_playerMode == _PlayerMode.embed && _webController != null) {
       try {
         final posResult = await _webController!.evaluateJavascript(
@@ -644,7 +644,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       epSlug: epSlug,
       serverIdx: _selectedServer,
       position: pos,
-      duration: dur > 0 ? dur : _effectiveDuration,
+      duration: dur > 0 ? dur : _currentDuration,
       sourceType: _playerMode == _PlayerMode.hls ? 'hls' : 'embed',
       sourceUrl: _currentUrl,
     );
@@ -656,7 +656,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       epSlug: epSlug,
       serverIdx: _selectedServer,
       position: pos,
-      duration: dur > 0 ? dur : _effectiveDuration,
+      duration: dur > 0 ? dur : _currentDuration,
       sourceType: _playerMode == _PlayerMode.hls ? 'hls' : 'embed',
     );
 
@@ -1117,8 +1117,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   int _lastPositionBeforeAd = 0;
 
   /// Show ad duration when inside ad zone
-  Duration get _effectiveDur {
-    if (_adMarkers.isEmpty) return _effectiveDur;
+  Duration get _currentDur {
+    if (_adMarkers.isEmpty) return _currentDur;
     final pos = _currentPosition;
     if (pos < 10 && _lastPositionBeforeAd > 30) {
       for (final ad in _adMarkers) {
@@ -1129,7 +1129,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         }
       }
     }
-    return _effectiveDur;
+    return _currentDur;
   }
 
   // ── Brightness lock ──
@@ -1207,7 +1207,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         _lastSavedPosition = _currentPosition;
         _saveCurrentProgress();
       }
-      if (_effectiveDuration > 0 && _currentPosition >= _effectiveDuration - 30) {
+      if (_currentDuration > 0 && _currentPosition >= _currentDuration - 30) {
         _startPrefetch();
       }
       _showSkipIntro = _currentPosition >= 10 && _currentPosition <= 120;
@@ -1234,8 +1234,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _subDuration = _player!.stream.duration.listen((dur) {
       if (mounted && dur.inSeconds > 0) {
         setState(() {
-          _effectiveDur = dur;
-          _effectiveDuration = dur.inSeconds;
+          _currentDur = dur;
+          _currentDuration = dur.inSeconds;
         });
       }
     });
@@ -1407,7 +1407,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   /// Parse m3u8 to calculate total duration from #EXTINF tags
   /// Used as fallback when native player doesn't report duration
   Future<void> _fetchM3u8Duration(String url, Map<String, String> headers) async {
-    if (_effectiveDuration > 0) return; // already have duration
+    if (_currentDuration > 0) return; // already have duration
     try {
       final response = await _dio.get(
         url,
@@ -1429,10 +1429,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         }
       }
 
-      if (totalSeconds > 0 && _effectiveDuration == 0 && mounted) {
+      if (totalSeconds > 0 && _currentDuration == 0 && mounted) {
         setState(() {
-          _effectiveDur = Duration(seconds: totalSeconds.toInt());
-          _effectiveDuration = totalSeconds.toInt();
+          _currentDur = Duration(seconds: totalSeconds.toInt());
+          _currentDuration = totalSeconds.toInt();
         });
       }
     } catch (_) {}
@@ -2888,12 +2888,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   // ── Bottom Bar (landscape fullscreen) ───────────────
   Widget _buildBottomBar() {
-    final progress = _effectiveDur.inSeconds > 0
-        ? _currentPos.inSeconds / _effectiveDur.inSeconds
+    final progress = _currentDur.inSeconds > 0
+        ? _currentPos.inSeconds / _currentDur.inSeconds
         : 0.0;
     final displayValue = _isDragging ? _dragValue : progress;
     final currentTime = _isDragging
-        ? Duration(seconds: (_dragValue * _effectiveDur.inSeconds).toInt())
+        ? Duration(seconds: (_dragValue * _currentDur.inSeconds).toInt())
         : _currentPos;
 
     return Container(
@@ -2940,7 +2940,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                     onChangeEnd: (value) {
                       _isDragging = false;
                       _showControlsWithAutoHide();
-                      final targetSec = (value * _effectiveDur.inSeconds).toInt();
+                      final targetSec = (value * _currentDur.inSeconds).toInt();
                       _seekTargetTime = targetSec;
                       _lastSeekByUser = DateTime.now().millisecondsSinceEpoch;
                       if (mounted) setState(() {
@@ -2963,7 +2963,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 ),
               ),
               Text(
-                _formatDuration(_effectiveDur),
+                _formatDuration(_currentDur),
                 style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 12, fontFamily: 'monospace', fontWeight: FontWeight.w500),
               ),
             ],
@@ -3032,7 +3032,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                       thumbColor: AppTheme.accent,
                     ),
                     child: Slider(
-                      value: (_effectiveDur.inSeconds > 0 ? _currentPos.inSeconds / _effectiveDur.inSeconds : 0.0).clamp(0.0, 1.0),
+                      value: (_currentDur.inSeconds > 0 ? _currentPos.inSeconds / _currentDur.inSeconds : 0.0).clamp(0.0, 1.0),
                       onChangeStart: (_) {
                         setState(() => _isSeeking = true);
                       },
@@ -3040,14 +3040,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                         setState(() => _isSeeking = false);
                       },
                       onChanged: (v) {
-                        final t = (v * _effectiveDur.inSeconds).toInt();
+                        final t = (v * _currentDur.inSeconds).toInt();
                         _player?.seek(Duration(seconds: t));
                         if (mounted) setState(() => _currentPos = Duration(seconds: t));
                       },
                     ),
                   ),
                 ),
-                Text(_formatDuration(_effectiveDur), style: TextStyle(color: Colors.white38, fontSize: 10, fontFamily: 'monospace')),
+                Text(_formatDuration(_currentDur), style: TextStyle(color: Colors.white38, fontSize: 10, fontFamily: 'monospace')),
               ],
             ),
             // Controls row
@@ -3114,12 +3114,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildToolbarItemLegacy(String label, String value, IconData icon, VoidCallback onTap) {
-    final progress = _effectiveDur.inSeconds > 0
-        ? _currentPos.inSeconds / _effectiveDur.inSeconds
+    final progress = _currentDur.inSeconds > 0
+        ? _currentPos.inSeconds / _currentDur.inSeconds
         : 0.0;
     final displayValue = _isDragging ? _dragValue : progress;
     final currentTime = _isDragging
-        ? Duration(seconds: (_dragValue * _effectiveDur.inSeconds).toInt())
+        ? Duration(seconds: (_dragValue * _currentDur.inSeconds).toInt())
         : _currentPos;
 
     return Container(
@@ -3170,7 +3170,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                       onChangeEnd: (value) {
                         _isDragging = false;
                         _showControlsWithAutoHide();
-                        final targetSec = (value * _effectiveDur.inSeconds).toInt();
+                        final targetSec = (value * _currentDur.inSeconds).toInt();
                         _seekTargetTime = targetSec;
                         _lastSeekByUser = DateTime.now().millisecondsSinceEpoch;
                         // Optimistic update + seeking indicator
@@ -3198,7 +3198,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 ),
                 // Total duration
                 Text(
-                  _formatDuration(_effectiveDur),
+                  _formatDuration(_currentDur),
                   style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11, fontFamily: 'monospace', fontWeight: FontWeight.w500),
                 ),
               ],
