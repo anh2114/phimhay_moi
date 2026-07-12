@@ -124,6 +124,16 @@ class TopRankCard extends StatelessWidget {
     return s.contains('thuyết minh') || s.contains('lồng tiếng') || s.contains('tm') || s.contains('lt');
   }
 
+  static String _qualityBadge(String? quality) {
+    if (quality == null || quality.isEmpty) return '';
+    final q = quality.toUpperCase().trim();
+    if (q.contains('4K') || q.contains('2160')) return '4K';
+    if (q.contains('FHD') || q.contains('1080')) return 'FHD';
+    if (q.contains('HD') || q.contains('720')) return 'HD';
+    if (q.contains('SD') || q.contains('480')) return 'SD';
+    return q.length <= 6 ? q : q.substring(0, 6);
+  }
+
   @override
   Widget build(BuildContext context) {
     final isEven = rank % 2 == 0;
@@ -170,36 +180,30 @@ class TopRankCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    // Episode + Language badges — bottom center, web .film-badge style
+                    // Episode + Quality badges — bottom center
                     Positioned(
                       bottom: 10, left: 0, right: 0,
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          // PĐ badge — white/light bg
-                          if (_shortLang(movie.lang).isNotEmpty && _isVietsub(movie.lang))
+                          // Quality badge — solid white bg
+                          if (_qualityBadge(movie.quality).isNotEmpty)
                             _RankBadge(
-                              label: '${_shortLang(movie.lang!)}${_shortEp(movie.episodeCurrent).isNotEmpty ? '. ${_shortEp(movie.episodeCurrent)}' : ''}',
-                              bgColor: Colors.white.withValues(alpha: 0.15),
-                              textColor: const Color(0xFFF1F5F9),
-                              borderColor: Colors.white.withValues(alpha: 0.2),
+                              label: _qualityBadge(movie.quality),
+                              bgColor: Colors.white,
+                              textColor: const Color(0xFF1A1100),
+                              borderColor: Colors.transparent,
                             ),
-                          // TM badge — web .film-badge-tm (green)
-                          if (_shortLang(movie.lang).isNotEmpty && _isThuyetMinh(movie.lang))
+                          // TM badge — green bg
+                          if (_shortLang(movie.lang).isNotEmpty && _isThuyetMinh(movie.lang)) ...[
+                            const SizedBox(width: 4),
                             _RankBadge(
                               label: '${_shortLang(movie.lang!)}${_shortEp(movie.episodeCurrent).isNotEmpty ? '. ${_shortEp(movie.episodeCurrent)}' : ''}',
                               bgColor: const Color(0xFF10B981),
                               textColor: Colors.white,
                               borderColor: Colors.transparent,
                             ),
-                          // Fallback: no lang → show episode only
-                          if (_shortLang(movie.lang).isEmpty && _shortEp(movie.episodeCurrent).isNotEmpty)
-                            _RankBadge(
-                              label: _shortEp(movie.episodeCurrent!),
-                              bgColor: Colors.white.withValues(alpha: 0.15),
-                              textColor: const Color(0xFFF1F5F9),
-                              borderColor: Colors.white.withValues(alpha: 0.2),
-                            ),
+                          ],
                         ],
                       ),
                     ),

@@ -341,25 +341,27 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   // ── Ad segment detection & auto-skip ──────────────────
 
-  /// Fetch ad markers from API for current movie + server
+  /// Fetch ad markers from API for current movie + server (with retry)
   Future<void> _loadAdMarkers(String m3u8Url, int movieId, String serverName) async {
     if (movieId <= 0 || m3u8Url.isEmpty) return;
-    try {
-      final res = await ApiClient.get('/ad_markers.php', params: {
-        'url': m3u8Url,
-        'movie_id': '$movieId',
-        'server_name': serverName,
-      });
-      final data = res.data;
-      if (data is Map<String, dynamic> && data['success'] == true) {
-        final ads = data['ads'] as List<dynamic>? ?? [];
-        if (mounted) {
-          setState(() {
-            _adMarkers = ads.cast<Map<String, dynamic>>();
-          });
+    for (int attempt = 0; attempt < 2; attempt++) {
+      try {
+        final res = await ApiClient.get('/ad_markers.php', params: {
+          'url': m3u8Url,
+          'movie_id': '$movieId',
+          'server_name': serverName,
+        });
+        final data = res.data;
+        if (data is Map<String, dynamic> && data['success'] == true) {
+          final ads = data['ads'] as List<dynamic>? ?? [];
+          if (mounted && ads.isNotEmpty) {
+            setState(() { _adMarkers = ads.cast<Map<String, dynamic>>(); });
+            return;
+          }
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
+      if (attempt == 0) await Future.delayed(const Duration(seconds: 2));
+    }
   }
 
   /// Check if current position is inside an ad zone, seek past it
@@ -373,24 +375,17 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       final adEnd = adStart + adDur;
       final confidence = (ad['confidence'] as num?)?.toDouble() ?? 0.0;
 
-      if (pos >= adStart && pos < adEnd && confidence >= 0.6) {
-        // Inside ad zone → skip to end
+      // Inside ad zone OR within 3s of ad start → skip
+      if (pos >= adStart - 3 && pos < adEnd && confidence >= 0.5) {
         _adSkipCooldown = true;
         _adReportedCurrentAd = false;
         _seekTargetTime = adEnd;
         _player!.seek(Duration(seconds: adEnd));
         if (mounted) setState(() {});
-        // Cooldown
         Future.delayed(const Duration(milliseconds: _adSkipCooldownMs), () {
           if (mounted) _adSkipCooldown = false;
         });
         return;
-      }
-
-      // If we're right after an ad and haven't reported — this was a missed ad
-      if (pos >= adStart && pos < adEnd + 5 && !_adReportedCurrentAd && confidence >= 0.6) {
-        _adReportedCurrentAd = true;
-        _reportMissedAd(adStart);
       }
     }
   }
