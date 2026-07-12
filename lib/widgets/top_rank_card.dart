@@ -108,25 +108,20 @@ class TopRankCard extends StatelessWidget {
     if (raw == null || raw.isEmpty) return '';
     final s = raw.toLowerCase();
     if (s.contains('vietsub') || s.contains('phụ đề') || s.contains('sub')) return 'PĐ';
-    if (s.contains('thuyết minh') || s.contains(' lồng tiếng') || s.contains('tm') || s.contains('lt')) return 'TM';
+    if (s.contains('thuyết minh') || s.contains('lồng tiếng') || s.contains('tm') || s.contains('lt')) return 'TM';
     return raw;
   }
 
-  // Web .m-badge color mapping
-  static Color _langTextColor(String? raw) {
-    if (raw == null) return const Color(0xFFCDD5FF);
+  static bool _isVietsub(String? raw) {
+    if (raw == null) return false;
     final s = raw.toLowerCase();
-    if (s.contains('vietsub') || s.contains('phụ đề') || s.contains('sub')) return const Color(0xFFCDD5FF); // PĐ blue
-    if (s.contains('thuyết minh') || s.contains('lồng tiếng') || s.contains('tm') || s.contains('lt')) return const Color(0xFFA8F0C6); // TM green
-    return const Color(0xFFCDD5FF);
+    return s.contains('vietsub') || s.contains('phụ đề') || s.contains('sub');
   }
 
-  static Color _langBorderColor(String? raw) {
-    if (raw == null) return const Color(0x598296FF);
+  static bool _isThuyetMinh(String? raw) {
+    if (raw == null) return false;
     final s = raw.toLowerCase();
-    if (s.contains('vietsub') || s.contains('phụ đề') || s.contains('sub')) return const Color(0x598296FF); // PĐ blue border
-    if (s.contains('thuyết minh') || s.contains('lồng tiếng') || s.contains('tm') || s.contains('lt')) return const Color(0x5964DCA0); // TM green border
-    return const Color(0x598296FF);
+    return s.contains('thuyết minh') || s.contains('lồng tiếng') || s.contains('tm') || s.contains('lt');
   }
 
   @override
@@ -175,27 +170,35 @@ class TopRankCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    // Episode + Language badges — bottom center (web .m-badge style)
+                    // Episode + Language badges — bottom center, web .film-badge style
                     Positioned(
                       bottom: 10, left: 0, right: 0,
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          if (_shortEp(movie.episodeCurrent).isNotEmpty)
+                          // PĐ badge — web .film-badge-pd
+                          if (_shortLang(movie.lang).isNotEmpty && _isVietsub(movie.lang))
+                            _RankBadge(
+                              label: '${_shortLang(movie.lang!)}${_shortEp(movie.episodeCurrent).isNotEmpty ? '. ${_shortEp(movie.episodeCurrent)}' : ''}',
+                              bgColor: const Color(0xD1121218),
+                              textColor: const Color(0xFFF1F5F9),
+                              borderColor: const Color(0x14FFFFFF),
+                            ),
+                          // TM badge — web .film-badge-tm (green)
+                          if (_shortLang(movie.lang).isNotEmpty && _isThuyetMinh(movie.lang))
+                            _RankBadge(
+                              label: '${_shortLang(movie.lang!)}${_shortEp(movie.episodeCurrent).isNotEmpty ? '. ${_shortEp(movie.episodeCurrent)}' : ''}',
+                              bgColor: const Color(0xFF10B981),
+                              textColor: Colors.white,
+                              borderColor: Colors.transparent,
+                            ),
+                          // Fallback: no lang → show episode only
+                          if (_shortLang(movie.lang).isEmpty && _shortEp(movie.episodeCurrent).isNotEmpty)
                             _RankBadge(
                               label: _shortEp(movie.episodeCurrent!),
-                              bgColor: const Color(0xD9141423),
-                              textColor: const Color(0xFFCDD5FF),
-                              borderColor: const Color(0x598296FF),
-                            ),
-                          if (_shortEp(movie.episodeCurrent).isNotEmpty && _shortLang(movie.lang).isNotEmpty)
-                            const SizedBox(width: 4),
-                          if (_shortLang(movie.lang).isNotEmpty)
-                            _RankBadge(
-                              label: _shortLang(movie.lang!),
-                              bgColor: const Color(0xD9141423),
-                              textColor: _langTextColor(movie.lang),
-                              borderColor: _langBorderColor(movie.lang),
+                              bgColor: const Color(0xD1121218),
+                              textColor: const Color(0xFFF1F5F9),
+                              borderColor: const Color(0x14FFFFFF),
                             ),
                         ],
                       ),
@@ -270,25 +273,33 @@ class _RankBadge extends StatelessWidget {
     required this.label,
     required this.bgColor,
     required this.textColor,
-    this.borderColor = const Color(0x1AFFFFFF),
+    this.borderColor = Colors.transparent,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: borderColor, width: 1),
+        border: borderColor != Colors.transparent
+            ? Border.all(color: borderColor, width: 1)
+            : null,
+        boxShadow: const [
+          BoxShadow(color: Color(0x66000000), blurRadius: 8, offset: Offset(0, 2)),
+        ],
       ),
       child: Text(
         label,
         style: TextStyle(
           color: textColor,
-          fontSize: 9,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.4,
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          height: 1.2,
+          shadows: const [
+            Shadow(color: Colors.black54, blurRadius: 2, offset: Offset(0, 1)),
+          ],
         ),
       ),
     );
