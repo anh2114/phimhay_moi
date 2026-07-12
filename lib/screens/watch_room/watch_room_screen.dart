@@ -475,21 +475,6 @@ class _WatchRoomScreenState extends State<WatchRoomScreen> with WidgetsBindingOb
 
   bool get _isAdSyncPaused => false; // Luôn sync — play xuyên ad
 
-  /// Get effective duration — show ad duration when inside ad zone
-  int get _lastDuration {
-    if (_adMarkers.isEmpty) return _lastDuration;
-    final pos = _currentPosition;
-    for (final ad in _adMarkers) {
-      final adStart = (ad['start_time'] as num?)?.toInt() ?? 0;
-      final adDur = (ad['duration'] as num?)?.toInt() ?? 0;
-      final adEnd = adStart + adDur;
-      if (pos >= adStart && pos < adEnd) {
-        return adDur; // Show ad segment duration
-      }
-    }
-    return _lastDuration;
-  }
-
   /// Load ad markers from API for timeline sync
   Future<void> _loadAdMarkers(String m3u8Url) async {
     if (m3u8Url.isEmpty || _movieId <= 0) return;

@@ -142,7 +142,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   double _dragValue = 0;
   int _lastPositionUpdate = 0;
   Duration _currentPos = Duration.zero;
-  Duration _effectiveDur = Duration.zero;
+  Duration _currentDur = Duration.zero;
 
   // Đồng hồ hiện thị giờ VN (luôn hiện, không ẩn theo tap)
   Timer? _clockTimer;
