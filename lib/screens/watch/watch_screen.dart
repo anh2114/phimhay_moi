@@ -369,19 +369,21 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     if (_adMarkers.isEmpty || _adSkipCooldown || _isSeeking) return;
     final pos = position.inSeconds;
 
-    // Detect ad playing: position jumped backward > 30s (ad stream starts at 0)
-    if (_lastPositionBeforeAd > 30 && pos < 10 && (_lastPositionBeforeAd - pos) > 30) {
-      // Find which ad zone we were in
+    // Detect ad playing: position jumped backward > 20s (ad stream starts at 0)
+    if (_lastPositionBeforeAd > 20 && pos < 10 && (_lastPositionBeforeAd - pos) > 20) {
+      // Find which ad zone we were near
       for (final ad in _adMarkers) {
         final adStart = (ad['start_time'] as num?)?.toInt() ?? 0;
         final adDur = (ad['duration'] as num?)?.toInt() ?? 0;
         final adEnd = adStart + adDur;
         final confidence = (ad['confidence'] as num?)?.toDouble() ?? 0.0;
 
-        if (_lastPositionBeforeAd >= adStart - 5 && _lastPositionBeforeAd <= adEnd + 10 && confidence >= 0.4) {
+        if (_lastPositionBeforeAd >= adStart - 10 && _lastPositionBeforeAd <= adEnd + 10 && confidence >= 0.3) {
+          // Seek to movie timeline position AFTER the ad (not ad stream position)
+          final seekTo = adEnd;
           _adSkipCooldown = true;
-          _seekTargetTime = adEnd;
-          _player!.seek(Duration(seconds: adEnd));
+          _seekTargetTime = seekTo;
+          _player!.seek(Duration(seconds: seekTo));
           if (mounted) setState(() {});
           Future.delayed(const Duration(milliseconds: _adSkipCooldownMs), () {
             if (mounted) _adSkipCooldown = false;
@@ -389,25 +391,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           return;
         }
       }
-    }
-
-    // Also check direct position match (fallback)
-    for (final ad in _adMarkers) {
-      final adStart = (ad['start_time'] as num?)?.toInt() ?? 0;
-      final adDur = (ad['duration'] as num?)?.toInt() ?? 0;
-      final adEnd = adStart + adDur;
-      final confidence = (ad['confidence'] as num?)?.toDouble() ?? 0.0;
-
-      if (pos >= adStart - 3 && pos < adEnd && confidence >= 0.5) {
-        _adSkipCooldown = true;
-        _seekTargetTime = adEnd;
-        _player!.seek(Duration(seconds: adEnd));
-        if (mounted) setState(() {});
-        Future.delayed(const Duration(milliseconds: _adSkipCooldownMs), () {
-          if (mounted) _adSkipCooldown = false;
-        });
-        return;
-      }
+      // No matching ad marker — just seek past where we were
+      _adSkipCooldown = true;
+      _seekTargetTime = _lastPositionBeforeAd + 30;
+      _player!.seek(Duration(seconds: _lastPositionBeforeAd + 30));
+      if (mounted) setState(() {});
+      Future.delayed(const Duration(milliseconds: _adSkipCooldownMs), () {
+        if (mounted) _adSkipCooldown = false;
+      });
     }
 
     _lastPositionBeforeAd = pos;
