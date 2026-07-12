@@ -236,16 +236,23 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   // ── Load subtitles for current episode ──────────────────
-  // Chỉ load phụ đề cho server có "4K" trong tên
+  // Detect server có hardsub burned-in (vietsub, 1080p, 720p)
+  // vs server không có hardsub (4K, ...) → cần load softsub
+  bool get _isCurrentServerHardsub {
+    if (_servers.isEmpty || _selectedServer >= _servers.length) return false;
+    final name = (_servers[_selectedServer]['server_name'] ?? '').toString().toUpperCase();
+    return name.contains('VIETSUB') || name.contains('1080P') || name.contains('720P');
+  }
+
   bool get _isCurrentServer4K {
     if (_servers.isEmpty || _selectedServer >= _servers.length) return false;
-    final name = (_servers[_selectedServer]['server_name'] ?? '').toString();
-    return name.toUpperCase().contains('4K');
+    final name = (_servers[_selectedServer]['server_name'] ?? '').toString().toUpperCase();
+    return name.contains('4K');
   }
 
   Future<void> _loadSubtitles(Map<String, dynamic> episode) async {
     final slug = widget.movieSlug ?? '';
-    if (slug.isEmpty || !_isCurrentServer4K) {
+    if (slug.isEmpty) {
       setState(() { _subtitles = []; _subtitleEnabled = false; });
       return;
     }
@@ -264,7 +271,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             final subs = await _fetchSubtitleUrl(subUrl);
             if (mounted && subs.isNotEmpty) {
               _currentSubtitleUrl = subUrl;
-              setState(() { _subtitles = subs; _subtitleEnabled = true; });
+              // Server hardsub → load phụ đề nhưng mặc định TẮT (stream đã có hardsub)
+              // Server không hardsub (4K, ...) → auto-enable softsub
+              setState(() {
+                _subtitles = subs;
+                _subtitleEnabled = !_isCurrentServerHardsub;
+              });
               return;
             }
           } catch (_) {}
@@ -287,7 +299,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         final subs = await _fetchSubtitleUrl(url);
         if (mounted && subs.isNotEmpty) {
           _currentSubtitleUrl = url;
-          setState(() { _subtitles = subs; _subtitleEnabled = false; });
+          setState(() {
+            _subtitles = subs;
+            _subtitleEnabled = !_isCurrentServerHardsub;
+          });
           return;
         }
       } catch (_) {}
@@ -331,7 +346,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     final colorHex = int.parse('0xFF${_selectedSubtitleColor.substring(1)}');
 
     return Positioned(
-      bottom: 16,
+      top: 48,
       left: 16,
       right: 16,
       child: Container(
@@ -2859,11 +2874,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               const SizedBox(width: 40),
               // Server (mic icon → server popup)
               _buildToolbarItem(Icons.mic_none_rounded, _servers.isNotEmpty ? (_servers[_selectedServer]['server_name']?.toString() ?? 'Server') : 'Server', _showServerPopup),
-              // Phụ đề — chỉ hiện cho server 4K
-              if (_isCurrentServer4K) ...[
-                const SizedBox(width: 40),
-                _buildToolbarItem(Icons.subtitles_rounded, 'Phụ đề', _showSettingsPopup),
-              ],
+              // Phụ đề — hiển thị mọi server (có thể load SRT/ASS)
+              const SizedBox(width: 40),
+              _buildToolbarItem(Icons.subtitles_rounded, 'Phụ đề', _showSettingsPopup),
             ],
           ),
         ],

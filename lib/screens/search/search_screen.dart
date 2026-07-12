@@ -584,8 +584,12 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
                 if ((m.episodeCurrent ?? '').isNotEmpty)
                   Positioned(bottom: 6, left: 6, child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(color: AppTheme.gold, borderRadius: BorderRadius.circular(4)),
-                    child: Text(m.episodeCurrent!, style: const TextStyle(color: Color(0xFF1A1100), fontSize: 9, fontWeight: FontWeight.w700)),
+                    decoration: BoxDecoration(
+                      color: const Color(0xD1121218),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: const Color(0x14FFFFFF), width: 1),
+                    ),
+                    child: Text(m.episodeCurrent!, style: const TextStyle(color: Color(0xFFF1F5F9), fontSize: 9.5, fontWeight: FontWeight.w800)),
                   )),
               ],
             ),

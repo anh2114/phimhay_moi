@@ -441,7 +441,7 @@ class _ActorDetailScreenState extends State<ActorDetailScreen> {
                     Positioned(
                       bottom: 6, left: 6,
                       child: Wrap(spacing: 3, runSpacing: 3, children: [
-                        _smallBadge(_formatEpCur(epCur.toString()), const Color(0xFF065F46), const Color(0xFF6EE7B7)),
+                        _smallBadge(_formatEpCur(epCur.toString()), const Color(0xD1121218), const Color(0xFFF1F5F9), border: const Color(0x14FFFFFF)),
                       ]),
                     ),
                   // Rating
@@ -479,10 +479,14 @@ class _ActorDetailScreenState extends State<ActorDetailScreen> {
     );
   }
 
-  Widget _smallBadge(String label, Color bg, Color text) {
+  Widget _smallBadge(String label, Color bg, Color text, {Color? border}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(3)),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(4),
+        border: border != null ? Border.all(color: border, width: 1) : null,
+      ),
       child: Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: text)),
     );
   }
