@@ -364,34 +364,24 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     }
   }
 
-  /// Check if current position is inside an ad zone, seek past it
+  /// Detect ad: position jumped backward > 20s, skip forward 30s
   void _checkAdSkip(Duration position) {
-    // ★ Block ad skip if user recently sought (3s cooldown after seek)
     final now = DateTime.now().millisecondsSinceEpoch;
     if (now - _lastSeekByUser < 3000) return;
-    if (_isSeeking || _isDragging) return;
-    if (_adMarkers.isEmpty || _adSkipCooldown) return;
+    if (_isSeeking || _isDragging || _adSkipCooldown) return;
     final pos = position.inSeconds;
 
-    // Detect ad: position jumped backward > 20s (ad stream starts at 0)
-    if (_lastPositionBeforeAd > 20 && pos < 10 && (_lastPositionBeforeAd - pos) > 20) {
-      for (final ad in _adMarkers) {
-        final adStart = (ad['start_time'] as num?)?.toInt() ?? 0;
-        final adDur = (ad['duration'] as num?)?.toInt() ?? 0;
-        final adEnd = adStart + adDur;
-        final confidence = (ad['confidence'] as num?)?.toDouble() ?? 0.0;
-
-        if (_lastPositionBeforeAd >= adStart - 10 && _lastPositionBeforeAd <= adEnd + 10 && confidence >= 0.3) {
-          _adSkipCooldown = true;
-          _seekTargetTime = adEnd;
-          _player!.seek(Duration(seconds: adEnd));
-          if (mounted) setState(() {});
-          Future.delayed(const Duration(milliseconds: _adSkipCooldownMs), () {
-            if (mounted) _adSkipCooldown = false;
-          });
-          return;
-        }
-      }
+    // Position jumped from >30s to <5s → ad stream playing
+    if (_lastPositionBeforeAd > 30 && pos < 5 && (_lastPositionBeforeAd - pos) > 25) {
+      _adSkipCooldown = true;
+      // Skip forward from where we were
+      final seekTo = _lastPositionBeforeAd + 30;
+      _seekTargetTime = seekTo;
+      _player!.seek(Duration(seconds: seekTo));
+      if (mounted) setState(() {});
+      Future.delayed(const Duration(milliseconds: _adSkipCooldownMs), () {
+        if (mounted) _adSkipCooldown = false;
+      });
     }
 
     _lastPositionBeforeAd = pos;
@@ -1067,10 +1057,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       final embed = (currentEp['link_embed'] ?? '').toString().trim();
       _currentEmbedUrl = embed; // lưu để fallback khi HLS fail
       _loadSubtitles(currentEp);
-      // Load ad markers for auto-skip
-      if (m3u8.isNotEmpty) {
-        _loadAdMarkers(m3u8, widget.movieId, _effectiveServerName);
-      }
+      // Ad markers disabled — causes seek inaccuracy
+      // if (m3u8.isNotEmpty) {
+      //   _loadAdMarkers(m3u8, widget.movieId, _effectiveServerName);
+      // }
 
       // Ưu tiên HLS cho tất cả (mobile chạy được hết)
       if (m3u8.isNotEmpty) {
@@ -1656,10 +1646,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     });
 
     _loadSubtitles(ep);
-    // Load ad markers for new episode
-    if (url.isNotEmpty && useHls) {
-      _loadAdMarkers(url, widget.movieId, _effectiveServerName);
-    }
+    // Ad markers disabled
+    // if (url.isNotEmpty && useHls) {
+    //   _loadAdMarkers(url, widget.movieId, _effectiveServerName);
+    // }
 
     if (useHls) {
       if (!_tryUsePrefetched(ep)) {
