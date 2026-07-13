@@ -342,53 +342,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   // ── Ad segment detection & auto-skip ──────────────────
 
   /// Fetch ad markers from API for current movie + server (with retry)
-  Future<void> _loadAdMarkers(String m3u8Url, int movieId, String serverName) async {
-    if (movieId <= 0 || m3u8Url.isEmpty) return;
-    for (int attempt = 0; attempt < 2; attempt++) {
-      try {
-        final res = await ApiClient.get('/ad_markers.php', params: {
-          'url': m3u8Url,
-          'movie_id': '$movieId',
-          'server_name': serverName,
-        });
-        final data = res.data;
-        if (data is Map<String, dynamic> && data['success'] == true) {
-          final ads = data['ads'] as List<dynamic>? ?? [];
-          if (mounted && ads.isNotEmpty) {
-            setState(() { _adMarkers = ads.cast<Map<String, dynamic>>(); });
-            return;
-          }
-        }
-      } catch (_) {}
-      if (attempt == 0) await Future.delayed(const Duration(seconds: 2));
-    }
-  }
-
-  /// Detect ad: position jumped backward > 20s, skip forward 30s
-  void _checkAdSkip(Duration position) {
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastSeekByUser < 3000) return;
-    if (_isSeeking || _isDragging || _adSkipCooldown) return;
-    final pos = position.inSeconds;
-
-    // Position jumped from >30s to <5s → ad stream playing
-    if (_lastPositionBeforeAd > 30 && pos < 5 && (_lastPositionBeforeAd - pos) > 25) {
-      _adSkipCooldown = true;
-      // Skip forward from where we were
-      final seekTo = _lastPositionBeforeAd + 30;
-      _seekTargetTime = seekTo;
-      _player!.seek(Duration(seconds: seekTo));
-      if (mounted) setState(() {});
-      Future.delayed(const Duration(milliseconds: _adSkipCooldownMs), () {
-        if (mounted) _adSkipCooldown = false;
-      });
-    }
-
-    _lastPositionBeforeAd = pos;
-  }
-
-  /// Report missed ad to crowdsource DB
-  void _reportMissedAd(int startTime) {}
+  // Ad markers — proxy handles blocking, no client-side skip needed
 
   /// Build subtitle zone — overlay trên video
   /// Positioned ở TRÊN cùng để tránh đè hardsub (thường ở dưới)
@@ -1102,27 +1056,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   bool _subtitleEnabled = false;
   String? _currentSubtitleUrl;
 
-  // ── Ad segment detection & auto-skip ──
+  // ── Ad segment (proxy handles blocking) ──
   List<Map<String, dynamic>> _adMarkers = [];
-  bool _adSkipCooldown = false;
-  static const int _adSkipCooldownMs = 3000;
-  int _lastPositionBeforeAd = 0;
-
-  /// Show ad duration when inside ad zone
-  Duration get _effectiveDur {
-    if (_adMarkers.isEmpty) return _currentDur;
-    final pos = _currentPosition;
-    if (pos < 10 && _lastPositionBeforeAd > 30) {
-      for (final ad in _adMarkers) {
-        final adStart = (ad['start_time'] as num?)?.toInt() ?? 0;
-        final adDur = (ad['duration'] as num?)?.toInt() ?? 0;
-        if (_lastPositionBeforeAd >= adStart && _lastPositionBeforeAd <= adStart + adDur + 10) {
-          return Duration(seconds: adDur);
-        }
-      }
-    }
-    return _currentDur;
-  }
 
   // ── Brightness lock ──
   double _originalBrightness = 1.0;
