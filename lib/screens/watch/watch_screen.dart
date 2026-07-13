@@ -344,6 +344,28 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   /// Fetch ad markers from API for current movie + server (with retry)
   // Ad markers — proxy handles blocking, no client-side skip needed
 
+  /// Detect ad: position jumped backward > 20s, skip forward 30s
+  void _checkAdSkip(Duration position) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastSeekByUser < 5000) return; // 5s cooldown after user seek
+    if (_isSeeking || _isDragging || _adSkipCooldown) return;
+    final pos = position.inSeconds;
+
+    // Position jumped from >30s to <5s → ad stream playing
+    if (_lastPositionBeforeAd > 30 && pos < 5 && (_lastPositionBeforeAd - pos) > 25) {
+      _adSkipCooldown = true;
+      final seekTo = _lastPositionBeforeAd + 30;
+      _seekTargetTime = seekTo;
+      _player!.seek(Duration(seconds: seekTo));
+      if (mounted) setState(() {});
+      Future.delayed(const Duration(milliseconds: _adSkipCooldownMs), () {
+        if (mounted) _adSkipCooldown = false;
+      });
+    }
+
+    _lastPositionBeforeAd = pos;
+  }
+
   /// Build subtitle zone — overlay trên video
   /// Positioned ở TRÊN cùng để tránh đè hardsub (thường ở dưới)
   Widget _buildSubtitleZone() {
@@ -1056,8 +1078,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   bool _subtitleEnabled = false;
   String? _currentSubtitleUrl;
 
-  // ── Ad segment (proxy handles blocking) ──
+  // ── Ad segment (client-side skip, proxy is CORS-only) ──
   List<Map<String, dynamic>> _adMarkers = [];
+  bool _adSkipCooldown = false;
+  static const int _adSkipCooldownMs = 5000; // 5s cooldown
+  int _lastPositionBeforeAd = 0;
 
   // ── Brightness lock ──
   double _originalBrightness = 1.0;
@@ -1110,6 +1135,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
       _currentPos = pos;
       _currentPosition = pos.inSeconds;
+
+      // ★ Auto-skip ad segments (skip if user recently sought)
+      if (_playerMode == _PlayerMode.hls) {
+        _checkAdSkip(pos);
+      }
 
       // ★ Subtitle cần update nhanh (mỗi frame) để ẩn đúng lúc khi cue kết thúc
       if (_subtitleEnabled && _subtitles.isNotEmpty) {
