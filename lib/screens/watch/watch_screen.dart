@@ -1278,6 +1278,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     String playUrl = url;
 
+    // ★ Proxy m3u8 — strip ad segments (mobile only)
+    if (!kIsWeb && url.contains('.m3u8')) {
+      playUrl = AppConfig.proxyM3u8Url(url);
+    }
+
     final headers = <String, String>{};
     if (!kIsWeb) {
       headers['Referer'] = AppConfig.baseUrl;
