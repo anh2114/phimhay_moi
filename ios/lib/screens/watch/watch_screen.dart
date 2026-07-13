@@ -1176,11 +1176,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       _currentPos = pos;
       _currentPosition = pos.inSeconds;
 
-      // ★ Auto-skip ad segments (skip if user is seeking)
-      if (_adMarkers.isNotEmpty && _playerMode == _PlayerMode.hls) {
-        _checkAdSkip(pos);
-      }
-
       // ★ Subtitle cần update nhanh (mỗi frame) để ẩn đúng lúc khi cue kết thúc
       if (_subtitleEnabled && _subtitles.isNotEmpty) {
         setState(() {});
@@ -1282,11 +1277,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _playerReady = false;
 
     String playUrl = url;
-
-    // ★ Proxy m3u8 — strip ad segments + rewrite URLs (mobile only)
-    if (!kIsWeb && url.contains('.m3u8')) {
-      playUrl = AppConfig.proxyM3u8Url(url);
-    }
 
     final headers = <String, String>{};
     if (!kIsWeb) {
