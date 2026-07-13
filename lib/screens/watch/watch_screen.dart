@@ -366,7 +366,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   /// Check if current position is inside an ad zone, seek past it
   void _checkAdSkip(Duration position) {
-    // ★ SKIP if user is seeking/dragging — don't interfere with manual seek
+    // ★ Block ad skip if user recently sought (3s cooldown after seek)
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastSeekByUser < 3000) return;
     if (_isSeeking || _isDragging) return;
     if (_adMarkers.isEmpty || _adSkipCooldown) return;
     final pos = position.inSeconds;
