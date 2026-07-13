@@ -2885,7 +2885,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 ),
               ),
               Text(
-                _formatDuration(_effectiveDur),
+                _formatDuration(_currentDur),
                 style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 12, fontFamily: 'monospace', fontWeight: FontWeight.w500),
               ),
             ],
@@ -2969,7 +2969,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                     ),
                   ),
                 ),
-                Text(_formatDuration(_effectiveDur), style: TextStyle(color: Colors.white38, fontSize: 10, fontFamily: 'monospace')),
+                Text(_formatDuration(_currentDur), style: TextStyle(color: Colors.white38, fontSize: 10, fontFamily: 'monospace')),
               ],
             ),
             // Controls row
@@ -3120,7 +3120,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 ),
                 // Total duration
                 Text(
-                  _formatDuration(_effectiveDur),
+                  _formatDuration(_currentDur),
                   style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11, fontFamily: 'monospace', fontWeight: FontWeight.w500),
                 ),
               ],
