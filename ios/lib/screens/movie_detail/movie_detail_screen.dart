@@ -1743,9 +1743,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             ),
           ),
         ),
-        // ═══ 2 Action Buttons — ngay dưới banner, không gap ═══
+        // ═══ 2 Action Buttons — cách banner 3px ═══
         Positioned(
-          top: 370, left: 0, right: 0,
+          top: 383, left: 0, right: 0,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
             child: Row(
@@ -1803,11 +1803,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             ),
           ),
         ),
-        // ═══ Title + Meta chips — right after buttons ═══
+        // ═══ Title + Meta chips — cách buttons 3px ═══
         Positioned(
-          top: 440, left: 0, right: 0,
+          top: 443, left: 0, right: 0,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+            padding: const EdgeInsets.fromLTRB(20, 3, 20, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
