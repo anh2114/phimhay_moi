@@ -1725,7 +1725,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         Positioned(
           top: 0, left: 0, right: 0, height: 380,
           child: CachedNetworkImage(
-            imageUrl: backdropUrl, fit: BoxFit.fitWidth, width: double.infinity,
+            imageUrl: backdropUrl, fit: BoxFit.cover, alignment: Alignment.topCenter,
             cacheManager: AppImageCacheManager(), fadeInDuration: Duration.zero,
             placeholder: (_, __) => Container(color: AppTheme.bgCard),
             errorWidget: (_, __, ___) => Container(color: AppTheme.bgCard),
@@ -1743,9 +1743,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             ),
           ),
         ),
-        // ═══ 2 Action Buttons — cách banner 3px ═══
+        // ═══ 2 Action Buttons — ngay mép dưới banner ═══
         Positioned(
-          top: 383, left: 0, right: 0,
+          top: 380, left: 0, right: 0,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
             child: Row(
