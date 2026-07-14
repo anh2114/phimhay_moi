@@ -621,9 +621,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                 parent: BouncingScrollPhysics(),
               ),
               slivers: [
-                // Spacer cho header (56px) + statusBar
+                // Small spacer for status bar only
                 SliverToBoxAdapter(
-                  child: SizedBox(height: statusBarHeight + 56),
+                  child: SizedBox(height: statusBarHeight),
                 ),
                 // Banner
                 if (!_isLoading && _error == null && _movieData != null)
@@ -1725,7 +1725,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        // ═══ Hero Backdrop — posterUrl (landscape), full width ═══
+        // ═══ Hero Backdrop — posterUrl (landscape), full width, no crop ═══
         Positioned(
           top: 0, left: 0, right: 0, height: 380,
           child: CachedNetworkImage(
@@ -1733,18 +1733,6 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             cacheManager: AppImageCacheManager(), fadeInDuration: Duration.zero,
             placeholder: (_, __) => Container(color: AppTheme.bgCard),
             errorWidget: (_, __, ___) => Container(color: AppTheme.bgCard),
-          ),
-        ),
-        // Gradient fade to background
-        Positioned(
-          top: 280, left: 0, right: 0, height: 100,
-          child: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                colors: [Colors.transparent, Color(0xF70D0F14)],
-              ),
-            ),
           ),
         ),
         // ═══ Close button (X) ═══
