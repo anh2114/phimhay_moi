@@ -122,19 +122,22 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
     super.initState();
     _fetchFilterData();
     _loadHistory();
+    // ★ FIX: Tab mode → hiện lịch sử NGAY LẬP TỨC khi mở tab (giống YouTube)
+    // Không cần chờ user tap vào search field
+    if (widget.isTab) {
+      _showHistory = true;
+    }
     _searchFocus.addListener(() {
       if (mounted && _searchFocus.hasFocus) {
-        if (_searchCtrl.text.trim().isEmpty) {
-          setState(() { _showHistory = true; _results = []; _hasSearched = false; });
-        } else {
-          // Tap vào search field khi có text → xóa results, hiện history
-          setState(() { _showHistory = true; _results = []; _hasSearched = false; });
-        }
+        // Bất kể có text hay không → đều hiện history
+        setState(() { _showHistory = true; _results = []; _hasSearched = false; });
       }
     });
-    if (!widget.isTab) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _searchFocus.requestFocus());
-    }
+    // Tab: auto-focus search field để keyboard hiện ra ngay (giống YouTube)
+    // Non-tab: cũng focus
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _searchFocus.requestFocus();
+    });
   }
 
   @override
