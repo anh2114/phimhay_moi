@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -65,10 +65,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   int _selectedServer = 0;
   final TextEditingController _commentController = TextEditingController();
   bool _isPostingComment = false;
-  int _episodePage = 1; // Trang tÃ¡ÂºÂ­p hiÃ¡Â»â€¡n tÃ¡ÂºÂ¡i (100 tÃ¡ÂºÂ­p/trang)
+  int _episodePage = 1; // Trang tập hiện tại (100 tập/trang)
   static const int _episodesPerPage = 100;
   bool _showInfoPanel = false;
-  int _commentTab = 0; // 0: BÃƒÂ¬nh luÃ¡ÂºÂ­n, 1: Ã„ÂÃƒÂ¡nh giÃƒÂ¡
+  int _commentTab = 0; // 0: Bình luận, 1: Đánh giá
   bool _isSpoiler = false;
   List<dynamic> _ratings = [];
   double _avgRating = 0;
@@ -80,10 +80,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     return Provider.of<AuthProvider>(context, listen: false).user ?? {};
   }
 
-  /// ChÃ¡Â»Ân server mÃ¡ÂºÂ·c Ã„â€˜Ã¡Â»â€¹nh thÃƒÂ´ng minh:
-  /// 1. Server cÃƒÂ³ "4K" trong tÃƒÂªn + tÃ¡ÂºÂ­p mÃ¡Â»â€ºi nhÃ¡ÂºÂ¥t
-  /// 2. Server cÃƒÂ³ tÃ¡ÂºÂ­p mÃ¡Â»â€ºi nhÃ¡ÂºÂ¥t
-  /// 3. Server Ã„â€˜Ã¡ÂºÂ§u tiÃƒÂªn
+  /// Chọn server mặc định thông minh:
+  /// 1. Server có "4K" trong tên + tập mới nhất
+  /// 2. Server có tập mới nhất
+  /// 3. Server đầu tiên
   static int pickBestServer(List<dynamic> servers) {
     if (servers.isEmpty) return 0;
     int bestIdx = 0;
@@ -104,7 +104,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     return best4kIdx >= 0 ? best4kIdx : bestIdx;
   }
 
-  // Watch progress Ã¢â‚¬â€ "Xem tiÃ¡ÂºÂ¿p"
+  // Watch progress — "Xem tiếp"
   final MovieService _movieService = MovieService();
   Map<String, dynamic>? _watchProgress; // {episode_id, ep_slug, server_idx, position, duration, ep_name}
 
@@ -177,7 +177,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
 
     if (trailerUrl == null || trailerUrl.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Phim nÃƒÂ y chÃ†Â°a cÃƒÂ³ trailer'), backgroundColor: Colors.orange, duration: Duration(seconds: 2)),
+        const SnackBar(content: Text('Phim này chưa có trailer'), backgroundColor: Colors.orange, duration: Duration(seconds: 2)),
       );
       return;
     }
@@ -215,7 +215,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     _fetchMovieDetail();
     _fetchComments();
 
-    // LÃ†Â°u movie vÃƒÂ o history
+    // Lưu movie vào history
     if (widget.movie != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         context.read<WatchHistoryProvider>().setLastViewed(widget.movie!);
@@ -264,12 +264,12 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       if (data['movie'] != null) {
         _movieData = data['movie'] as Map<String, dynamic>;
 
-        // servers + episodes nÃ¡ÂºÂ±m TRONG movie object (theo movie_detail.php)
+        // servers + episodes nằm TRONG movie object (theo movie_detail.php)
         final movieObj = _movieData!;
         final rawServers = movieObj['servers'] as List<dynamic>? ?? [];
         final rawEpisodes = movieObj['episodes'] as List<dynamic>? ?? [];
 
-        // NÃ¡ÂºÂ¿u servers trÃ¡Â»â€˜ng, thÃ¡Â»Â­ lÃ¡ÂºÂ¥y tÃ¡Â»Â« top-level (backward compat)
+        // Nếu servers trống, thử lấy từ top-level (backward compat)
         _servers  = rawServers.isNotEmpty  ? rawServers  : (data['servers']  as List<dynamic>? ?? []);
         _episodes = rawEpisodes.isNotEmpty ? rawEpisodes : (data['episodes'] as List<dynamic>? ?? []);
       } else {
@@ -277,7 +277,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         _episodes = data['episodes'] as List<dynamic>? ?? [];
       }
 
-      // ChÃ¡Â»Ân server mÃ¡ÂºÂ·c Ã„â€˜Ã¡Â»â€¹nh thÃƒÂ´ng minh (4K + tÃ¡ÂºÂ­p mÃ¡Â»â€ºi nhÃ¡ÂºÂ¥t)
+      // Chọn server mặc định thông minh (4K + tập mới nhất)
       if (_servers.isNotEmpty) {
         _selectedServer = pickBestServer(_servers);
       }
@@ -296,12 +296,12 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       // Fetch gallery images from API
       _fetchGallery(slug);
 
-      // Fetch actors data Ã¢â‚¬â€ SAU KHI API load thÃƒÂ nh cÃƒÂ´ng
+      // Fetch actors data — SAU KHI API load thành công
       // ignore: avoid_print
       _fetchActors();
     } on DioException catch (e) {
       if (_movieData == null) {
-        _error = 'KhÃƒÂ´ng thÃ¡Â»Æ’ tÃ¡ÂºÂ£i thÃƒÂ´ng tin phim';
+        _error = 'Không thể tải thông tin phim';
       } else {
         _error = null;
       }
@@ -309,14 +309,14 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     }
     if (mounted) setState(() {});
 
-    // KhÃƒÂ´ng check server health Ã¢â‚¬â€ tÃ¡ÂºÂ¥t cÃ¡ÂºÂ£ nguÃ¡Â»â€œn Ã„â€˜Ã¡Â»Âu sÃ¡Â»â€˜ng (mobile HLS chÃ¡ÂºÂ¡y Ã„â€˜Ã†Â°Ã¡Â»Â£c hÃ¡ÂºÂ¿t)
+    // Không check server health — tất cả nguồn đều sống (mobile HLS chạy được hết)
 
-    // Fetch watch progress Ã¢â‚¬â€ "Xem tiÃ¡ÂºÂ¿p"
+    // Fetch watch progress — "Xem tiếp"
     _fetchWatchProgress(movieId);
     _fetchRatings(movieId);
   }
 
-  /// Fetch health status tÃ¡Â»Â« movie_episodes.php Ã¢â‚¬â€ merge vÃƒÂ o _servers theo index
+  /// Fetch health status từ movie_episodes.php — merge vào _servers theo index
   Future<void> _fetchServerHealth(int movieId) async {
     if (movieId <= 0) return;
     try {
@@ -332,7 +332,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         setState(() {});
       }
     } catch (_) {
-      // ignore Ã¢â‚¬â€ health lÃƒÂ  bonus, khÃƒÂ´ng Ã¡ÂºÂ£nh hÃ†Â°Ã¡Â»Å¸ng chÃ¡Â»Â©c nÃ„Æ’ng chÃƒÂ­nh
+      // ignore — health là bonus, không ảnh hưởng chức năng chính
     }
   }
 
@@ -343,17 +343,17 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     );
   }
 
-  /// TÃ¡ÂºÂ¡o room xem chung trÃ¡Â»Â±c tiÃ¡ÂºÂ¿p tÃ¡Â»Â« phim chi tiÃ¡ÂºÂ¿t
+  /// Tạo room xem chung trực tiếp từ phim chi tiết
   Future<void> _createWatchParty() async {
     final movieId = widget.movieId > 0 ? widget.movieId : (widget.movie?.id ?? (_movieData?['id'] as int? ?? 0));
     if (movieId <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y phim'), backgroundColor: Colors.redAccent),
+        const SnackBar(content: Text('Không tìm thấy phim'), backgroundColor: Colors.redAccent),
       );
       return;
     }
 
-    // LÃ¡ÂºÂ¥y episode Ã„â€˜Ã¡ÂºÂ§u tiÃƒÂªn (nÃ¡ÂºÂ¿u cÃƒÂ³)
+    // Lấy episode đầu tiên (nếu có)
     dynamic firstEp;
     if (_servers.isNotEmpty) {
       final eps = _servers[_selectedServer]['episodes'] as List<dynamic>? ?? [];
@@ -384,7 +384,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         if (mounted) {
           Navigator.push(context, MaterialPageRoute(
             builder: (_) => Scaffold(
-              appBar: AppBar(backgroundColor: AppTheme.bg, title: const Text('PhÃƒÂ²ng xem chung', style: TextStyle(fontSize: 16)), elevation: 0),
+              appBar: AppBar(backgroundColor: AppTheme.bg, title: const Text('Phòng xem chung', style: TextStyle(fontSize: 16)), elevation: 0),
               body: InAppWebView(
                 initialUrlRequest: URLRequest(url: WebUri('${AppConfig.baseUrl}/phong-xem.php?code=$roomCode')),
                 initialSettings: InAppWebViewSettings(
@@ -409,7 +409,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(data['error'] ?? 'KhÃƒÂ´ng thÃ¡Â»Æ’ tÃ¡ÂºÂ¡o phÃƒÂ²ng'), backgroundColor: Colors.redAccent),
+            SnackBar(content: Text(data['error'] ?? 'Không thể tạo phòng'), backgroundColor: Colors.redAccent),
           );
         }
       }
@@ -417,13 +417,13 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('LÃ¡Â»â€”i kÃ¡ÂºÂ¿t nÃ¡Â»â€˜i'), backgroundColor: Colors.redAccent),
+          const SnackBar(content: Text('Lỗi kết nối'), backgroundColor: Colors.redAccent),
         );
       }
     }
   }
 
-  /// Fetch watch progress tÃ¡Â»Â« server Ã¢â‚¬â€ hiÃ¡Â»Æ’n thÃ¡Â»â€¹ banner "TiÃ¡ÂºÂ¿p tÃ¡Â»Â¥c xem"
+  /// Fetch watch progress từ server — hiển thị banner "Tiếp tục xem"
   Future<void> _fetchWatchProgress(int movieId) async {
     if (movieId <= 0) return;
     try {
@@ -431,17 +431,17 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       if (progress != null && mounted) {
         final epSlug = (progress['ep_slug'] as String?) ?? '';
         final epId = progress['episode_id'];
-        // HiÃ¡Â»Æ’n thÃ¡Â»â€¹ nÃ¡ÂºÂ¿u cÃƒÂ³ episode (id hoÃ¡ÂºÂ·c slug) Ã¢â‚¬â€ khÃƒÂ´ng cÃ¡ÂºÂ§n pos >= 15
+        // Hiển thị nếu có episode (id hoặc slug) — không cần pos >= 15
         if (epSlug.isNotEmpty || (epId != null && epId > 0)) {
           setState(() => _watchProgress = progress);
         }
       }
     } catch (_) {
-      // Ignore Ã¢â‚¬â€ progress lÃƒÂ  bonus, khÃƒÂ´ng Ã¡ÂºÂ£nh hÃ†Â°Ã¡Â»Å¸ng chÃƒÂ­nh
+      // Ignore — progress là bonus, không ảnh hưởng chính
     }
   }
 
-  /// Format giÃƒÂ¢y Ã¢â€ â€™ chuÃ¡Â»â€”i thÃ¡Â»Âi gian (giÃ¡Â»â€˜ng web formatWatchPosition)
+  /// Format giây → chuỗi thời gian (giống web formatWatchPosition)
   String _formatPosition(int seconds) {
     if (seconds < 1) return '00:00';
     final h = seconds ~/ 3600;
@@ -451,11 +451,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
-  /// Banner "TiÃ¡ÂºÂ¿p tÃ¡Â»Â¥c xem" Ã¢â‚¬â€ giÃ¡Â»â€˜ng web phim.php watch-resume-banner
+  /// Banner "Tiếp tục xem" — giống web phim.php watch-resume-banner
   Widget _buildResumeBanner(Movie movie) {
     final progress = _watchProgress!;
     final rawEpName = (progress['ep_name'] as String?) ?? '';
-    final epName = rawEpName.replaceAll(RegExp(r'^[Tt]Ã¡ÂºÂ­?p?\s*', caseSensitive: false), '').trim();
+    final epName = rawEpName.replaceAll(RegExp(r'^[Tt]ậ?p?\s*', caseSensitive: false), '').trim();
     final position = (progress['position'] as int?) ?? 0;
     final duration = (progress['duration'] as int?) ?? 0;
     final serverIdx = (progress['server_idx'] as int?) ?? 0;
@@ -502,12 +502,12 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'TiÃ¡ÂºÂ¿p tÃ¡Â»Â¥c xem',
+                        'Tiếp tục xem',
                         style: TextStyle(color: Color(0xFFF5921E), fontSize: 14, fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        '${epName.isNotEmpty ? 'TÃ¡ÂºÂ­p $epName' : 'Phim'}  Ã¢â‚¬Â¢  $posStr / $durStr',
+                        '${epName.isNotEmpty ? 'Tập $epName' : 'Phim'}  •  $posStr / $durStr',
                         style: TextStyle(color: AppTheme.textSub, fontSize: 12),
                       ),
                     ],
@@ -522,7 +522,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: const Text(
-                    'Xem tiÃ¡ÂºÂ¿p',
+                    'Xem tiếp',
                     style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700),
                   ),
                 ),
@@ -534,7 +534,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     );
   }
 
-  /// NhÃ¡ÂºÂ£y Ã„â€˜Ã¡ÂºÂ¿n Ã„â€˜ÃƒÂºng tÃ¡ÂºÂ­p + server + vÃ¡Â»â€¹ trÃƒÂ­ khi nhÃ¡ÂºÂ¥n "Xem tiÃ¡ÂºÂ¿p"
+  /// Nhảy đến đúng tập + server + vị trí khi nhấn "Xem tiếp"
   void _resumeWatch(int movieId, int savedServerIdx) {
     final progress = _watchProgress!;
     final savedEpId = progress['episode_id'];
@@ -542,10 +542,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     final slug = widget.movie?.slug ?? (_movieData?['slug'] ?? '');
     final title = widget.movie?.name ?? (_movieData?['name'] ?? '');
 
-    // TÃƒÂ¬m episode tÃ¡Â»Â« danh sÃƒÂ¡ch Ã„â€˜ÃƒÂ£ fetch
+    // Tìm episode từ danh sách đã fetch
     dynamic targetEp;
     if (_servers.isNotEmpty) {
-      // Ã†Â¯u tiÃƒÂªn server Ã„â€˜ÃƒÂ£ lÃ†Â°u
+      // Ưu tiên server đã lưu
       final serverIdx = savedServerIdx < _servers.length ? savedServerIdx : 0;
       final eps = _servers[serverIdx]['episodes'] as List<dynamic>? ?? [];
       for (final ep in eps) {
@@ -556,7 +556,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
           break;
         }
       }
-      // Fallback: tÃƒÂ¬m Ã¡Â»Å¸ tÃ¡ÂºÂ¥t cÃ¡ÂºÂ£ servers
+      // Fallback: tìm ở tất cả servers
       if (targetEp == null) {
         for (final server in _servers) {
           final eps = server['episodes'] as List<dynamic>? ?? [];
@@ -573,7 +573,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       }
     }
 
-    // Fallback cuÃ¡Â»â€˜i: dÃƒÂ¹ng URL trang web
+    // Fallback cuối: dùng URL trang web
     String url = '';
     if (targetEp != null) {
       final embed = (targetEp['link_embed'] ?? '').toString().trim();
@@ -612,7 +612,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       backgroundColor: AppTheme.bg,
       body: Stack(
         children: [
-          // NÃ¡Â»â„¢i dung chÃƒÂ­nh Ã¢â‚¬â€ CustomScrollView chÃ¡Â»Â©a banner + content
+          // Nội dung chính — CustomScrollView chứa banner + content
           RefreshIndicator(
             onRefresh: _fetchMovieDetail,
             color: AppTheme.accent,
@@ -621,7 +621,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                 parent: BouncingScrollPhysics(),
               ),
               slivers: [
-                // Banner â€” starts at very top, no spacer
+                // Banner
                 if (!_isLoading && _error == null && _movieData != null)
                   SliverToBoxAdapter(
                     child: _buildHeader(Movie.fromJson(_movieData!)),
@@ -640,9 +640,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
               ],
             ),
           ),
-          // Header cÃ¡Â»â€˜ Ã„â€˜Ã¡Â»â€¹nh
-          // Header hidden on movie detail page
-          // BottomNav vÃ¡Â»â€ºi spring animation
+          // Header ẩn trên trang movie detail
+          // BottomNav với spring animation
           Positioned(
             bottom: 0, left: 0, right: 0,
             child: Builder(
@@ -710,7 +709,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                   const Icon(Icons.error_outline, size: 56, color: AppTheme.textMuted),
                   const SizedBox(height: 16),
                   const Text(
-                    'KhÃƒÂ´ng thÃ¡Â»Æ’ tÃ¡ÂºÂ£i thÃƒÂ´ng tin phim',
+                    'Không thể tải thông tin phim',
                     style: TextStyle(color: AppTheme.textSub, fontSize: 15),
                   ),
                   const SizedBox(height: 24),
@@ -723,7 +722,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: const Text(
-                        'ThÃ¡Â»Â­ lÃ¡ÂºÂ¡i',
+                        'Thử lại',
                         style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
                       ),
                     ),
@@ -742,36 +741,62 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     final movie = Movie.fromJson(_movieData!);
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 8),
-        // â•â•â• Synopsis â•â•â•
-        if ((movie.description ?? '').isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(
-                    movie.description!.replaceAll('&nbsp;', ' ').replaceAll(RegExp(r'<[^>]*>'), '').trim(),
-                    maxLines: 3, overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: AppTheme.textSub, fontSize: 14, height: 1.6),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: () => _showInfoBottomSheet(movie),
-                  child: Text('Chi tiáº¿t', style: TextStyle(color: AppTheme.textSub, fontSize: 13, fontWeight: FontWeight.w600)),
-                ),
-              ],
+        const SizedBox(height: 12),
+        // Info panel (expandable)
+        _buildInfoPanel(movie),
+
+        // Has episodes?
+        Builder(builder: (ctx) {
+          bool hasEpisodes = false;
+          if (_servers.isNotEmpty) {
+            final eps = _servers[_selectedServer]['episodes'] as List<dynamic>? ?? [];
+            hasEpisodes = eps.isNotEmpty;
+          }
+          if (!hasEpisodes) hasEpisodes = _episodes.isNotEmpty;
+
+          final isTrailer = !_hasActiveEpisodes;
+
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+            child: _actionBtn(
+              label: isTrailer ? 'Xem Trailer' : 'Xem ngay',
+              icon: Icons.play_arrow_rounded,
+              bgColor: null,
+              isGold: true,
+              textColor: const Color(0xFF1A1100),
+              onTap: () {
+                if (isTrailer) {
+                  _playTrailer();
+                  return;
+                }
+                dynamic firstEp;
+                if (_servers.isNotEmpty) {
+                  final eps = _servers[_selectedServer]['episodes'] as List<dynamic>? ?? [];
+                  if (eps.isNotEmpty) firstEp = eps[0];
+                }
+                if (firstEp == null && _episodes.isNotEmpty) {
+                  firstEp = _episodes[0];
+                }
+                if (firstEp != null) {
+                  _tapEpisode(firstEp, 0);
+                }
+              },
             ),
+          );
+        }),
+
+        // Resume banner (below Xem ngay)
+        if (_watchProgress != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: _buildResumeBanner(movie),
           ),
-        const SizedBox(height: 20),
-        // â•â•â• 5 Action Buttons â•â•â•
+        const SizedBox(height: 12),
+        // Action row — circular icons
         _buildActionRow(movie),
         const SizedBox(height: 16),
-        // â•â•â• Tab Bar â•â•â•
+        // Tabs
         Container(
           color: AppTheme.bg,
           child: TabBar(
@@ -782,82 +807,22 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             indicatorWeight: 3,
             labelColor: AppTheme.gold,
             unselectedLabelColor: AppTheme.textSub,
-            labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-            unselectedLabelStyle: const TextStyle(fontSize: 14),
+            labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            unselectedLabelStyle: const TextStyle(fontSize: 13),
+            dividerColor: AppTheme.border,
             tabs: const [
-              Tab(text: 'Táº­p phim'),
-              Tab(text: 'Diá»…n viÃªn'),
-              Tab(text: 'Äá» xuáº¥t'),
+              Tab(text: 'Tập phim'),
+              Tab(text: 'Phòng trưng bày'),
+              Tab(text: 'Diễn viên'),
+              Tab(text: 'Đề xuất'),
             ],
           ),
         ),
-        // â•â•â• Tab Content â•â•â•
+        // Tab content
         _buildTabContent(_tabController.index, movie),
+        // Comments + Rating section (below tabs)
+        _buildCommentsSection(movie),
       ],
-    );
-  }
-
-  // â•â•â• Info Panel (bottom sheet) â•â•â•
-  void _showInfoBottomSheet(Movie movie) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppTheme.bgCard,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      isScrollControlled: true,
-      builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.7, maxChildSize: 0.9, minChildSize: 0.4,
-        expand: false,
-        builder: (ctx, scrollController) => SingleChildScrollView(
-          controller: scrollController,
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)))),
-              const SizedBox(height: 20),
-              const Text('ThÃ´ng tin phim', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 20),
-              Text('Giá»›i thiá»‡u:', style: TextStyle(color: AppTheme.textMuted, fontSize: 13, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 10),
-              Text(
-                (movie.description ?? '').replaceAll('&nbsp;', ' ').replaceAll(RegExp(r'<[^>]*>'), '').trim(),
-                style: TextStyle(color: AppTheme.textSub, fontSize: 14, height: 1.7),
-              ),
-              const SizedBox(height: 24),
-              _infoRow('Quá»‘c gia:', _countriesText().isNotEmpty ? _countriesText() : 'Äang cáº­p nháº­t'),
-              _infoRow('Äáº¡o diá»…n:', movie.director ?? 'Äang cáº­p nháº­t'),
-              _infoRow('Sáº£n xuáº¥t:', 'Äang cáº­p nháº­t'),
-              _infoRow('Thá»i lÆ°á»£ng:', movie.time ?? '? phÃºt/táº­p'),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: AppTheme.border),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  child: const Text('ÄÃ³ng', style: TextStyle(color: Colors.white70, fontSize: 15, fontWeight: FontWeight.w600)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _infoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(width: 100, child: Text(label, style: TextStyle(color: AppTheme.textMuted, fontSize: 14, fontWeight: FontWeight.w600))),
-          Expanded(child: Text(value, style: TextStyle(color: AppTheme.textSub, fontSize: 14))),
-        ],
-      ),
     );
   }
 
@@ -871,14 +836,14 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     }
   }
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬ Rating methods Ã¢â€â‚¬Ã¢â€â‚¬
-  final Map<int, String> _ratingLabels = {10: 'TuyÃ¡Â»â€¡t vÃ¡Â»Âi', 8: 'Phim hay', 6: 'KhÃƒÂ¡ Ã¡Â»â€¢n', 4: 'Phim chÃƒÂ¡n', 2: 'Ã„ÂÃ¡Â»â€œ tÃ¡Â»â€¡'};
-  final Map<int, String> _ratingEmojis = {10: 'Ã°Å¸ËœÂ', 8: 'Ã°Å¸ËœËœ', 6: 'Ã°Å¸ËœÅ ', 4: 'Ã°Å¸ËœÂ¢', 2: 'Ã°Å¸Â¤Â®'};
+  // ── Rating methods ──
+  final Map<int, String> _ratingLabels = {10: 'Tuyệt vời', 8: 'Phim hay', 6: 'Khá ổn', 4: 'Phim chán', 2: 'Đồ tệ'};
+  final Map<int, String> _ratingEmojis = {10: '😍', 8: '😘', 6: '😊', 4: '😢', 2: '🤮'};
 
   void _showRatingDialog(Movie movie) {
     if (!_isLoggedIn) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lÃƒÂ²ng Ã„â€˜Ã„Æ’ng nhÃ¡ÂºÂ­p Ã„â€˜Ã¡Â»Æ’ Ã„â€˜ÃƒÂ¡nh giÃƒÂ¡'), backgroundColor: Colors.orange),
+        const SnackBar(content: Text('Vui lòng đăng nhập để đánh giá'), backgroundColor: Colors.orange),
       );
       return;
     }
@@ -893,9 +858,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Ã„ÂÃƒÂ¡nh giÃƒÂ¡ "${movie.name}"', style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.w700), textAlign: TextAlign.center),
+              Text('Đánh giá "${movie.name}"', style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.w700), textAlign: TextAlign.center),
               const SizedBox(height: 6),
-              Text('$_ratingCount lÃ†Â°Ã¡Â»Â£t Ã„â€˜ÃƒÂ¡nh giÃƒÂ¡', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+              Text('$_ratingCount lượt đánh giá', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -926,7 +891,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                     Navigator.pop(ctx);
                     await _submitRating(_currentMovieId, selectedScore);
                   },
-                  child: const Text('GÃ¡Â»Â­i Ã„â€˜ÃƒÂ¡nh giÃƒÂ¡', style: TextStyle(fontWeight: FontWeight.w700)),
+                  child: const Text('Gửi đánh giá', style: TextStyle(fontWeight: FontWeight.w700)),
                 ),
               ),
             ],
@@ -948,20 +913,20 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Ã„ÂÃƒÂ£ Ã„â€˜ÃƒÂ¡nh giÃƒÂ¡ ${_ratingEmojis[score]} ${_ratingLabels[score]}'), backgroundColor: const Color(0xFF2E7D32)),
+            SnackBar(content: Text('Đã đánh giá ${_ratingEmojis[score]} ${_ratingLabels[score]}'), backgroundColor: const Color(0xFF2E7D32)),
           );
         }
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(data['message'] ?? 'LÃ¡Â»â€”i Ã„â€˜ÃƒÂ¡nh giÃƒÂ¡'), backgroundColor: Colors.redAccent),
+            SnackBar(content: Text(data['message'] ?? 'Lỗi đánh giá'), backgroundColor: Colors.redAccent),
           );
         }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('LÃ¡Â»â€”i: $e'), backgroundColor: Colors.redAccent),
+          SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.redAccent),
         );
       }
     }
@@ -1022,59 +987,69 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     );
   }
 
-  // â•â•â• Action Row â€” 5 circular buttons â•â•â•
   Widget _buildActionRow(Movie movie) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          // Yêu thích
           _actionCircle(
             icon: Consumer<FavoriteProvider>(
               builder: (_, fav, __) => Icon(
                 fav.isFavorite(movie.id) ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                color: fav.isFavorite(movie.id) ? Colors.redAccent : AppTheme.textPrimary, size: 22,
+                color: fav.isFavorite(movie.id) ? Colors.redAccent : AppTheme.textPrimary,
+                size: 20,
               ),
             ),
-            label: 'YÃªu thÃ­ch',
+            label: 'Yêu thích',
             onTap: () => context.read<FavoriteProvider>().toggleFavorite(movie),
           ),
+          const SizedBox(width: 20),
+          // Thêm vào
           _actionCircle(
-            icon: const Icon(Icons.add_rounded, color: AppTheme.textPrimary, size: 22),
-            label: 'ThÃªm vÃ o', onTap: () {},
+            icon: const Icon(Icons.add_rounded, color: AppTheme.textPrimary, size: 20),
+            label: 'Thêm vào',
+            onTap: () {},
           ),
+          const SizedBox(width: 20),
+          // Chia sẻ
           _actionCircle(
-            icon: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                const Icon(Icons.mood_rounded, color: AppTheme.textPrimary, size: 22),
-                if (_avgRating > 0)
-                  Positioned(
-                    top: -6, right: -10,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                      decoration: BoxDecoration(color: AppTheme.gold, borderRadius: BorderRadius.circular(6)),
-                      child: Text(_avgRating.toStringAsFixed(1), style: const TextStyle(color: Color(0xFF1A1100), fontSize: 9, fontWeight: FontWeight.w800)),
-                    ),
-                  ),
-              ],
-            ),
-            label: 'ÄÃ¡nh giÃ¡', onTap: () => _showRatingDialog(movie),
-          ),
-          _actionCircle(
-            icon: const Icon(Icons.chat_bubble_outline_rounded, color: AppTheme.textPrimary, size: 22),
-            label: 'BÃ¬nh luáº­n', onTap: () {},
-          ),
-          _actionCircle(
-            icon: const Icon(Icons.send_rounded, color: AppTheme.textPrimary, size: 22),
-            label: 'Chia sáº»',
+            icon: const Icon(Icons.share_rounded, color: AppTheme.textPrimary, size: 20),
+            label: 'Chia sẻ',
             onTap: () {
               final slug = movie.slug ?? (_movieData?['slug'] ?? '');
-              Clipboard.setData(ClipboardData(text: 'https://xiaofilm.online/phim/$slug'));
+              final url = 'https://xiaofilm.online/phim/$slug';
+              Clipboard.setData(ClipboardData(text: url));
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('ÄÃ£ copy link phim'), backgroundColor: Color(0xFF2E7D32), duration: Duration(seconds: 2)),
+                const SnackBar(content: Text('Đã copy link phim'), backgroundColor: Color(0xFF2E7D32), duration: Duration(seconds: 2)),
               );
             },
+          ),
+          const SizedBox(width: 20),
+          // Movie rating badge (from movie_ratings, not TMDB)
+          GestureDetector(
+            onTap: () => _showRatingDialog(movie),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF3D5BD6),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.star_rounded, color: Colors.white, size: 16),
+                  const SizedBox(width: 4),
+                  Text(
+                    _avgRating > 0 ? _avgRating.toStringAsFixed(1) : '--',
+                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(width: 4),
+                  Text('Đánh giá', style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -1086,9 +1061,17 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       onTap: onTap,
       child: Column(
         children: [
-          SizedBox(width: 44, height: 44, child: Center(child: icon)),
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: AppTheme.border),
+            ),
+            child: Center(child: icon),
+          ),
           const SizedBox(height: 4),
-          Text(label, style: TextStyle(color: AppTheme.textSub, fontSize: 11)),
+          Text(label, style: const TextStyle(color: AppTheme.textMuted, fontSize: 10)),
         ],
       ),
     );
@@ -1102,7 +1085,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
           children: [
             Icon(Icons.photo_library_outlined, size: 56, color: AppTheme.textMuted),
             SizedBox(height: 12),
-            Text('ChÃ†Â°a cÃƒÂ³ Ã¡ÂºÂ£nh', style: TextStyle(color: AppTheme.textSub, fontSize: 14)),
+            Text('Chưa có ảnh', style: TextStyle(color: AppTheme.textSub, fontSize: 14)),
           ],
         ),
       );
@@ -1169,7 +1152,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
               ),
               const SizedBox(width: 8),
               Text(
-                _commentTab == 0 ? 'BÃƒÂ¬nh luÃ¡ÂºÂ­n ($_totalCommentCount)' : 'Ã„ÂÃƒÂ¡nh giÃƒÂ¡ ($_ratingCount)',
+                _commentTab == 0 ? 'Bình luận ($_totalCommentCount)' : 'Đánh giá ($_ratingCount)',
                 style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.w700),
               ),
               const Spacer(),
@@ -1181,8 +1164,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                 ),
                 child: Row(
                   children: [
-                    _commentTabBtn('BÃƒÂ¬nh luÃ¡ÂºÂ­n', _commentTab == 0, () => setState(() => _commentTab = 0)),
-                    _commentTabBtn('Ã„ÂÃƒÂ¡nh giÃƒÂ¡', _commentTab == 1, () => setState(() => _commentTab = 1)),
+                    _commentTabBtn('Bình luận', _commentTab == 0, () => setState(() => _commentTab = 0)),
+                    _commentTabBtn('Đánh giá', _commentTab == 1, () => setState(() => _commentTab = 1)),
                   ],
                 ),
               ),
@@ -1196,7 +1179,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             if (_comments.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(child: Text('ChÃ†Â°a cÃƒÂ³ bÃƒÂ¬nh luÃ¡ÂºÂ­n nÃƒÂ o', style: TextStyle(color: AppTheme.textMuted, fontSize: 13))),
+                child: Center(child: Text('Chưa có bình luận nào', style: TextStyle(color: AppTheme.textMuted, fontSize: 13))),
               )
             else
               ..._comments.take(50).map((c) => _buildCommentItem(c)),
@@ -1207,7 +1190,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             if (_ratings.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(child: Text('ChÃ†Â°a cÃƒÂ³ Ã„â€˜ÃƒÂ¡nh giÃƒÂ¡ nÃƒÂ o', style: TextStyle(color: AppTheme.textMuted, fontSize: 13))),
+                child: Center(child: Text('Chưa có đánh giá nào', style: TextStyle(color: AppTheme.textMuted, fontSize: 13))),
               )
             else
               ..._ratings.take(10).map((r) => _buildRatingItem(r)),
@@ -1240,7 +1223,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                _myRating > 0 ? 'Ã„ÂÃƒÂ¡nh giÃƒÂ¡ cÃ¡Â»Â§a bÃ¡ÂºÂ¡n: ${_ratingEmojis[_myRating]} ${_ratingLabels[_myRating]}' : 'NhÃ¡ÂºÂ¥n Ã„â€˜Ã¡Â»Æ’ Ã„â€˜ÃƒÂ¡nh giÃƒÂ¡ phim nÃƒÂ y',
+                _myRating > 0 ? 'Đánh giá của bạn: ${_ratingEmojis[_myRating]} ${_ratingLabels[_myRating]}' : 'Nhấn để đánh giá phim này',
                 style: TextStyle(color: _myRating > 0 ? AppTheme.textPrimary : AppTheme.textMuted, fontSize: 13),
               ),
             ),
@@ -1285,7 +1268,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             children: [
               Icon(Icons.login_rounded, color: AppTheme.textMuted, size: 20),
               SizedBox(width: 10),
-              Text('Vui lÃƒÂ²ng Ã„â€˜Ã„Æ’ng nhÃ¡ÂºÂ­p Ã„â€˜Ã¡Â»Æ’ tham gia bÃƒÂ¬nh luÃ¡ÂºÂ­n', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
+              Text('Vui lòng đăng nhập để tham gia bình luận', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
             ],
           ),
         ),
@@ -1310,7 +1293,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('BÃƒÂ¬nh luÃ¡ÂºÂ­n vÃ¡Â»â€ºi tÃƒÂªn ${_currentUser['username'] ?? ''}', style: const TextStyle(color: AppTheme.textMuted, fontSize: 11)),
+              Text('Bình luận với tên ${_currentUser['username'] ?? ''}', style: const TextStyle(color: AppTheme.textMuted, fontSize: 11)),
               const SizedBox(height: 4),
               TextField(
                 controller: _commentController,
@@ -1320,7 +1303,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                 onChanged: (_) => setState(() {}),
                 style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
                 decoration: InputDecoration(
-                  hintText: 'ViÃ¡ÂºÂ¿t bÃƒÂ¬nh luÃ¡ÂºÂ­n',
+                  hintText: 'Viết bình luận',
                   hintStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 13),
                   counterText: '${_commentController.text.length} / 1000',
                   counterStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 11),
@@ -1368,17 +1351,17 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                           ),
                         ),
                         const SizedBox(width: 6),
-                        const Text('TiÃ¡ÂºÂ¿t lÃ¡Â»â„¢?', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+                        const Text('Tiết lộ?', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
                       ],
                     ),
                   ),
                   const Spacer(),
-                  // GÃ¡Â»Â­i button
+                  // Gửi button
                   GestureDetector(
                     onTap: _isPostingComment ? null : _postComment,
                     child: Row(
                       children: [
-                        Text('GÃ¡Â»Â­i', style: TextStyle(
+                        Text('Gửi', style: TextStyle(
                           color: _commentController.text.trim().isEmpty ? AppTheme.textMuted : AppTheme.gold,
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
@@ -1402,7 +1385,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     final votes = _commentVotes[commentId] ?? {'up': 0, 'down': 0};
     final myVote = _myVotes[commentId] ?? 0;
     final isSpoiler = c['spoiler'] == true || c['spoiler'] == 1;
-    final cUsername = c['username'] ?? c['guest_name'] ?? 'Ã¡ÂºÂ¨n danh';
+    final cUsername = c['username'] ?? c['guest_name'] ?? 'Ẩn danh';
     final cAvatar = c['avatar']?.toString();
     final cTime = _timeAgo(c['created_at'] != null ? DateTime.tryParse(c['created_at'].toString()) : null);
     final cUserId = c['user_id'];
@@ -1425,7 +1408,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  (c['_revealed'] ?? false) ? 'Spoiler Ã¢â‚¬â€ Ã„â€˜ÃƒÂ£ hiÃ¡Â»â€¡n' : 'Ã¢Å¡Â  Spoiler Ã¢â‚¬â€ bÃ¡ÂºÂ¥m Ã„â€˜Ã¡Â»Æ’ hiÃ¡Â»â€¡n',
+                  (c['_revealed'] ?? false) ? 'Spoiler — đã hiện' : '⚠ Spoiler — bấm để hiện',
                   style: TextStyle(
                     color: (c['_revealed'] ?? false) ? const Color(0xFF4CAF50) : const Color(0xFFF5C518),
                     fontSize: 11,
@@ -1530,7 +1513,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                       children: [
                         Icon(Icons.reply_rounded, size: 14, color: AppTheme.textMuted),
                         SizedBox(width: 3),
-                        Text('TrÃ¡ÂºÂ£ lÃ¡Â»Âi', style: TextStyle(color: AppTheme.textMuted, fontSize: 11)),
+                        Text('Trả lời', style: TextStyle(color: AppTheme.textMuted, fontSize: 11)),
                       ],
                     ),
                   ),
@@ -1543,7 +1526,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                       children: [
                         Icon(Icons.delete_outline_rounded, size: 14, color: AppTheme.textMuted),
                         SizedBox(width: 3),
-                        Text('XÃƒÂ³a', style: TextStyle(color: AppTheme.textMuted, fontSize: 11)),
+                        Text('Xóa', style: TextStyle(color: AppTheme.textMuted, fontSize: 11)),
                       ],
                     ),
                   ),
@@ -1563,7 +1546,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                       autofocus: true,
                       style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12),
                       decoration: InputDecoration(
-                        hintText: 'TrÃ¡ÂºÂ£ lÃ¡Â»Âi $cUsername...',
+                        hintText: 'Trả lời $cUsername...',
                         hintStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
                         filled: true,
                         fillColor: AppTheme.bgCard,
@@ -1597,7 +1580,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   void _startReply(int parentId, String userName) {
     if (!_isLoggedIn) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lÃƒÂ²ng Ã„â€˜Ã„Æ’ng nhÃ¡ÂºÂ­p Ã„â€˜Ã¡Â»Æ’ trÃ¡ÂºÂ£ lÃ¡Â»Âi'), backgroundColor: Colors.orange),
+        const SnackBar(content: Text('Vui lòng đăng nhập để trả lời'), backgroundColor: Colors.orange),
       );
       return;
     }
@@ -1631,14 +1614,14 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     } catch (_) {}
   }
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬ Vote system Ã¢â€â‚¬Ã¢â€â‚¬
+  // ── Vote system ──
   Map<int, Map<String, int>> _commentVotes = {};
   Map<int, int> _myVotes = {};
 
   Future<void> _voteComment(int commentId, int direction) async {
     if (!_isLoggedIn) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ã„ÂÃ„Æ’ng nhÃ¡ÂºÂ­p Ã„â€˜Ã¡Â»Æ’ vote'), backgroundColor: Colors.orange),
+        const SnackBar(content: Text('Đăng nhập để vote'), backgroundColor: Colors.orange),
       );
       return;
     }
@@ -1663,11 +1646,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppTheme.bgCard,
-        title: const Text('XÃƒÂ³a bÃƒÂ¬nh luÃ¡ÂºÂ­n', style: TextStyle(color: AppTheme.textPrimary)),
-        content: const Text('BÃ¡ÂºÂ¡n cÃƒÂ³ chÃ¡ÂºÂ¯c muÃ¡Â»â€˜n xÃƒÂ³a bÃƒÂ¬nh luÃ¡ÂºÂ­n nÃƒÂ y?', style: TextStyle(color: AppTheme.textSub)),
+        title: const Text('Xóa bình luận', style: TextStyle(color: AppTheme.textPrimary)),
+        content: const Text('Bạn có chắc muốn xóa bình luận này?', style: TextStyle(color: AppTheme.textSub)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('HÃ¡Â»Â§y')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('XÃƒÂ³a', style: TextStyle(color: Colors.redAccent))),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Hủy')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Xóa', style: TextStyle(color: Colors.redAccent))),
         ],
       ),
     );
@@ -1709,7 +1692,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        // â•â•â• Hero Banner â€” full width, natural height â•â•â•
+        // Banner — full width, natural height
         Stack(
           children: [
             CachedNetworkImage(
@@ -1721,7 +1704,6 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
               placeholder: (_, __) => Container(color: AppTheme.bgCard, width: double.infinity, height: 200),
               errorWidget: (_, __, ___) => Container(color: AppTheme.bgCard, width: double.infinity, height: 200),
             ),
-            // Close button
             Positioned(
               top: MediaQuery.of(context).padding.top + 8, left: 12,
               child: GestureDetector(
@@ -1735,7 +1717,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             ),
           ],
         ),
-        // â•â•â• 2 Action Buttons â€” 3px below banner â•â•â•
+        // 2 buttons — 3px dưới banner
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 3, 16, 0),
           child: Row(
@@ -1753,10 +1735,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                   },
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF5E6B8),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    decoration: BoxDecoration(color: const Color(0xFFF5E6B8), borderRadius: BorderRadius.circular(12)),
                     child: const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -1773,16 +1752,13 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                 onTap: () {},
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
                   child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(Icons.list_rounded, color: Color(0xFF1A1100), size: 20),
                       SizedBox(width: 8),
-                      Text('Táº­p Phim', style: TextStyle(color: Color(0xFF1A1100), fontSize: 15, fontWeight: FontWeight.w700)),
+                      Text('Tập Phim', style: TextStyle(color: Color(0xFF1A1100), fontSize: 15, fontWeight: FontWeight.w700)),
                     ],
                   ),
                 ),
@@ -1790,7 +1766,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             ],
           ),
         ),
-        // â•â•â• Title + Chips â€” 3px below buttons â•â•â•
+        // Title + Chips — 3px dưới buttons
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 3, 20, 0),
           child: Column(
@@ -1809,10 +1785,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                 spacing: 8, runSpacing: 8,
                 children: [
                   _chipSolid('IMDb ${(movie.tmdbRating ?? movie.imdbRating ?? 0).toStringAsFixed(1)}'),
-                  if (quality.isNotEmpty) _chipBorder(quality),
-                  if (movie.year != null && movie.year! > 0) _chipBorder('${movie.year}'),
-                  if ((movie.time ?? '').isNotEmpty) _chipBorder(movie.time!),
-                  if ((movie.episodeCurrent ?? '').isNotEmpty) _chipBorder('Pháº§n 1'),
+                  if (quality.isNotEmpty) _chipBorder(quality, true),
+                  if (movie.year != null && movie.year! > 0) _chipBorder('${movie.year}', (movie.year ?? 0) >= 2026),
+                  if ((movie.time ?? '').isNotEmpty) _chipBorder(movie.time!, false),
+                  if ((movie.episodeCurrent ?? '').isNotEmpty) _chipBorder('Phần 1', false),
                 ],
               ),
             ],
@@ -1822,22 +1798,34 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     );
   }
 
+  /// Chip nền trắng đậm — dùng cho TMDB, T16, T13
   Widget _chipSolid(String label) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
-      child: Text(label, style: const TextStyle(color: Color(0xFF1A1A2E), fontSize: 12, fontWeight: FontWeight.w800)),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(label, style: const TextStyle(color: Color(0xFF1A1A2E), fontSize: 11, fontWeight: FontWeight.w800)),
     );
   }
 
-  Widget _chipBorder(String label) {
+  /// Chip viền trắng — dùng cho year 2026+, type, quality
+  Widget _chipBorder(String label, bool isModern) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.transparent, borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.35), width: 0.8),
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isModern ? Colors.white.withValues(alpha: 0.7) : Colors.white.withValues(alpha: 0.3),
+          width: isModern ? 1.2 : 0.8,
+        ),
       ),
-      child: Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 12, fontWeight: FontWeight.w600)),
+      child: Text(label, style: TextStyle(
+        color: isModern ? Colors.white : Colors.white70,
+        fontSize: 11, fontWeight: FontWeight.w600,
+      )),
     );
   }
 
@@ -1869,13 +1857,13 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                       children: _genresText().split(', ').map((g) => _genreChip(g)).toList(),
                     ),
                   if (_genresText().isNotEmpty) const SizedBox(height: 12),
-                  // Status badge Ã¢â‚¬â€ completed or airing
+                  // Status badge — completed or airing
                   if ((movie.episodeCurrent ?? '').isNotEmpty)
                     _buildStatusBadge(movie),
                   const SizedBox(height: 12),
                   // Synopsis
                   if ((movie.description ?? '').isNotEmpty) ...[
-                    Text('GiÃ¡Â»â€ºi thiÃ¡Â»â€¡u:', style: TextStyle(color: AppTheme.textMuted, fontSize: 13, fontWeight: FontWeight.w700)),
+                    Text('Giới thiệu:', style: TextStyle(color: AppTheme.textMuted, fontSize: 13, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 8),
                     Text(
                       movie.description!.replaceAll('&nbsp;', ' ').replaceAll(RegExp(r'<[^>]*>'), '').trim(),
@@ -1884,16 +1872,16 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                     const SizedBox(height: 16),
                   ],
                   // Detail rows
-                  _infoDetailRow('ThÃ¡Â»Âi lÃ†Â°Ã¡Â»Â£ng:', movie.time ?? '--'),
-                  _infoDetailRow('QuÃ¡Â»â€˜c gia:', _countriesText().isNotEmpty ? _countriesText() : '--'),
+                  _infoDetailRow('Thời lượng:', movie.time ?? '--'),
+                  _infoDetailRow('Quốc gia:', _countriesText().isNotEmpty ? _countriesText() : '--'),
                   if (_actorsText().isNotEmpty)
-                    _infoDetailRow('DiÃ¡Â»â€¦n viÃƒÂªn:', _actorsText()),
+                    _infoDetailRow('Diễn viên:', _actorsText()),
                   if (movie.imdbRating != null && movie.imdbRating! > 0)
                     _infoDetailRow('IMDb:', movie.imdbRating!.toStringAsFixed(1)),
                   // Keywords
                   if (_genresText().isNotEmpty) ...[
                     const SizedBox(height: 12),
-                    Text('TÃ¡Â»Â« khÃƒÂ³a:', style: TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w700)),
+                    Text('Từ khóa:', style: TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 6),
                     Text(
                       _genresText(),
@@ -1959,8 +1947,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     final current = movie.episodeCurrent ?? '';
     final total = movie.episodeTotal ?? '';
     final isTrailer = current.toLowerCase().contains('trailer');
-    final isCompleted = current.toLowerCase().contains('hoÃƒÂ n thÃƒÂ nh') ||
-        current.toLowerCase().contains('hoÃƒÂ n tÃ¡ÂºÂ¥t') ||
+    final isCompleted = current.toLowerCase().contains('hoàn thành') ||
+        current.toLowerCase().contains('hoàn tất') ||
         (current.contains('/') && total.isNotEmpty && current.split('/')[0].trim() == total.trim());
 
     if (isTrailer) {
@@ -1977,7 +1965,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             Icon(Icons.videocam_rounded, color: Color(0xFFF5921E), size: 16),
             SizedBox(width: 6),
             Text(
-              'Phim Ã„â€˜ang chiÃ¡ÂºÂ¿u: Trailer',
+              'Phim đang chiếu: Trailer',
               style: TextStyle(color: Color(0xFFF5921E), fontSize: 13, fontWeight: FontWeight.w600),
             ),
           ],
@@ -1999,7 +1987,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             const Icon(Icons.check_circle_outline, color: Color(0xFF22C55E), size: 16),
             const SizedBox(width: 6),
             Text(
-              'HoÃƒÂ n tÃ¡ÂºÂ¥t${total.isNotEmpty ? ' ($total/$total)' : ''}',
+              'Hoàn tất${total.isNotEmpty ? ' ($total/$total)' : ''}',
               style: const TextStyle(color: Color(0xFF22C55E), fontSize: 13, fontWeight: FontWeight.w600),
             ),
           ],
@@ -2027,7 +2015,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             ),
             const SizedBox(width: 6),
             Text(
-              'Phim Ã„â€˜ang chiÃ¡ÂºÂ¿u: ${_episodeText(movie)}',
+              'Phim đang chiếu: ${_episodeText(movie)}',
               style: const TextStyle(color: Color(0xFFF5921E), fontSize: 13, fontWeight: FontWeight.w600),
             ),
           ],
@@ -2050,8 +2038,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
 
   String _typeLabel(String t) {
     switch (t) {
-      case 'series': return 'Phim bÃ¡Â»â„¢';
-      case 'hoathinh': return 'HoÃ¡ÂºÂ¡t hÃƒÂ¬nh';
+      case 'series': return 'Phim bộ';
+      case 'hoathinh': return 'Hoạt hình';
       case 'tvshows': return 'TV Shows';
       default: return t;
     }
@@ -2064,7 +2052,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     );
   }
 
-  /// Action bar nÃ¡Â»â€¢i trÃƒÂªn banner Ã¢â‚¬â€ chÃ¡Â»â€° nÃƒÂºt back
+  /// Action bar nổi trên banner — chỉ nút back
   Widget _buildActionBar(Movie movie) {
     return SizedBox(
       height: 56,
@@ -2086,10 +2074,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     final current = movie.episodeCurrent ?? '';
     final total = movie.episodeTotal ?? '';
 
-    // "HoÃƒÂ n thÃƒÂ nh (37/37)" Ã¢â€ â€™ giÃ¡Â»Â¯ nguyÃƒÂªn
-    if (current.contains('HoÃƒÂ n thÃƒÂ nh')) return current;
+    // "Hoàn thành (37/37)" → giữ nguyên
+    if (current.contains('Hoàn thành')) return current;
 
-    // "37/37" hoÃ¡ÂºÂ·c "37 / 37" Ã¢â€ â€™ Ã„â€˜ÃƒÂ£ hoÃƒÂ n thÃƒÂ nh, chÃ¡Â»â€° lÃ¡ÂºÂ¥y sÃ¡Â»â€˜ Ã„â€˜Ã¡ÂºÂ§u
+    // "37/37" hoặc "37 / 37" → đã hoàn thành, chỉ lấy số đầu
     if (current.contains('/')) {
       final parts = current.split('/');
       final epNum = parts[0].trim().replaceAll(RegExp(r'[^0-9]'), '');
@@ -2097,7 +2085,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       if (epNum.isNotEmpty) return epNum;
     }
 
-    // ChÃ¡Â»â€° trÃ¡ÂºÂ£ sÃ¡Â»â€˜, khÃƒÂ´ng thÃƒÂªm "tÃ¡ÂºÂ­p" (vÃƒÂ¬ label Ã„â€˜ÃƒÂ£ cÃƒÂ³ "SÃ¡Â»â€˜ tÃ¡ÂºÂ­p")
+    // Chỉ trả số, không thêm "tập" (vì label đã có "Số tập")
     final currentNum = current.replaceAll(RegExp(r'[^0-9]'), '');
     if (currentNum.isNotEmpty && total.isNotEmpty) return '$currentNum / $total';
     if (currentNum.isNotEmpty) return currentNum;
@@ -2109,17 +2097,17 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     final current = movie.episodeCurrent ?? '';
     final total = movie.episodeTotal ?? '';
 
-    if (current.contains('HoÃƒÂ n thÃƒÂ nh') || current.contains('HoÃƒÂ n tÃ¡ÂºÂ¥t')) {
-      return 'HoÃƒÂ n tÃ¡ÂºÂ¥t ${_episodeText(movie)}';
+    if (current.contains('Hoàn thành') || current.contains('Hoàn tất')) {
+      return 'Hoàn tất ${_episodeText(movie)}';
     }
     if (current.contains('/')) {
       return _episodeText(movie);
     }
-    return 'PhÃ¡ÂºÂ§n 1';
+    return 'Phần 1';
   }
 
   String _formatAgeRating(String? rating) {
-    if (rating == null || rating.isEmpty) return '';
+    if (rating == null || rating.isEmpty) return 'P';
     final clean = rating.replaceAll(RegExp(r'^[TtPp]\.?\s*'), '');
     if (RegExp(r'^\d+$').hasMatch(clean)) return 'T.$clean';
     return rating;
@@ -2134,7 +2122,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   }
 
   String _actorsText() {
-    // Ã†Â¯u tiÃƒÂªn actor_vi (Ã„â€˜ÃƒÂ£ dÃ¡Â»â€¹ch HÃƒÂ¡n ViÃ¡Â»â€¡t tÃ¡Â»Â« API)
+    // Ưu tiên actor_vi (đã dịch Hán Việt từ API)
     final actorVi = _movieData?['actor_vi'];
     if (actorVi is String && actorVi.trim().isNotEmpty) return actorVi.trim();
     // Fallback: actor raw
@@ -2143,7 +2131,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       return raw.map((e) => e.toString()).where((s) => s.isNotEmpty).join(', ');
     }
     if (raw is String && raw.trim().isNotEmpty) return raw.trim();
-    // Fallback tÃ¡Â»Â« Movie model
+    // Fallback từ Movie model
     final movie = Movie.fromJson(_movieData!);
     if (movie.actors != null && movie.actors!.isNotEmpty) {
       return movie.actors!.join(', ');
@@ -2210,18 +2198,18 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
           children: [
             Icon(Icons.video_library_outlined, size: 56, color: AppTheme.textMuted),
             SizedBox(height: 12),
-            Text('ChÃ†Â°a cÃƒÂ³ tÃ¡ÂºÂ­p phim nÃƒÂ o', style: TextStyle(color: AppTheme.textSub, fontSize: 14)),
+            Text('Chưa có tập phim nào', style: TextStyle(color: AppTheme.textSub, fontSize: 14)),
           ],
         ),
       );
     }
 
-    // Episodes cÃ¡Â»Â§a server Ã„â€˜ang chÃ¡Â»Ân Ã¢â‚¬â€ API trÃ¡ÂºÂ£ ep_name + link_m3u8
+    // Episodes của server đang chọn — API trả ep_name + link_m3u8
     final currentEps = _servers.isNotEmpty && _selectedServer < _servers.length
         ? (_servers[_selectedServer]['episodes'] as List<dynamic>? ?? [])
         : _episodes;
 
-    // Ã¢Ëœâ€¦ Pagination: chia page 100 tÃ¡ÂºÂ­p/trang
+    // ★ Pagination: chia page 100 tập/trang
     final totalEps = currentEps.length;
     final totalPages = (totalEps / _episodesPerPage).ceil();
     if (totalPages <= 1) _episodePage = 1;
@@ -2232,7 +2220,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
 
     return Column(
       children: [
-        // Server selector Ã¢â‚¬â€ hiÃ¡Â»â€¡n cho mÃ¡Â»Âi user
+        // Server selector — hiện cho mọi user
         if (_servers.isNotEmpty)
           SizedBox(
             height: 48,
@@ -2284,7 +2272,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        '${serverEpCount.length} tÃ¡ÂºÂ­p',
+                        '${serverEpCount.length} tập',
                         style: TextStyle(
                           color: isActive ? Colors.white.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.3),
                           fontSize: 10,
@@ -2300,7 +2288,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         if (_servers.isNotEmpty)
           const Divider(color: AppTheme.border, height: 1),
 
-        // Ã¢Ëœâ€¦ Pagination controls Ã¢â‚¬â€ chÃ¡Â»â€° hiÃ¡Â»â€¡n khi > 100 tÃ¡ÂºÂ­p
+        // ★ Pagination controls — chỉ hiện khi > 100 tập
         if (totalPages > 1)
           Container(
             height: 40,
@@ -2359,7 +2347,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
               final rawName = ep is Map
                   ? (ep['ep_name'] ?? ep['name'] ?? '${startIdx + index + 1}').toString()
                   : '${startIdx + index + 1}';
-              final epName = rawName.replaceAll(RegExp(r'^[Tt]Ã¡ÂºÂ­?p?\s*', caseSensitive: false), '').trim();
+              final epName = rawName.replaceAll(RegExp(r'^[Tt]ậ?p?\s*', caseSensitive: false), '').trim();
               final epId = ep is Map ? ep['id'] : null;
               final isActive = _watchProgress != null && epId != null && epId == _watchProgress!['episode_id'];
               return GestureDetector(
@@ -2398,7 +2386,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     final slug  = widget.movie?.slug ?? (_movieData?['slug'] ?? '');
     final title = widget.movie?.name ?? (_movieData?['name'] ?? '');
 
-    // Ã†Â¯u tiÃƒÂªn link_embed, fallback link_m3u8, fallback trang web
+    // Ưu tiên link_embed, fallback link_m3u8, fallback trang web
     String url = '';
     if (ep is Map) {
       final embed = (ep['link_embed'] ?? '').toString().trim();
@@ -2451,7 +2439,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     final auth = Provider.of<AuthProvider>(context, listen: false);
     if (!auth.isLoggedIn) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lÃƒÂ²ng Ã„â€˜Ã„Æ’ng nhÃ¡ÂºÂ­p Ã„â€˜Ã¡Â»Æ’ bÃƒÂ¬nh luÃ¡ÂºÂ­n'), backgroundColor: Colors.orange),
+        const SnackBar(content: Text('Vui lòng đăng nhập để bình luận'), backgroundColor: Colors.orange),
       );
       return;
     }
@@ -2468,18 +2456,18 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         _commentController.clear();
         _isSpoiler = false;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Ã„ÂÃƒÂ£ gÃ¡Â»Â­i bÃƒÂ¬nh luÃ¡ÂºÂ­n'), backgroundColor: Color(0xFF2E7D32), duration: Duration(seconds: 2)),
+          const SnackBar(content: Text('Đã gửi bình luận'), backgroundColor: Color(0xFF2E7D32), duration: Duration(seconds: 2)),
         );
         _fetchComments();
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message.isNotEmpty ? message : 'KhÃƒÂ´ng thÃ¡Â»Æ’ gÃ¡Â»Â­i bÃƒÂ¬nh luÃ¡ÂºÂ­n'), backgroundColor: Colors.redAccent),
+          SnackBar(content: Text(message.isNotEmpty ? message : 'Không thể gửi bình luận'), backgroundColor: Colors.redAccent),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('LÃ¡Â»â€”i: $e'), backgroundColor: Colors.redAccent),
+          SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.redAccent),
         );
       }
     }
@@ -2490,11 +2478,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   String _timeAgo(DateTime? dt) {
     if (dt == null) return '';
     final diff = DateTime.now().difference(dt);
-    if (diff.inSeconds < 60) return 'vÃ¡Â»Â«a xong';
-    if (diff.inMinutes < 60) return '${diff.inMinutes} phÃƒÂºt trÃ†Â°Ã¡Â»â€ºc';
-    if (diff.inHours < 24) return '${diff.inHours} giÃ¡Â»Â trÃ†Â°Ã¡Â»â€ºc';
-    if (diff.inDays < 30) return '${diff.inDays} ngÃƒÂ y trÃ†Â°Ã¡Â»â€ºc';
-    return '${(diff.inDays / 30).floor()} thÃƒÂ¡ng trÃ†Â°Ã¡Â»â€ºc';
+    if (diff.inSeconds < 60) return 'vừa xong';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} phút trước';
+    if (diff.inHours < 24) return '${diff.inHours} giờ trước';
+    if (diff.inDays < 30) return '${diff.inDays} ngày trước';
+    return '${(diff.inDays / 30).floor()} tháng trước';
   }
 
   // --- Comments Tab ---
@@ -2540,7 +2528,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                     textInputAction: TextInputAction.send,
                     onSubmitted: (_) => _postComment(),
                     decoration: const InputDecoration(
-                      hintText: 'ViÃ¡ÂºÂ¿t bÃƒÂ¬nh luÃ¡ÂºÂ­n...',
+                      hintText: 'Viết bình luận...',
                       hintStyle: TextStyle(color: AppTheme.textMuted, fontSize: 14),
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,
@@ -2572,7 +2560,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
           child: _comments.isEmpty
               ? const Center(
                   child: Text(
-                    'ChÃ†Â°a cÃƒÂ³ bÃƒÂ¬nh luÃ¡ÂºÂ­n nÃƒÂ o',
+                    'Chưa có bình luận nào',
                     style: TextStyle(color: AppTheme.textSub, fontSize: 14),
                   ),
                 )
@@ -2582,7 +2570,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                       separatorBuilder: (_, __) => const Divider(color: AppTheme.border, height: 1),
                       itemBuilder: (context, index) {
                         final comment = _comments[index];
-                        final commentUser = comment['username'] ?? comment['user'] ?? 'NgÃ†Â°Ã¡Â»Âi dÃƒÂ¹ng';
+                        final commentUser = comment['username'] ?? comment['user'] ?? 'Người dùng';
                         final commentContent = comment['content'] ?? comment['comment'] ?? '';
                         final commentAvatar = comment['avatar']?.toString();
                         final commentTime = comment['created_at'] != null
@@ -2656,7 +2644,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     if (_actors.isEmpty) {
       return const Center(
         child: Text(
-          'KhÃƒÂ´ng cÃƒÂ³ thÃƒÂ´ng tin diÃ¡Â»â€¦n viÃƒÂªn',
+          'Không có thông tin diễn viên',
           style: TextStyle(color: AppTheme.textSub, fontSize: 14),
         ),
       );
@@ -2667,7 +2655,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'DiÃ¡Â»â€¦n viÃƒÂªn',
+            'Diễn viên',
             style: TextStyle(
               color: AppTheme.textPrimary,
               fontSize: 18,
@@ -2829,7 +2817,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     if (_relatedMovies.isEmpty) {
       return const Center(
         child: Text(
-          'KhÃƒÂ´ng cÃƒÂ³ phim liÃƒÂªn quan',
+          'Không có phim liên quan',
           style: TextStyle(color: AppTheme.textSub, fontSize: 14),
         ),
       );
@@ -2837,7 +2825,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     return Padding(
       padding: const EdgeInsets.only(top: 16, bottom: 100),
       child: MovieRail(
-        title: 'Phim liÃƒÂªn quan',
+        title: 'Phim liên quan',
         movies: _relatedMovies,
         onMovieTap: (movie) {
           Navigator.pushReplacement(
