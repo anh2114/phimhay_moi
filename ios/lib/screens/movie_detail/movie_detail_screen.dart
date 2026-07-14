@@ -1799,7 +1799,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             ),
           ),
         ),
-        const SizedBox(height: 460),
+        const SizedBox(height: 540),
       ],
     );
   }
@@ -2101,7 +2101,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   }
 
   String _formatAgeRating(String? rating) {
-    if (rating == null || rating.isEmpty) return 'P';
+    if (rating == null || rating.isEmpty) return '';
     final clean = rating.replaceAll(RegExp(r'^[TtPp]\.?\s*'), '');
     if (RegExp(r'^\d+$').hasMatch(clean)) return 'T.$clean';
     return rating;
