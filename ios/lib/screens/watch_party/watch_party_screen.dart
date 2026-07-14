@@ -8,6 +8,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/watch_party_service.dart';
 import '../../widgets/header.dart';
 import '../../widgets/bottom_nav.dart';
+import '../../services/image_cache_manager.dart';
 import '../home/home_screen.dart';
 import '../watch_room/watch_room_screen.dart';
 import '../notification/notification_screen.dart';
@@ -191,6 +192,8 @@ class _WatchPartyScreenState extends State<WatchPartyScreen> {
               fit: BoxFit.cover,
               color: Colors.black.withOpacity(0.5),
               colorBlendMode: BlendMode.darken,
+              cacheManager: AppImageCacheManager(),
+              fadeInDuration: Duration.zero,
               errorWidget: (_, __, ___) => Container(color: AppTheme.bgCard),
             ),
           ),
@@ -386,6 +389,9 @@ class _WatchPartyScreenState extends State<WatchPartyScreen> {
                   CachedNetworkImage(
                     imageUrl: room['thumb_url'] ?? '',
                     fit: BoxFit.cover,
+                    cacheManager: AppImageCacheManager(),
+                    fadeInDuration: const Duration(milliseconds: 200),
+                    fadeOutDuration: const Duration(milliseconds: 100),
                     errorWidget: (_, __, ___) => Container(
                       color: AppTheme.bgCard,
                       child: const Icon(Icons.movie, color: AppTheme.textMuted),
@@ -466,6 +472,8 @@ class _WatchPartyScreenState extends State<WatchPartyScreen> {
                               ? room['avatar']
                               : '${AppConfig.baseUrl}/${room['avatar']}',
                           fit: BoxFit.cover,
+                          cacheManager: AppImageCacheManager(),
+                          fadeInDuration: Duration.zero,
                           errorWidget: (_, __, ___) => const Icon(
                             Icons.person,
                             color: AppTheme.textMuted,

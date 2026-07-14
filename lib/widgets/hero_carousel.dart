@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:phimhay_app/config/theme.dart';
 import 'package:phimhay_app/models/movie.dart';
+import 'package:phimhay_app/services/image_cache_manager.dart';
 
 class HeroCarousel extends StatefulWidget {
   final List<Movie> movies;
@@ -157,9 +158,11 @@ class _HeroCarouselState extends State<HeroCarousel> {
                               child: CachedNetworkImage(
                                 imageUrl: movie.thumbUrl ?? '',
                                 fit: BoxFit.cover,
-                                memCacheWidth: 600,
+                                cacheManager: AppImageCacheManager(),
                                 cacheKey:
                                     '${movie.slug}_${movie.id}_hero_v2',
+                                fadeInDuration: const Duration(milliseconds: 200),
+                                fadeOutDuration: const Duration(milliseconds: 100),
                                 placeholder: (_, __) =>
                                     Container(color: AppTheme.bgCard),
                                 errorWidget: (_, __, ___) => Container(

@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:phimhay_app/config/app_config.dart';
 import 'package:phimhay_app/config/theme.dart';
 import 'package:phimhay_app/screens/movie_detail/movie_detail_screen.dart';
+import 'package:phimhay_app/services/image_cache_manager.dart';
 
 class ActorDetailScreen extends StatefulWidget {
   final String? name;
@@ -211,6 +212,9 @@ class _ActorDetailScreenState extends State<ActorDetailScreen> {
                 ? CachedNetworkImage(
                     imageUrl: photo,
                     fit: BoxFit.cover,
+                    cacheManager: AppImageCacheManager(),
+                    fadeInDuration: const Duration(milliseconds: 200),
+                    fadeOutDuration: const Duration(milliseconds: 100),
                     placeholder: (_, __) => Container(color: AppTheme.bgCard),
                     errorWidget: (_, __, ___) => Container(color: AppTheme.bgCard, child: const Icon(Icons.person, color: AppTheme.textMuted, size: 64)),
                   )
@@ -431,7 +435,9 @@ class _ActorDetailScreenState extends State<ActorDetailScreen> {
                       ? CachedNetworkImage(
                           imageUrl: poster,
                           fit: BoxFit.cover,
-                          memCacheWidth: 200,
+                          cacheManager: AppImageCacheManager(),
+                          fadeInDuration: const Duration(milliseconds: 200),
+                          fadeOutDuration: const Duration(milliseconds: 100),
                           placeholder: (_, __) => Container(color: AppTheme.bgCard),
                           errorWidget: (_, __, ___) => Container(color: AppTheme.bgCard, child: const Icon(Icons.movie_outlined, color: AppTheme.textMuted, size: 28)),
                         )

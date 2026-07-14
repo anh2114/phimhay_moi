@@ -8,6 +8,7 @@ import '../../config/theme.dart';
 import '../../models/movie.dart';
 import '../../providers/home_provider.dart';
 import '../../providers/watch_history_provider.dart';
+import '../../services/image_cache_manager.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/header.dart';
 import '../../widgets/hero_carousel.dart';
@@ -283,8 +284,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: CachedNetworkImage(
                   imageUrl: movie.thumbUrl ?? '',
                   fit: BoxFit.cover,
-                  memCacheWidth: 400,
+                  cacheManager: AppImageCacheManager(),
                   cacheKey: '${movie.slug}_${movie.id}_glow',
+                  fadeInDuration: Duration.zero,
                   placeholder: (_, __) => const SizedBox.shrink(),
                   errorWidget: (_, __, ___) => const SizedBox.shrink(),
                 ),
@@ -451,7 +453,9 @@ class _ContinueWatchingCard extends StatelessWidget {
                       child: CachedNetworkImage(
                         imageUrl: item.thumbUrl,
                         fit: BoxFit.cover,
-                        memCacheWidth: 320,
+                        cacheManager: AppImageCacheManager(),
+                        fadeInDuration: const Duration(milliseconds: 200),
+                        fadeOutDuration: const Duration(milliseconds: 100),
                         placeholder: (_, __) => Container(color: AppTheme.bgSurface),
                         errorWidget: (_, __, ___) => Container(
                           color: AppTheme.bgSurface,

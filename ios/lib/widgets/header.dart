@@ -5,6 +5,7 @@ import 'package:phimhay_app/config/app_config.dart';
 import 'package:phimhay_app/config/theme.dart';
 import 'package:provider/provider.dart';
 import 'package:phimhay_app/providers/auth_provider.dart';
+import 'package:phimhay_app/services/image_cache_manager.dart';
 
 class Header extends StatefulWidget {
   final VoidCallback? onSearchTap;
@@ -146,7 +147,8 @@ class _HeaderState extends State<Header> {
                               child: CachedNetworkImage(
                                 imageUrl: avatarUrl,
                                 fit: BoxFit.cover,
-                                memCacheWidth: 64,
+                                cacheManager: AppImageCacheManager(),
+                                fadeInDuration: Duration.zero,
                                 placeholder: (_, __) => _avatarFallback(initial),
                                 errorWidget: (_, __, ___) => _avatarFallback(initial),
                               ),

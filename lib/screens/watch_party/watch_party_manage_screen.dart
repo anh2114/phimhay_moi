@@ -7,6 +7,7 @@ import '../../config/theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/watch_party_service.dart';
 import '../watch_room/watch_room_screen.dart';
+import '../../services/image_cache_manager.dart';
 
 /// Màn hình quản lý phòng xem chung (giống web quan-ly-xem-chung.php)
 class WatchPartyManageScreen extends StatefulWidget {
@@ -195,6 +196,8 @@ class _WatchPartyManageScreenState extends State<WatchPartyManageScreen> {
                   imageUrl: posterUrl.startsWith('http') ? posterUrl : '${AppConfig.baseUrl}$posterUrl',
                   width: 48, height: 68,
                   fit: BoxFit.cover,
+                  cacheManager: AppImageCacheManager(),
+                  fadeInDuration: Duration.zero,
                   errorWidget: (_, __, ___) => Container(
                     width: 48, height: 68,
                     color: AppTheme.bgSurface,

@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:phimhay_app/config/theme.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:phimhay_app/services/image_cache_manager.dart';
 
 class BottomNav extends StatefulWidget {
   final int currentIndex;
@@ -124,6 +125,8 @@ class _BottomNavState extends State<BottomNav> {
                     child: CachedNetworkImage(
                       imageUrl: widget.avatarUrl!,
                       width: 26, height: 26, fit: BoxFit.cover,
+                      cacheManager: AppImageCacheManager(),
+                      fadeInDuration: Duration.zero,
                       errorWidget: (_, __, ___) => Icon(
                         tab.icon,
                         color: i == widget.currentIndex ? AppTheme.accent : Colors.white,

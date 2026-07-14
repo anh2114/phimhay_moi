@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter/services.dart';
 import 'package:phimhay_app/config/app_config.dart';
 import 'package:phimhay_app/config/theme.dart';
+import 'package:phimhay_app/services/image_cache_manager.dart';
 import 'package:phimhay_app/config/responsive.dart';
 import 'package:phimhay_app/models/movie.dart';
 import 'package:phimhay_app/providers/auth_provider.dart';
@@ -1124,6 +1125,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
           child: CachedNetworkImage(
             imageUrl: '${_galleryImages[index]}?v=${DateTime.now().millisecondsSinceEpoch ~/ 60000}',
             fit: BoxFit.cover,
+            cacheManager: AppImageCacheManager(),
+            fadeInDuration: const Duration(milliseconds: 200),
+            fadeOutDuration: const Duration(milliseconds: 100),
             placeholder: (_, __) => Container(color: AppTheme.bgCard),
             errorWidget: (_, __, ___) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1719,6 +1723,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                   imageUrl: movie.posterUrl ?? '',
                   fit: BoxFit.fitWidth,
                   alignment: Alignment.topCenter,
+                  cacheManager: AppImageCacheManager(),
+                  fadeInDuration: Duration.zero,
                   placeholder: (_, __) => Container(color: AppTheme.bgCard),
                   errorWidget: (_, __, ___) => Container(color: AppTheme.bgCard),
                 ),
@@ -1752,6 +1758,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                   width: 120,
                   height: 170,
                   fit: BoxFit.cover,
+                  cacheManager: AppImageCacheManager(),
+                  fadeInDuration: const Duration(milliseconds: 200),
+                  fadeOutDuration: const Duration(milliseconds: 100),
                   placeholder: (_, __) => Container(color: AppTheme.bgCard, width: 120, height: 170),
                   errorWidget: (_, __, ___) => Container(
                     color: AppTheme.bgCard,
@@ -2488,6 +2497,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                           imageUrl: userAvatar,
                           width: 36,
                           height: 36,
+                          cacheManager: AppImageCacheManager(),
                           fit: BoxFit.cover,
                           errorWidget: (_, __, ___) => const Icon(Icons.person_outline, color: AppTheme.textMuted, size: 20),
                         ),
@@ -2567,6 +2577,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                                     ? ClipOval(
                                         child: CachedNetworkImage(
                                           imageUrl: commentAvatar,
+                                          cacheManager: AppImageCacheManager(),
                                           width: 32,
                                           height: 32,
                                           fit: BoxFit.cover,
@@ -2683,6 +2694,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
               borderRadius: const BorderRadius.vertical(top: Radius.circular(10), bottom: Radius.circular(10)),
               child: CachedNetworkImage(
                 imageUrl: actor['photo'] ?? '',
+                cacheManager: AppImageCacheManager(),
                 fit: BoxFit.cover,
                 placeholder: (_, __) => Container(color: AppTheme.bgSurface),
                 errorWidget: (_, __, ___) => Container(

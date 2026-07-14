@@ -8,6 +8,7 @@ import 'package:phimhay_app/config/app_config.dart';
 import 'package:phimhay_app/config/responsive.dart';
 import 'package:phimhay_app/config/theme.dart';
 import 'package:phimhay_app/models/movie.dart';
+import 'package:phimhay_app/services/image_cache_manager.dart';
 import 'package:phimhay_app/screens/movie_detail/movie_detail_screen.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -653,8 +654,10 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
                 CachedNetworkImage(
                   imageUrl: thumbUrl,
                   fit: BoxFit.cover,
-                  memCacheWidth: 280,
+                  cacheManager: AppImageCacheManager(),
                   cacheKey: '${m.slug}_${m.id}_${thumbUrl.hashCode}',
+                  fadeInDuration: const Duration(milliseconds: 200),
+                  fadeOutDuration: const Duration(milliseconds: 100),
                   placeholder: (_, __) => Container(color: AppTheme.bgCard),
                   errorWidget: (_, __, ___) => Container(color: AppTheme.bgCard, child: const Icon(Icons.movie, color: AppTheme.textMuted)),
                 ),

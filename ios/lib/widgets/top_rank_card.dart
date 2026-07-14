@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:phimhay_app/config/theme.dart';
 import 'package:phimhay_app/models/movie.dart';
+import 'package:phimhay_app/services/image_cache_manager.dart';
 
 /// Clip-path polygon — converted from exact CSS polygon in test-cards.html
 /// Odd cards (1,3,5): top-right corner cut diagonally inward
@@ -157,8 +158,10 @@ class TopRankCard extends StatelessWidget {
                       child: CachedNetworkImage(
                         imageUrl: movie.thumbUrl ?? '',
                         fit: BoxFit.cover,
-                        memCacheWidth: 280,
+                        cacheManager: AppImageCacheManager(),
                         cacheKey: '${movie.slug}_${movie.id}_thumb',
+                        fadeInDuration: const Duration(milliseconds: 200),
+                        fadeOutDuration: const Duration(milliseconds: 100),
                         placeholder: (_, __) => Container(color: AppTheme.bgSurface),
                         errorWidget: (_, __, ___) => Container(
                           color: AppTheme.bgSurface,

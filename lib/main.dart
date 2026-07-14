@@ -48,11 +48,14 @@ void main() async {
 
   await ApiClient.init();
 
+  // ★ FIX: Không clear cache mỗi lần update app — giữ nguyên disk cache
+  // Chỉ clear 1 lần migration từ version cũ (nếu cần)
   try {
     final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool('cache_cleared_v2') != true) {
-      await DefaultCacheManager().emptyCache();
-      await prefs.setBool('cache_cleared_v2', true);
+    if (prefs.getBool('cache_migrated_v3') != true) {
+      // Chỉ trim cache cũ (remove stale), KHÔNG emptyCache
+      await DefaultCacheManager().removeExpiredFiles();
+      await prefs.setBool('cache_migrated_v3', true);
     }
   } catch (_) {}
 

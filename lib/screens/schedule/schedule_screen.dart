@@ -5,6 +5,7 @@ import 'package:phimhay_app/services/api_client.dart';
 import '../../config/app_config.dart';
 import '../../config/theme.dart';
 import '../movie_detail/movie_detail_screen.dart';
+import '../../services/image_cache_manager.dart';
 
 class ScheduleScreen extends StatefulWidget {
   final bool isTab;
@@ -327,7 +328,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> with AutomaticKeepAlive
                     imageUrl: thumb,
                     width: 70, height: 105,
                     fit: BoxFit.cover,
-                    memCacheWidth: 140,
+                    cacheManager: AppImageCacheManager(),
+                    fadeInDuration: const Duration(milliseconds: 200),
+                    fadeOutDuration: const Duration(milliseconds: 100),
                     placeholder: (_, __) => Container(width: 70, height: 105, color: AppTheme.bgSurface),
                     errorWidget: (_, __, ___) => Container(
                       width: 70, height: 105, color: AppTheme.bgSurface,

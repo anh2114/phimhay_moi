@@ -6,6 +6,7 @@ import 'package:phimhay_app/config/theme.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
 import 'package:phimhay_app/screens/actors/actor_detail_screen.dart';
+import 'package:phimhay_app/services/image_cache_manager.dart';
 
 class ActorsListScreen extends StatefulWidget {
   const ActorsListScreen({super.key});
@@ -191,6 +192,8 @@ class _ActorsListScreenState extends State<ActorsListScreen> {
                 width: 50,
                 height: 50,
                 fit: BoxFit.cover,
+                cacheManager: AppImageCacheManager(),
+                fadeInDuration: Duration.zero,
                 placeholder: (_, __) => Container(width: 50, height: 50, color: AppTheme.bgCard),
                 errorWidget: (_, __, ___) => Container(
                   width: 50, height: 50, color: AppTheme.bgCard,

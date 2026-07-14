@@ -8,6 +8,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/reminder_provider.dart';
 import '../../widgets/header.dart';
 import '../../widgets/bottom_nav.dart';
+import '../../services/image_cache_manager.dart';
 import '../home/home_screen.dart';
 import '../auth/auth_screen.dart';
 import '../actors/actors_list_screen.dart';
@@ -241,6 +242,9 @@ class _NotificationScreenState extends State<NotificationScreen> with AutomaticK
               width: 72,
               height: 96,
               fit: BoxFit.cover,
+              cacheManager: AppImageCacheManager(),
+              fadeInDuration: const Duration(milliseconds: 200),
+              fadeOutDuration: const Duration(milliseconds: 100),
               errorWidget: (_, __, ___) => Container(
                 color: AppTheme.bgCard,
                 child: const Icon(Icons.movie, color: AppTheme.textMuted),

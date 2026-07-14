@@ -8,6 +8,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:phimhay_app/services/profile_service.dart';
 import 'package:provider/provider.dart';
 import 'package:phimhay_app/config/app_config.dart';
+import 'package:phimhay_app/services/image_cache_manager.dart';
 import 'package:phimhay_app/services/api_client.dart';
 import 'package:phimhay_app/config/theme.dart';
 import 'package:phimhay_app/providers/auth_provider.dart';
@@ -456,7 +457,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                 boxShadow: [BoxShadow(color: AppTheme.accent.withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 4))],
               ),
               child: ClipOval(child: avatar.isNotEmpty
-                  ? CachedNetworkImage(imageUrl: avatar, fit: BoxFit.cover, errorWidget: (_, __, ___) => _avatarFallback(initial))
+                  ? CachedNetworkImage(imageUrl: avatar, fit: BoxFit.cover, cacheManager: AppImageCacheManager(), fadeInDuration: Duration.zero, errorWidget: (_, __, ___) => _avatarFallback(initial))
                   : _avatarFallback(initial)),
             ),
             if (isAdmin)
@@ -612,6 +613,9 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               Expanded(child: Stack(children: [
                 ClipRRect(borderRadius: BorderRadius.circular(8),
                   child: CachedNetworkImage(imageUrl: thumb, width: double.infinity, height: double.infinity, fit: BoxFit.cover,
+                    cacheManager: AppImageCacheManager(),
+                    fadeInDuration: const Duration(milliseconds: 200),
+                    fadeOutDuration: const Duration(milliseconds: 100),
                     placeholder: (_, __) => Container(color: AppTheme.bgCard),
                     errorWidget: (_, __, ___) => Container(color: AppTheme.bgCard, child: const Icon(Icons.movie, color: AppTheme.textMuted)))),
                 if (quality.isNotEmpty) Positioned(top: 4, left: 4,
@@ -656,6 +660,9 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               Expanded(child: Stack(children: [
                 ClipRRect(borderRadius: BorderRadius.circular(8),
                   child: CachedNetworkImage(imageUrl: thumb, width: double.infinity, height: double.infinity, fit: BoxFit.cover,
+                    cacheManager: AppImageCacheManager(),
+                    fadeInDuration: const Duration(milliseconds: 200),
+                    fadeOutDuration: const Duration(milliseconds: 100),
                     placeholder: (_, __) => Container(color: AppTheme.bgCard),
                     errorWidget: (_, __, ___) => Container(color: AppTheme.bgCard, child: const Icon(Icons.movie, color: AppTheme.textMuted)))),
                 if (quality.isNotEmpty) Positioned(top: 4, left: 4,
@@ -701,6 +708,9 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
             Expanded(child: Stack(children: [
               ClipRRect(borderRadius: BorderRadius.circular(8),
                 child: CachedNetworkImage(imageUrl: thumb, width: double.infinity, height: double.infinity, fit: BoxFit.cover,
+                  cacheManager: AppImageCacheManager(),
+                  fadeInDuration: const Duration(milliseconds: 200),
+                  fadeOutDuration: const Duration(milliseconds: 100),
                   placeholder: (_, __) => Container(color: AppTheme.bgCard),
                   errorWidget: (_, __, ___) => Container(color: AppTheme.bgCard, child: const Icon(Icons.movie, color: AppTheme.textMuted)))),
               if (quality.isNotEmpty) Positioned(top: 4, left: 4,
@@ -740,6 +750,9 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           child: Row(children: [
             ClipRRect(borderRadius: BorderRadius.circular(6),
               child: CachedNetworkImage(imageUrl: thumb, width: 56, height: 80, fit: BoxFit.cover,
+                cacheManager: AppImageCacheManager(),
+                fadeInDuration: const Duration(milliseconds: 200),
+                fadeOutDuration: const Duration(milliseconds: 100),
                 placeholder: (_, __) => Container(width: 56, height: 80, color: AppTheme.bgCard),
                 errorWidget: (_, __, ___) => Container(width: 56, height: 80, color: AppTheme.bgCard, child: const Icon(Icons.movie, color: AppTheme.textMuted)))),
             const SizedBox(width: 12),
