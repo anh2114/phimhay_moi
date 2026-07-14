@@ -1743,11 +1743,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             ),
           ),
         ),
-        // ═══ 2 Action Buttons — ngay dưới banner ═══
+        // ═══ 2 Action Buttons — ngay dưới banner, không gap ═══
         Positioned(
-          top: 380, left: 0, right: 0,
+          top: 370, left: 0, right: 0,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
             child: Row(
               children: [
                 // Xem phim — gold button
@@ -1780,24 +1780,21 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                   ),
                 ),
                 const SizedBox(width: 12),
-                // Tập Phim — outlined button
+                // Tập Phim — NỀN TRẮNG TINH
                 GestureDetector(
-                  onTap: () {
-                    // Scroll to episode section
-                  },
+                  onTap: () {},
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                     decoration: BoxDecoration(
-                      color: Colors.transparent,
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
                     ),
                     child: const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.list_rounded, color: Colors.white70, size: 20),
+                        Icon(Icons.list_rounded, color: Color(0xFF1A1100), size: 20),
                         SizedBox(width: 8),
-                        Text('Tập Phim', style: TextStyle(color: Colors.white70, fontSize: 15, fontWeight: FontWeight.w600)),
+                        Text('Tập Phim', style: TextStyle(color: Color(0xFF1A1100), fontSize: 15, fontWeight: FontWeight.w700)),
                       ],
                     ),
                   ),
