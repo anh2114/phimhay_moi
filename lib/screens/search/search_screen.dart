@@ -63,10 +63,19 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
 
   bool get _hasActiveFilters => _country.isNotEmpty || _genre.isNotEmpty || _year.isNotEmpty || _sortBy.isNotEmpty || _filterType.isNotEmpty || _serverType.isNotEmpty;
 
-  // ── Search History ──
+  // ── Search History (server-side per account) ──
   static const String _historyKey = 'search_history';
 
   Future<void> _loadHistory() async {
+    try {
+      final res = await _dio.get('${AppConfig.apiUrl}/search_history.php', queryParameters: {'action': 'list'});
+      if (res.data is Map && res.data['success'] == true) {
+        final list = res.data['history'] as List<dynamic>? ?? [];
+        setState(() { _searchHistory = list.cast<String>(); });
+        return;
+      }
+    } catch (_) {}
+    // Fallback to SharedPreferences if not logged in
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_historyKey);
     if (raw != null) {
@@ -81,18 +90,29 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
     if (_searchHistory.length > _historyMaxSize) {
       _searchHistory = _searchHistory.sublist(0, _historyMaxSize);
     }
+    // Save to server
+    try {
+      await _dio.post('${AppConfig.apiUrl}/search_history.php', data: {'action': 'save', 'keyword': q});
+    } catch (_) {}
+    // Also save to SharedPreferences as fallback
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_historyKey, jsonEncode(_searchHistory));
   }
 
   Future<void> _removeFromHistory(String query) async {
     setState(() { _searchHistory.remove(query); });
+    try {
+      await _dio.post('${AppConfig.apiUrl}/search_history.php', data: {'action': 'delete', 'keyword': query});
+    } catch (_) {}
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_historyKey, jsonEncode(_searchHistory));
   }
 
   Future<void> _clearHistory() async {
     setState(() { _searchHistory.clear(); });
+    try {
+      await _dio.post('${AppConfig.apiUrl}/search_history.php', data: {'action': 'clear'});
+    } catch (_) {}
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_historyKey);
   }
