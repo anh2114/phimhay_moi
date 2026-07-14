@@ -1718,124 +1718,119 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     final quality = (movie.quality ?? '').toUpperCase();
     final backdropUrl = movie.posterUrl ?? movie.thumbUrl ?? '';
 
-    return Stack(
-      clipBehavior: Clip.none,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        // ═══ Hero Backdrop — posterUrl (landscape), full width, no crop ═══
-        Positioned(
-          top: 0, left: 0, right: 0, height: 380,
-          child: CachedNetworkImage(
-            imageUrl: backdropUrl, fit: BoxFit.cover, alignment: Alignment.topCenter,
-            cacheManager: AppImageCacheManager(), fadeInDuration: Duration.zero,
-            placeholder: (_, __) => Container(color: AppTheme.bgCard),
-            errorWidget: (_, __, ___) => Container(color: AppTheme.bgCard),
-          ),
-        ),
-        // ═══ Close button (X) ═══
-        Positioned(
-          top: MediaQuery.of(context).padding.top + 8, left: 12,
-          child: GestureDetector(
-            onTap: () => Navigator.pop(context),
-            child: Container(
-              width: 36, height: 36,
-              decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0x80000000)),
-              child: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
+        // ═══ Hero Banner — full width, natural height ═══
+        Stack(
+          children: [
+            CachedNetworkImage(
+              imageUrl: backdropUrl,
+              width: double.infinity,
+              fit: BoxFit.fitWidth,
+              cacheManager: AppImageCacheManager(),
+              fadeInDuration: Duration.zero,
+              placeholder: (_, __) => Container(color: AppTheme.bgCard, width: double.infinity, height: 200),
+              errorWidget: (_, __, ___) => Container(color: AppTheme.bgCard, width: double.infinity, height: 200),
             ),
-          ),
-        ),
-        // ═══ 2 Action Buttons — ngay mép dưới banner ═══
-        Positioned(
-          top: 380, left: 0, right: 0,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-            child: Row(
-              children: [
-                // Xem phim — gold button
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () {
-                      dynamic firstEp;
-                      if (_servers.isNotEmpty) {
-                        final eps = _servers[_selectedServer]['episodes'] as List<dynamic>? ?? [];
-                        if (eps.isNotEmpty) firstEp = eps[0];
-                      }
-                      if (firstEp == null && _episodes.isNotEmpty) firstEp = _episodes[0];
-                      if (firstEp != null) _tapEpisode(firstEp, 0);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF5E6B8),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.play_arrow_rounded, color: Color(0xFF1A1100), size: 22),
-                          SizedBox(width: 8),
-                          Text('Xem phim', style: TextStyle(color: Color(0xFF1A1100), fontSize: 16, fontWeight: FontWeight.w800)),
-                        ],
-                      ),
-                    ),
-                  ),
+            // Close button
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 8, left: 12,
+              child: GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  width: 36, height: 36,
+                  decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0x80000000)),
+                  child: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
                 ),
-                const SizedBox(width: 12),
-                // Tập Phim — NỀN TRẮNG TINH
-                GestureDetector(
-                  onTap: () {},
+              ),
+            ),
+          ],
+        ),
+        // ═══ 2 Action Buttons — 3px below banner ═══
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 3, 16, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    dynamic firstEp;
+                    if (_servers.isNotEmpty) {
+                      final eps = _servers[_selectedServer]['episodes'] as List<dynamic>? ?? [];
+                      if (eps.isNotEmpty) firstEp = eps[0];
+                    }
+                    if (firstEp == null && _episodes.isNotEmpty) firstEp = _episodes[0];
+                    if (firstEp != null) _tapEpisode(firstEp, 0);
+                  },
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: const Color(0xFFF5E6B8),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.list_rounded, color: Color(0xFF1A1100), size: 20),
+                        Icon(Icons.play_arrow_rounded, color: Color(0xFF1A1100), size: 22),
                         SizedBox(width: 8),
-                        Text('Tập Phim', style: TextStyle(color: Color(0xFF1A1100), fontSize: 15, fontWeight: FontWeight.w700)),
+                        Text('Xem phim', style: TextStyle(color: Color(0xFF1A1100), fontSize: 16, fontWeight: FontWeight.w800)),
                       ],
                     ),
                   ),
                 ),
-              ],
-            ),
-          ),
-        ),
-        // ═══ Title + Meta chips — cách buttons 3px ═══
-        Positioned(
-          top: 443, left: 0, right: 0,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 3, 20, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(movie.name, maxLines: 2, overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800)),
-                if ((movie.originName ?? '').isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(movie.originName!, maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 14)),
-                ],
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8, runSpacing: 8,
-                  children: [
-                    _chipSolid('IMDb ${(movie.tmdbRating ?? movie.imdbRating ?? 0).toStringAsFixed(1)}'),
-                    if (quality.isNotEmpty) _chipBorder(quality),
-                    if (movie.year != null && movie.year! > 0) _chipBorder('${movie.year}'),
-                    if ((movie.time ?? '').isNotEmpty) _chipBorder(movie.time!),
-                    if ((movie.episodeCurrent ?? '').isNotEmpty) _chipBorder('Phần 1'),
-                  ],
+              ),
+              const SizedBox(width: 12),
+              GestureDetector(
+                onTap: () {},
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.list_rounded, color: Color(0xFF1A1100), size: 20),
+                      SizedBox(width: 8),
+                      Text('Tập Phim', style: TextStyle(color: Color(0xFF1A1100), fontSize: 15, fontWeight: FontWeight.w700)),
+                    ],
+                  ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
-        // ★ Stack height: 380 banner + 60 buttons + 140 title/chips
-        const SizedBox(height: 580),
+        // ═══ Title + Chips — 3px below buttons ═══
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 3, 20, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(movie.name, maxLines: 2, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800)),
+              if ((movie.originName ?? '').isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(movie.originName!, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 14)),
+              ],
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8, runSpacing: 8,
+                children: [
+                  _chipSolid('IMDb ${(movie.tmdbRating ?? movie.imdbRating ?? 0).toStringAsFixed(1)}'),
+                  if (quality.isNotEmpty) _chipBorder(quality),
+                  if (movie.year != null && movie.year! > 0) _chipBorder('${movie.year}'),
+                  if ((movie.time ?? '').isNotEmpty) _chipBorder(movie.time!),
+                  if ((movie.episodeCurrent ?? '').isNotEmpty) _chipBorder('Phần 1'),
+                ],
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
