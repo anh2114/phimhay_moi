@@ -123,8 +123,13 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
     _fetchFilterData();
     _loadHistory();
     _searchFocus.addListener(() {
-      if (mounted && _searchFocus.hasFocus && _searchCtrl.text.trim().isEmpty) {
-        setState(() { _showHistory = true; });
+      if (mounted && _searchFocus.hasFocus) {
+        if (_searchCtrl.text.trim().isEmpty) {
+          setState(() { _showHistory = true; _results = []; _hasSearched = false; });
+        } else {
+          // Tap vào search field khi có text → xóa results, hiện history
+          setState(() { _showHistory = true; _results = []; _hasSearched = false; });
+        }
       }
     });
     if (!widget.isTab) {
