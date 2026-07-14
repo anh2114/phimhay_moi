@@ -1703,6 +1703,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   }
 
   Widget _buildHeader(Movie movie) {
+    // Determine if movie is from 2026 or later
+    final isModern = (movie.year ?? 0) >= 2026;
+    final quality = (movie.quality ?? '').toUpperCase();
+    final type = _typeLabel(movie.type ?? '');
+
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -1713,8 +1718,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             children: [
               Positioned.fill(
                 child: CachedNetworkImage(
-                  imageUrl: movie.posterUrl ?? movie.thumbUrl ?? '',
-                  fit: BoxFit.cover, alignment: Alignment.topCenter,
+                  imageUrl: movie.thumbUrl ?? movie.posterUrl ?? '',
+                  fit: BoxFit.cover,
                   cacheManager: AppImageCacheManager(),
                   fadeInDuration: Duration.zero,
                   placeholder: (_, __) => Container(color: AppTheme.bgCard),
@@ -1766,13 +1771,15 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Poster — dùng posterUrl cho backdrop, thumbUrl cho poster card
                 ClipRRect(
                   borderRadius: BorderRadius.circular(14),
                   child: Container(
                     width: 130, height: 190,
                     decoration: BoxDecoration(boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.6), blurRadius: 24, offset: const Offset(0, 8))]),
                     child: CachedNetworkImage(
-                      imageUrl: movie.thumbUrl ?? '', width: 130, height: 190, fit: BoxFit.cover,
+                      imageUrl: movie.thumbUrl ?? movie.posterUrl ?? '',
+                      width: 130, height: 190, fit: BoxFit.cover,
                       cacheManager: AppImageCacheManager(),
                       fadeInDuration: const Duration(milliseconds: 200),
                       placeholder: (_, __) => Container(color: AppTheme.bgCard),
@@ -1795,14 +1802,24 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                             style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 13)),
                         ],
                         const SizedBox(height: 10),
+                        // Meta chips — TMDB + T16 dùng nền trắng đậm, year 2026+ dùng viền trắng
                         Wrap(
                           spacing: 6, runSpacing: 6,
                           children: [
+                            // TMDB rating — nền trắng đậm, chữ đen
                             if (movie.tmdbRating != null && movie.tmdbRating! > 0)
-                              _chip('TMDB ${movie.tmdbRating!.toStringAsFixed(1)}', const Color(0x1FF5C518), const Color(0xFFF5C518)),
+                              _chipSolid('TMDB ${movie.tmdbRating!.toStringAsFixed(1)}'),
+                            // Age rating — nền trắng đậm, chữ đen
+                            _chipSolid(_formatAgeRating(movie.ageRating)),
+                            // Year — viền trắng nếu >= 2026
                             if (movie.year != null && movie.year! > 0)
-                              _chip('${movie.year}', const Color(0x0FFFFFFF), Colors.white70),
-                            _chip(_formatAgeRating(movie.ageRating), const Color(0x0FFFFFFF), Colors.white70),
+                              _chipBorder('${movie.year}', isModern),
+                            // Type
+                            if (type.isNotEmpty)
+                              _chipBorder(type, isModern),
+                            // Quality
+                            if (quality.isNotEmpty)
+                              _chipBorder(quality, isModern),
                           ],
                         ),
                       ],
@@ -1818,11 +1835,34 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     );
   }
 
-  Widget _chip(String label, Color bg, Color text) {
+  /// Chip nền trắng đậm — dùng cho TMDB, T16, T13
+  Widget _chipSolid(String label) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8), border: Border.all(color: text.withValues(alpha: 0.2))),
-      child: Text(label, style: TextStyle(color: text, fontSize: 11, fontWeight: FontWeight.w700)),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(label, style: const TextStyle(color: Color(0xFF1A1A2E), fontSize: 11, fontWeight: FontWeight.w800)),
+    );
+  }
+
+  /// Chip viền trắng — dùng cho year 2026+, type, quality
+  Widget _chipBorder(String label, bool isModern) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isModern ? Colors.white.withValues(alpha: 0.7) : Colors.white.withValues(alpha: 0.3),
+          width: isModern ? 1.2 : 0.8,
+        ),
+      ),
+      child: Text(label, style: TextStyle(
+        color: isModern ? Colors.white : Colors.white70,
+        fontSize: 11, fontWeight: FontWeight.w600,
+      )),
     );
   }
 
