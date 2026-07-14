@@ -741,61 +741,34 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     final movie = Movie.fromJson(_movieData!);
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 12),
-        // Info panel (expandable)
-        _buildInfoPanel(movie),
-
-        // Has episodes?
-        Builder(builder: (ctx) {
-          bool hasEpisodes = false;
-          if (_servers.isNotEmpty) {
-            final eps = _servers[_selectedServer]['episodes'] as List<dynamic>? ?? [];
-            hasEpisodes = eps.isNotEmpty;
-          }
-          if (!hasEpisodes) hasEpisodes = _episodes.isNotEmpty;
-
-          final isTrailer = !_hasActiveEpisodes;
-
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-            child: _actionBtn(
-              label: isTrailer ? 'Xem Trailer' : 'Xem ngay',
-              icon: Icons.play_arrow_rounded,
-              bgColor: null,
-              isGold: true,
-              textColor: const Color(0xFF1A1100),
-              onTap: () {
-                if (isTrailer) {
-                  _playTrailer();
-                  return;
-                }
-                dynamic firstEp;
-                if (_servers.isNotEmpty) {
-                  final eps = _servers[_selectedServer]['episodes'] as List<dynamic>? ?? [];
-                  if (eps.isNotEmpty) firstEp = eps[0];
-                }
-                if (firstEp == null && _episodes.isNotEmpty) {
-                  firstEp = _episodes[0];
-                }
-                if (firstEp != null) {
-                  _tapEpisode(firstEp, 0);
-                }
-              },
-            ),
-          );
-        }),
-
-        // Resume banner (below Xem ngay)
-        if (_watchProgress != null)
+        // Synopsis
+        if ((movie.description ?? '').isNotEmpty)
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: _buildResumeBanner(movie),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    movie.description!.replaceAll('&nbsp;', ' ').replaceAll(RegExp(r'<[^>]*>'), '').trim(),
+                    maxLines: 3, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: AppTheme.textSub, fontSize: 14, height: 1.6),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => _showInfoBottomSheet(movie),
+                  child: Text('Chi tiết', style: TextStyle(color: AppTheme.textSub, fontSize: 13, fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ),
           ),
-        const SizedBox(height: 12),
-        // Action row — circular icons
-        _buildActionRow(movie),
         const SizedBox(height: 16),
+        // 5 Action buttons
+        _buildActionRow(movie),
+        const SizedBox(height: 12),
         // Tabs
         Container(
           color: AppTheme.bg,
@@ -807,12 +780,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             indicatorWeight: 3,
             labelColor: AppTheme.gold,
             unselectedLabelColor: AppTheme.textSub,
-            labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-            unselectedLabelStyle: const TextStyle(fontSize: 13),
-            dividerColor: AppTheme.border,
+            labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+            unselectedLabelStyle: const TextStyle(fontSize: 14),
             tabs: const [
               Tab(text: 'Tập phim'),
-              Tab(text: 'Phòng trưng bày'),
               Tab(text: 'Diễn viên'),
               Tab(text: 'Đề xuất'),
             ],
@@ -820,9 +791,64 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         ),
         // Tab content
         _buildTabContent(_tabController.index, movie),
-        // Comments + Rating section (below tabs)
-        _buildCommentsSection(movie),
       ],
+    );
+  }
+
+  // Info bottom sheet
+  void _showInfoBottomSheet(Movie movie) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.bgCard,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      isScrollControlled: true,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.7, maxChildSize: 0.9, minChildSize: 0.4, expand: false,
+        builder: (ctx, scrollController) => SingleChildScrollView(
+          controller: scrollController,
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)))),
+              const SizedBox(height: 20),
+              const Text('Thông tin phim', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 20),
+              Text('Giới thiệu:', style: TextStyle(color: AppTheme.textMuted, fontSize: 13, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 10),
+              Text((movie.description ?? '').replaceAll('&nbsp;', ' ').replaceAll(RegExp(r'<[^>]*>'), '').trim(),
+                style: TextStyle(color: AppTheme.textSub, fontSize: 14, height: 1.7)),
+              const SizedBox(height: 24),
+              _infoRow('Quốc gia:', _countriesText().isNotEmpty ? _countriesText() : 'Đang cập nhật'),
+              _infoRow('Đạo diễn:', movie.director ?? 'Đang cập nhật'),
+              _infoRow('Sản xuất:', 'Đang cập nhật'),
+              _infoRow('Thời lượng:', movie.time ?? '? phút/tập'),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  style: OutlinedButton.styleFrom(side: BorderSide(color: AppTheme.border), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(vertical: 14)),
+                  child: const Text('Đóng', style: TextStyle(color: Colors.white70, fontSize: 15, fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _infoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 100, child: Text(label, style: TextStyle(color: AppTheme.textMuted, fontSize: 14, fontWeight: FontWeight.w600))),
+          Expanded(child: Text(value, style: TextStyle(color: AppTheme.textSub, fontSize: 14))),
+        ],
+      ),
     );
   }
 
@@ -989,67 +1015,56 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
 
   Widget _buildActionRow(Movie movie) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          // Yêu thích
           _actionCircle(
             icon: Consumer<FavoriteProvider>(
               builder: (_, fav, __) => Icon(
                 fav.isFavorite(movie.id) ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                color: fav.isFavorite(movie.id) ? Colors.redAccent : AppTheme.textPrimary,
-                size: 20,
+                color: fav.isFavorite(movie.id) ? Colors.redAccent : AppTheme.textPrimary, size: 22,
               ),
             ),
             label: 'Yêu thích',
             onTap: () => context.read<FavoriteProvider>().toggleFavorite(movie),
           ),
-          const SizedBox(width: 20),
-          // Thêm vào
           _actionCircle(
-            icon: const Icon(Icons.add_rounded, color: AppTheme.textPrimary, size: 20),
-            label: 'Thêm vào',
-            onTap: () {},
+            icon: const Icon(Icons.add_rounded, color: AppTheme.textPrimary, size: 22),
+            label: 'Thêm vào', onTap: () {},
           ),
-          const SizedBox(width: 20),
-          // Chia sẻ
           _actionCircle(
-            icon: const Icon(Icons.share_rounded, color: AppTheme.textPrimary, size: 20),
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.mood_rounded, color: AppTheme.textPrimary, size: 22),
+                if (_avgRating > 0)
+                  Positioned(
+                    top: -6, right: -10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                      decoration: BoxDecoration(color: AppTheme.gold, borderRadius: BorderRadius.circular(6)),
+                      child: Text(_avgRating.toStringAsFixed(1), style: const TextStyle(color: Color(0xFF1A1100), fontSize: 9, fontWeight: FontWeight.w800)),
+                    ),
+                  ),
+              ],
+            ),
+            label: 'Đánh giá', onTap: () => _showRatingDialog(movie),
+          ),
+          _actionCircle(
+            icon: const Icon(Icons.chat_bubble_outline_rounded, color: AppTheme.textPrimary, size: 22),
+            label: 'Bình luận', onTap: () {},
+          ),
+          _actionCircle(
+            icon: const Icon(Icons.send_rounded, color: AppTheme.textPrimary, size: 22),
             label: 'Chia sẻ',
             onTap: () {
               final slug = movie.slug ?? (_movieData?['slug'] ?? '');
-              final url = 'https://xiaofilm.online/phim/$slug';
-              Clipboard.setData(ClipboardData(text: url));
+              Clipboard.setData(ClipboardData(text: 'https://xiaofilm.online/phim/$slug'));
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Đã copy link phim'), backgroundColor: Color(0xFF2E7D32), duration: Duration(seconds: 2)),
               );
             },
-          ),
-          const SizedBox(width: 20),
-          // Movie rating badge (from movie_ratings, not TMDB)
-          GestureDetector(
-            onTap: () => _showRatingDialog(movie),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: const Color(0xFF3D5BD6),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.star_rounded, color: Colors.white, size: 16),
-                  const SizedBox(width: 4),
-                  Text(
-                    _avgRating > 0 ? _avgRating.toStringAsFixed(1) : '--',
-                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(width: 4),
-                  Text('Đánh giá', style: const TextStyle(color: Colors.white70, fontSize: 11)),
-                ],
-              ),
-            ),
           ),
         ],
       ),
