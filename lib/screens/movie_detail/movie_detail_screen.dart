@@ -1732,7 +1732,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             children: [
               Positioned.fill(
                 child: CachedNetworkImage(
-                  imageUrl: backdropUrl, fit: BoxFit.cover,
+                  imageUrl: backdropUrl, fit: BoxFit.fitWidth, alignment: Alignment.topCenter,
                   cacheManager: AppImageCacheManager(), fadeInDuration: Duration.zero,
                   placeholder: (_, __) => Container(color: AppTheme.bgCard),
                   errorWidget: (_, __, ___) => Container(color: AppTheme.bgCard),
