@@ -1090,17 +1090,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       onTap: onTap,
       child: Column(
         children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: AppTheme.border),
-            ),
-            child: Center(child: icon),
-          ),
+          SizedBox(width: 44, height: 44, child: Center(child: icon)),
           const SizedBox(height: 4),
-          Text(label, style: const TextStyle(color: AppTheme.textMuted, fontSize: 10)),
+          Text(label, style: TextStyle(color: AppTheme.textSub, fontSize: 11)),
         ],
       ),
     );
