@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -1725,31 +1725,26 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        // ═══ Hero Backdrop (420px) — posterUrl (landscape) ═══
+        // ═══ Hero Backdrop — posterUrl (landscape), full width ═══
         Positioned(
-          top: 0, left: 0, right: 0, height: 420,
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: CachedNetworkImage(
-                  imageUrl: backdropUrl, fit: BoxFit.fitWidth, alignment: Alignment.topCenter,
-                  cacheManager: AppImageCacheManager(), fadeInDuration: Duration.zero,
-                  placeholder: (_, __) => Container(color: AppTheme.bgCard),
-                  errorWidget: (_, __, ___) => Container(color: AppTheme.bgCard),
-                ),
+          top: 0, left: 0, right: 0, height: 380,
+          child: CachedNetworkImage(
+            imageUrl: backdropUrl, fit: BoxFit.cover, width: double.infinity,
+            cacheManager: AppImageCacheManager(), fadeInDuration: Duration.zero,
+            placeholder: (_, __) => Container(color: AppTheme.bgCard),
+            errorWidget: (_, __, ___) => Container(color: AppTheme.bgCard),
+          ),
+        ),
+        // Gradient fade to background
+        Positioned(
+          top: 280, left: 0, right: 0, height: 100,
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                colors: [Colors.transparent, Color(0xF70D0F14)],
               ),
-              Positioned.fill(
-                child: Container(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                      colors: [Color(0x260D0F14), Colors.transparent, Color(0x800D0F14), Color(0xF70D0F14)],
-                      stops: [0.0, 0.4, 0.75, 1.0],
-                    ),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
         // ═══ Close button (X) ═══
@@ -1764,13 +1759,14 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             ),
           ),
         ),
-        // ═══ Title + Meta chips ═══
+        // ═══ Title + Meta chips — right after banner ═══
         Positioned(
-          top: 340, left: 0, right: 0,
+          top: 380, left: 0, right: 0,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(movie.name, maxLines: 2, overflow: TextOverflow.ellipsis,
                   style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800)),
@@ -1779,7 +1775,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                   Text(movie.originName!, maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 14)),
                 ],
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 Wrap(
                   spacing: 8, runSpacing: 8,
                   children: [
@@ -1788,18 +1784,12 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                     if (movie.year != null && movie.year! > 0) _chipBorder('${movie.year}'),
                     if ((movie.time ?? '').isNotEmpty) _chipBorder(movie.time!),
                     if ((movie.episodeCurrent ?? '').isNotEmpty) _chipBorder('Phần 1'),
-                    _chipBorder(_formatAgeRating(movie.ageRating)),
                   ],
                 ),
-                if (_genresText().isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  _chipBorder(_genresText().split(',').first),
-                ],
               ],
             ),
           ),
         ),
-        const SizedBox(height: 540),
       ],
     );
   }
