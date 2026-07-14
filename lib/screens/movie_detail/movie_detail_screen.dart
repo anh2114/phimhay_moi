@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -65,10 +65,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   int _selectedServer = 0;
   final TextEditingController _commentController = TextEditingController();
   bool _isPostingComment = false;
-  int _episodePage = 1; // Trang táº­p hiá»‡n táº¡i (100 táº­p/trang)
+  int _episodePage = 1; // Trang tÃ¡ÂºÂ­p hiÃ¡Â»â€¡n tÃ¡ÂºÂ¡i (100 tÃ¡ÂºÂ­p/trang)
   static const int _episodesPerPage = 100;
   bool _showInfoPanel = false;
-  int _commentTab = 0; // 0: BÃ¬nh luáº­n, 1: ÄÃ¡nh giÃ¡
+  int _commentTab = 0; // 0: BÃƒÂ¬nh luÃ¡ÂºÂ­n, 1: Ã„ÂÃƒÂ¡nh giÃƒÂ¡
   bool _isSpoiler = false;
   List<dynamic> _ratings = [];
   double _avgRating = 0;
@@ -80,10 +80,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     return Provider.of<AuthProvider>(context, listen: false).user ?? {};
   }
 
-  /// Chá»n server máº·c Ä‘á»‹nh thÃ´ng minh:
-  /// 1. Server cÃ³ "4K" trong tÃªn + táº­p má»›i nháº¥t
-  /// 2. Server cÃ³ táº­p má»›i nháº¥t
-  /// 3. Server Ä‘áº§u tiÃªn
+  /// ChÃ¡Â»Ân server mÃ¡ÂºÂ·c Ã„â€˜Ã¡Â»â€¹nh thÃƒÂ´ng minh:
+  /// 1. Server cÃƒÂ³ "4K" trong tÃƒÂªn + tÃ¡ÂºÂ­p mÃ¡Â»â€ºi nhÃ¡ÂºÂ¥t
+  /// 2. Server cÃƒÂ³ tÃ¡ÂºÂ­p mÃ¡Â»â€ºi nhÃ¡ÂºÂ¥t
+  /// 3. Server Ã„â€˜Ã¡ÂºÂ§u tiÃƒÂªn
   static int pickBestServer(List<dynamic> servers) {
     if (servers.isEmpty) return 0;
     int bestIdx = 0;
@@ -104,7 +104,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     return best4kIdx >= 0 ? best4kIdx : bestIdx;
   }
 
-  // Watch progress â€” "Xem tiáº¿p"
+  // Watch progress Ã¢â‚¬â€ "Xem tiÃ¡ÂºÂ¿p"
   final MovieService _movieService = MovieService();
   Map<String, dynamic>? _watchProgress; // {episode_id, ep_slug, server_idx, position, duration, ep_name}
 
@@ -177,7 +177,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
 
     if (trailerUrl == null || trailerUrl.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Phim nÃ y chÆ°a cÃ³ trailer'), backgroundColor: Colors.orange, duration: Duration(seconds: 2)),
+        const SnackBar(content: Text('Phim nÃƒÂ y chÃ†Â°a cÃƒÂ³ trailer'), backgroundColor: Colors.orange, duration: Duration(seconds: 2)),
       );
       return;
     }
@@ -215,7 +215,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     _fetchMovieDetail();
     _fetchComments();
 
-    // LÆ°u movie vÃ o history
+    // LÃ†Â°u movie vÃƒÂ o history
     if (widget.movie != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         context.read<WatchHistoryProvider>().setLastViewed(widget.movie!);
@@ -264,12 +264,12 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       if (data['movie'] != null) {
         _movieData = data['movie'] as Map<String, dynamic>;
 
-        // servers + episodes náº±m TRONG movie object (theo movie_detail.php)
+        // servers + episodes nÃ¡ÂºÂ±m TRONG movie object (theo movie_detail.php)
         final movieObj = _movieData!;
         final rawServers = movieObj['servers'] as List<dynamic>? ?? [];
         final rawEpisodes = movieObj['episodes'] as List<dynamic>? ?? [];
 
-        // Náº¿u servers trá»‘ng, thá»­ láº¥y tá»« top-level (backward compat)
+        // NÃ¡ÂºÂ¿u servers trÃ¡Â»â€˜ng, thÃ¡Â»Â­ lÃ¡ÂºÂ¥y tÃ¡Â»Â« top-level (backward compat)
         _servers  = rawServers.isNotEmpty  ? rawServers  : (data['servers']  as List<dynamic>? ?? []);
         _episodes = rawEpisodes.isNotEmpty ? rawEpisodes : (data['episodes'] as List<dynamic>? ?? []);
       } else {
@@ -277,7 +277,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         _episodes = data['episodes'] as List<dynamic>? ?? [];
       }
 
-      // Chá»n server máº·c Ä‘á»‹nh thÃ´ng minh (4K + táº­p má»›i nháº¥t)
+      // ChÃ¡Â»Ân server mÃ¡ÂºÂ·c Ã„â€˜Ã¡Â»â€¹nh thÃƒÂ´ng minh (4K + tÃ¡ÂºÂ­p mÃ¡Â»â€ºi nhÃ¡ÂºÂ¥t)
       if (_servers.isNotEmpty) {
         _selectedServer = pickBestServer(_servers);
       }
@@ -296,12 +296,12 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       // Fetch gallery images from API
       _fetchGallery(slug);
 
-      // Fetch actors data â€” SAU KHI API load thÃ nh cÃ´ng
+      // Fetch actors data Ã¢â‚¬â€ SAU KHI API load thÃƒÂ nh cÃƒÂ´ng
       // ignore: avoid_print
       _fetchActors();
     } on DioException catch (e) {
       if (_movieData == null) {
-        _error = 'KhÃ´ng thá»ƒ táº£i thÃ´ng tin phim';
+        _error = 'KhÃƒÂ´ng thÃ¡Â»Æ’ tÃ¡ÂºÂ£i thÃƒÂ´ng tin phim';
       } else {
         _error = null;
       }
@@ -309,14 +309,14 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     }
     if (mounted) setState(() {});
 
-    // KhÃ´ng check server health â€” táº¥t cáº£ nguá»“n Ä‘á»u sá»‘ng (mobile HLS cháº¡y Ä‘Æ°á»£c háº¿t)
+    // KhÃƒÂ´ng check server health Ã¢â‚¬â€ tÃ¡ÂºÂ¥t cÃ¡ÂºÂ£ nguÃ¡Â»â€œn Ã„â€˜Ã¡Â»Âu sÃ¡Â»â€˜ng (mobile HLS chÃ¡ÂºÂ¡y Ã„â€˜Ã†Â°Ã¡Â»Â£c hÃ¡ÂºÂ¿t)
 
-    // Fetch watch progress â€” "Xem tiáº¿p"
+    // Fetch watch progress Ã¢â‚¬â€ "Xem tiÃ¡ÂºÂ¿p"
     _fetchWatchProgress(movieId);
     _fetchRatings(movieId);
   }
 
-  /// Fetch health status tá»« movie_episodes.php â€” merge vÃ o _servers theo index
+  /// Fetch health status tÃ¡Â»Â« movie_episodes.php Ã¢â‚¬â€ merge vÃƒÂ o _servers theo index
   Future<void> _fetchServerHealth(int movieId) async {
     if (movieId <= 0) return;
     try {
@@ -332,7 +332,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         setState(() {});
       }
     } catch (_) {
-      // ignore â€” health lÃ  bonus, khÃ´ng áº£nh hÆ°á»Ÿng chá»©c nÄƒng chÃ­nh
+      // ignore Ã¢â‚¬â€ health lÃƒÂ  bonus, khÃƒÂ´ng Ã¡ÂºÂ£nh hÃ†Â°Ã¡Â»Å¸ng chÃ¡Â»Â©c nÃ„Æ’ng chÃƒÂ­nh
     }
   }
 
@@ -343,17 +343,17 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     );
   }
 
-  /// Táº¡o room xem chung trá»±c tiáº¿p tá»« phim chi tiáº¿t
+  /// TÃ¡ÂºÂ¡o room xem chung trÃ¡Â»Â±c tiÃ¡ÂºÂ¿p tÃ¡Â»Â« phim chi tiÃ¡ÂºÂ¿t
   Future<void> _createWatchParty() async {
     final movieId = widget.movieId > 0 ? widget.movieId : (widget.movie?.id ?? (_movieData?['id'] as int? ?? 0));
     if (movieId <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('KhÃ´ng tÃ¬m tháº¥y phim'), backgroundColor: Colors.redAccent),
+        const SnackBar(content: Text('KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y phim'), backgroundColor: Colors.redAccent),
       );
       return;
     }
 
-    // Láº¥y episode Ä‘áº§u tiÃªn (náº¿u cÃ³)
+    // LÃ¡ÂºÂ¥y episode Ã„â€˜Ã¡ÂºÂ§u tiÃƒÂªn (nÃ¡ÂºÂ¿u cÃƒÂ³)
     dynamic firstEp;
     if (_servers.isNotEmpty) {
       final eps = _servers[_selectedServer]['episodes'] as List<dynamic>? ?? [];
@@ -384,7 +384,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         if (mounted) {
           Navigator.push(context, MaterialPageRoute(
             builder: (_) => Scaffold(
-              appBar: AppBar(backgroundColor: AppTheme.bg, title: const Text('PhÃ²ng xem chung', style: TextStyle(fontSize: 16)), elevation: 0),
+              appBar: AppBar(backgroundColor: AppTheme.bg, title: const Text('PhÃƒÂ²ng xem chung', style: TextStyle(fontSize: 16)), elevation: 0),
               body: InAppWebView(
                 initialUrlRequest: URLRequest(url: WebUri('${AppConfig.baseUrl}/phong-xem.php?code=$roomCode')),
                 initialSettings: InAppWebViewSettings(
@@ -409,7 +409,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(data['error'] ?? 'KhÃ´ng thá»ƒ táº¡o phÃ²ng'), backgroundColor: Colors.redAccent),
+            SnackBar(content: Text(data['error'] ?? 'KhÃƒÂ´ng thÃ¡Â»Æ’ tÃ¡ÂºÂ¡o phÃƒÂ²ng'), backgroundColor: Colors.redAccent),
           );
         }
       }
@@ -417,13 +417,13 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Lá»—i káº¿t ná»‘i'), backgroundColor: Colors.redAccent),
+          const SnackBar(content: Text('LÃ¡Â»â€”i kÃ¡ÂºÂ¿t nÃ¡Â»â€˜i'), backgroundColor: Colors.redAccent),
         );
       }
     }
   }
 
-  /// Fetch watch progress tá»« server â€” hiá»ƒn thá»‹ banner "Tiáº¿p tá»¥c xem"
+  /// Fetch watch progress tÃ¡Â»Â« server Ã¢â‚¬â€ hiÃ¡Â»Æ’n thÃ¡Â»â€¹ banner "TiÃ¡ÂºÂ¿p tÃ¡Â»Â¥c xem"
   Future<void> _fetchWatchProgress(int movieId) async {
     if (movieId <= 0) return;
     try {
@@ -431,17 +431,17 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       if (progress != null && mounted) {
         final epSlug = (progress['ep_slug'] as String?) ?? '';
         final epId = progress['episode_id'];
-        // Hiá»ƒn thá»‹ náº¿u cÃ³ episode (id hoáº·c slug) â€” khÃ´ng cáº§n pos >= 15
+        // HiÃ¡Â»Æ’n thÃ¡Â»â€¹ nÃ¡ÂºÂ¿u cÃƒÂ³ episode (id hoÃ¡ÂºÂ·c slug) Ã¢â‚¬â€ khÃƒÂ´ng cÃ¡ÂºÂ§n pos >= 15
         if (epSlug.isNotEmpty || (epId != null && epId > 0)) {
           setState(() => _watchProgress = progress);
         }
       }
     } catch (_) {
-      // Ignore â€” progress lÃ  bonus, khÃ´ng áº£nh hÆ°á»Ÿng chÃ­nh
+      // Ignore Ã¢â‚¬â€ progress lÃƒÂ  bonus, khÃƒÂ´ng Ã¡ÂºÂ£nh hÃ†Â°Ã¡Â»Å¸ng chÃƒÂ­nh
     }
   }
 
-  /// Format giÃ¢y â†’ chuá»—i thá»i gian (giá»‘ng web formatWatchPosition)
+  /// Format giÃƒÂ¢y Ã¢â€ â€™ chuÃ¡Â»â€”i thÃ¡Â»Âi gian (giÃ¡Â»â€˜ng web formatWatchPosition)
   String _formatPosition(int seconds) {
     if (seconds < 1) return '00:00';
     final h = seconds ~/ 3600;
@@ -451,11 +451,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
-  /// Banner "Tiáº¿p tá»¥c xem" â€” giá»‘ng web phim.php watch-resume-banner
+  /// Banner "TiÃ¡ÂºÂ¿p tÃ¡Â»Â¥c xem" Ã¢â‚¬â€ giÃ¡Â»â€˜ng web phim.php watch-resume-banner
   Widget _buildResumeBanner(Movie movie) {
     final progress = _watchProgress!;
     final rawEpName = (progress['ep_name'] as String?) ?? '';
-    final epName = rawEpName.replaceAll(RegExp(r'^[Tt]áº­?p?\s*', caseSensitive: false), '').trim();
+    final epName = rawEpName.replaceAll(RegExp(r'^[Tt]Ã¡ÂºÂ­?p?\s*', caseSensitive: false), '').trim();
     final position = (progress['position'] as int?) ?? 0;
     final duration = (progress['duration'] as int?) ?? 0;
     final serverIdx = (progress['server_idx'] as int?) ?? 0;
@@ -502,12 +502,12 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Tiáº¿p tá»¥c xem',
+                        'TiÃ¡ÂºÂ¿p tÃ¡Â»Â¥c xem',
                         style: TextStyle(color: Color(0xFFF5921E), fontSize: 14, fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        '${epName.isNotEmpty ? 'Táº­p $epName' : 'Phim'}  â€¢  $posStr / $durStr',
+                        '${epName.isNotEmpty ? 'TÃ¡ÂºÂ­p $epName' : 'Phim'}  Ã¢â‚¬Â¢  $posStr / $durStr',
                         style: TextStyle(color: AppTheme.textSub, fontSize: 12),
                       ),
                     ],
@@ -522,7 +522,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: const Text(
-                    'Xem tiáº¿p',
+                    'Xem tiÃ¡ÂºÂ¿p',
                     style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700),
                   ),
                 ),
@@ -534,7 +534,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     );
   }
 
-  /// Nháº£y Ä‘áº¿n Ä‘Ãºng táº­p + server + vá»‹ trÃ­ khi nháº¥n "Xem tiáº¿p"
+  /// NhÃ¡ÂºÂ£y Ã„â€˜Ã¡ÂºÂ¿n Ã„â€˜ÃƒÂºng tÃ¡ÂºÂ­p + server + vÃ¡Â»â€¹ trÃƒÂ­ khi nhÃ¡ÂºÂ¥n "Xem tiÃ¡ÂºÂ¿p"
   void _resumeWatch(int movieId, int savedServerIdx) {
     final progress = _watchProgress!;
     final savedEpId = progress['episode_id'];
@@ -542,10 +542,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     final slug = widget.movie?.slug ?? (_movieData?['slug'] ?? '');
     final title = widget.movie?.name ?? (_movieData?['name'] ?? '');
 
-    // TÃ¬m episode tá»« danh sÃ¡ch Ä‘Ã£ fetch
+    // TÃƒÂ¬m episode tÃ¡Â»Â« danh sÃƒÂ¡ch Ã„â€˜ÃƒÂ£ fetch
     dynamic targetEp;
     if (_servers.isNotEmpty) {
-      // Æ¯u tiÃªn server Ä‘Ã£ lÆ°u
+      // Ã†Â¯u tiÃƒÂªn server Ã„â€˜ÃƒÂ£ lÃ†Â°u
       final serverIdx = savedServerIdx < _servers.length ? savedServerIdx : 0;
       final eps = _servers[serverIdx]['episodes'] as List<dynamic>? ?? [];
       for (final ep in eps) {
@@ -556,7 +556,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
           break;
         }
       }
-      // Fallback: tÃ¬m á»Ÿ táº¥t cáº£ servers
+      // Fallback: tÃƒÂ¬m Ã¡Â»Å¸ tÃ¡ÂºÂ¥t cÃ¡ÂºÂ£ servers
       if (targetEp == null) {
         for (final server in _servers) {
           final eps = server['episodes'] as List<dynamic>? ?? [];
@@ -573,7 +573,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       }
     }
 
-    // Fallback cuá»‘i: dÃ¹ng URL trang web
+    // Fallback cuÃ¡Â»â€˜i: dÃƒÂ¹ng URL trang web
     String url = '';
     if (targetEp != null) {
       final embed = (targetEp['link_embed'] ?? '').toString().trim();
@@ -612,7 +612,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       backgroundColor: AppTheme.bg,
       body: Stack(
         children: [
-          // Ná»™i dung chÃ­nh â€” CustomScrollView chá»©a banner + content
+          // NÃ¡Â»â„¢i dung chÃƒÂ­nh Ã¢â‚¬â€ CustomScrollView chÃ¡Â»Â©a banner + content
           RefreshIndicator(
             onRefresh: _fetchMovieDetail,
             color: AppTheme.accent,
@@ -621,7 +621,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                 parent: BouncingScrollPhysics(),
               ),
               slivers: [
-                // Banner — starts at very top, no spacer
+                // Banner â€” starts at very top, no spacer
                 if (!_isLoading && _error == null && _movieData != null)
                   SliverToBoxAdapter(
                     child: _buildHeader(Movie.fromJson(_movieData!)),
@@ -640,22 +640,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
               ],
             ),
           ),
-          // Header cá»‘ Ä‘á»‹nh
-          Positioned(
-            top: 0, left: 0, right: 0,
-            child: Header(
-              onSearchTap: () => _onNavSelected(1),
-              onWatchPartyTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WatchPartyScreen())),
-              onNotificationTap: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationScreen()));
-              },
-              onActorsTap: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const ActorsListScreen()));
-              },
-              onAccountTap: () => _onNavSelected(3),
-            ),
-          ),
-          // BottomNav vá»›i spring animation
+          // Header cÃ¡Â»â€˜ Ã„â€˜Ã¡Â»â€¹nh
+          // Header hidden on movie detail page
+          // BottomNav vÃ¡Â»â€ºi spring animation
           Positioned(
             bottom: 0, left: 0, right: 0,
             child: Builder(
@@ -723,7 +710,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                   const Icon(Icons.error_outline, size: 56, color: AppTheme.textMuted),
                   const SizedBox(height: 16),
                   const Text(
-                    'KhÃ´ng thá»ƒ táº£i thÃ´ng tin phim',
+                    'KhÃƒÂ´ng thÃ¡Â»Æ’ tÃ¡ÂºÂ£i thÃƒÂ´ng tin phim',
                     style: TextStyle(color: AppTheme.textSub, fontSize: 15),
                   ),
                   const SizedBox(height: 24),
@@ -736,7 +723,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: const Text(
-                        'Thá»­ láº¡i',
+                        'ThÃ¡Â»Â­ lÃ¡ÂºÂ¡i',
                         style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
                       ),
                     ),
@@ -758,7 +745,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 8),
-        // ═══ Synopsis ═══
+        // â•â•â• Synopsis â•â•â•
         if ((movie.description ?? '').isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
@@ -775,16 +762,16 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                 const SizedBox(width: 8),
                 GestureDetector(
                   onTap: () => _showInfoBottomSheet(movie),
-                  child: Text('Chi tiết', style: TextStyle(color: AppTheme.textSub, fontSize: 13, fontWeight: FontWeight.w600)),
+                  child: Text('Chi tiáº¿t', style: TextStyle(color: AppTheme.textSub, fontSize: 13, fontWeight: FontWeight.w600)),
                 ),
               ],
             ),
           ),
         const SizedBox(height: 20),
-        // ═══ 5 Action Buttons ═══
+        // â•â•â• 5 Action Buttons â•â•â•
         _buildActionRow(movie),
         const SizedBox(height: 16),
-        // ═══ Tab Bar ═══
+        // â•â•â• Tab Bar â•â•â•
         Container(
           color: AppTheme.bg,
           child: TabBar(
@@ -798,19 +785,19 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
             unselectedLabelStyle: const TextStyle(fontSize: 14),
             tabs: const [
-              Tab(text: 'Tập phim'),
-              Tab(text: 'Diễn viên'),
-              Tab(text: 'Đề xuất'),
+              Tab(text: 'Táº­p phim'),
+              Tab(text: 'Diá»…n viÃªn'),
+              Tab(text: 'Äá» xuáº¥t'),
             ],
           ),
         ),
-        // ═══ Tab Content ═══
+        // â•â•â• Tab Content â•â•â•
         _buildTabContent(_tabController.index, movie),
       ],
     );
   }
 
-  // ═══ Info Panel (bottom sheet) ═══
+  // â•â•â• Info Panel (bottom sheet) â•â•â•
   void _showInfoBottomSheet(Movie movie) {
     showModalBottomSheet(
       context: context,
@@ -828,19 +815,19 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             children: [
               Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)))),
               const SizedBox(height: 20),
-              const Text('Thông tin phim', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+              const Text('ThÃ´ng tin phim', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
               const SizedBox(height: 20),
-              Text('Giới thiệu:', style: TextStyle(color: AppTheme.textMuted, fontSize: 13, fontWeight: FontWeight.w700)),
+              Text('Giá»›i thiá»‡u:', style: TextStyle(color: AppTheme.textMuted, fontSize: 13, fontWeight: FontWeight.w700)),
               const SizedBox(height: 10),
               Text(
                 (movie.description ?? '').replaceAll('&nbsp;', ' ').replaceAll(RegExp(r'<[^>]*>'), '').trim(),
                 style: TextStyle(color: AppTheme.textSub, fontSize: 14, height: 1.7),
               ),
               const SizedBox(height: 24),
-              _infoRow('Quốc gia:', _countriesText().isNotEmpty ? _countriesText() : 'Đang cập nhật'),
-              _infoRow('Đạo diễn:', movie.director ?? 'Đang cập nhật'),
-              _infoRow('Sản xuất:', 'Đang cập nhật'),
-              _infoRow('Thời lượng:', movie.time ?? '? phút/tập'),
+              _infoRow('Quá»‘c gia:', _countriesText().isNotEmpty ? _countriesText() : 'Äang cáº­p nháº­t'),
+              _infoRow('Äáº¡o diá»…n:', movie.director ?? 'Äang cáº­p nháº­t'),
+              _infoRow('Sáº£n xuáº¥t:', 'Äang cáº­p nháº­t'),
+              _infoRow('Thá»i lÆ°á»£ng:', movie.time ?? '? phÃºt/táº­p'),
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
@@ -851,7 +838,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
-                  child: const Text('Đóng', style: TextStyle(color: Colors.white70, fontSize: 15, fontWeight: FontWeight.w600)),
+                  child: const Text('ÄÃ³ng', style: TextStyle(color: Colors.white70, fontSize: 15, fontWeight: FontWeight.w600)),
                 ),
               ),
             ],
@@ -884,14 +871,14 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     }
   }
 
-  // â”€â”€ Rating methods â”€â”€
-  final Map<int, String> _ratingLabels = {10: 'Tuyá»‡t vá»i', 8: 'Phim hay', 6: 'KhÃ¡ á»•n', 4: 'Phim chÃ¡n', 2: 'Äá»“ tá»‡'};
-  final Map<int, String> _ratingEmojis = {10: 'ðŸ˜', 8: 'ðŸ˜˜', 6: 'ðŸ˜Š', 4: 'ðŸ˜¢', 2: 'ðŸ¤®'};
+  // Ã¢â€â‚¬Ã¢â€â‚¬ Rating methods Ã¢â€â‚¬Ã¢â€â‚¬
+  final Map<int, String> _ratingLabels = {10: 'TuyÃ¡Â»â€¡t vÃ¡Â»Âi', 8: 'Phim hay', 6: 'KhÃƒÂ¡ Ã¡Â»â€¢n', 4: 'Phim chÃƒÂ¡n', 2: 'Ã„ÂÃ¡Â»â€œ tÃ¡Â»â€¡'};
+  final Map<int, String> _ratingEmojis = {10: 'Ã°Å¸ËœÂ', 8: 'Ã°Å¸ËœËœ', 6: 'Ã°Å¸ËœÅ ', 4: 'Ã°Å¸ËœÂ¢', 2: 'Ã°Å¸Â¤Â®'};
 
   void _showRatingDialog(Movie movie) {
     if (!_isLoggedIn) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lÃ²ng Ä‘Äƒng nháº­p Ä‘á»ƒ Ä‘Ã¡nh giÃ¡'), backgroundColor: Colors.orange),
+        const SnackBar(content: Text('Vui lÃƒÂ²ng Ã„â€˜Ã„Æ’ng nhÃ¡ÂºÂ­p Ã„â€˜Ã¡Â»Æ’ Ã„â€˜ÃƒÂ¡nh giÃƒÂ¡'), backgroundColor: Colors.orange),
       );
       return;
     }
@@ -906,9 +893,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('ÄÃ¡nh giÃ¡ "${movie.name}"', style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.w700), textAlign: TextAlign.center),
+              Text('Ã„ÂÃƒÂ¡nh giÃƒÂ¡ "${movie.name}"', style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.w700), textAlign: TextAlign.center),
               const SizedBox(height: 6),
-              Text('$_ratingCount lÆ°á»£t Ä‘Ã¡nh giÃ¡', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+              Text('$_ratingCount lÃ†Â°Ã¡Â»Â£t Ã„â€˜ÃƒÂ¡nh giÃƒÂ¡', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -939,7 +926,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                     Navigator.pop(ctx);
                     await _submitRating(_currentMovieId, selectedScore);
                   },
-                  child: const Text('Gá»­i Ä‘Ã¡nh giÃ¡', style: TextStyle(fontWeight: FontWeight.w700)),
+                  child: const Text('GÃ¡Â»Â­i Ã„â€˜ÃƒÂ¡nh giÃƒÂ¡', style: TextStyle(fontWeight: FontWeight.w700)),
                 ),
               ),
             ],
@@ -961,20 +948,20 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('ÄÃ£ Ä‘Ã¡nh giÃ¡ ${_ratingEmojis[score]} ${_ratingLabels[score]}'), backgroundColor: const Color(0xFF2E7D32)),
+            SnackBar(content: Text('Ã„ÂÃƒÂ£ Ã„â€˜ÃƒÂ¡nh giÃƒÂ¡ ${_ratingEmojis[score]} ${_ratingLabels[score]}'), backgroundColor: const Color(0xFF2E7D32)),
           );
         }
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(data['message'] ?? 'Lá»—i Ä‘Ã¡nh giÃ¡'), backgroundColor: Colors.redAccent),
+            SnackBar(content: Text(data['message'] ?? 'LÃ¡Â»â€”i Ã„â€˜ÃƒÂ¡nh giÃƒÂ¡'), backgroundColor: Colors.redAccent),
           );
         }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lá»—i: $e'), backgroundColor: Colors.redAccent),
+          SnackBar(content: Text('LÃ¡Â»â€”i: $e'), backgroundColor: Colors.redAccent),
         );
       }
     }
@@ -1035,7 +1022,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     );
   }
 
-  // ═══ Action Row — 5 circular buttons ═══
+  // â•â•â• Action Row â€” 5 circular buttons â•â•â•
   Widget _buildActionRow(Movie movie) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -1049,12 +1036,12 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                 color: fav.isFavorite(movie.id) ? Colors.redAccent : AppTheme.textPrimary, size: 22,
               ),
             ),
-            label: 'Yêu thích',
+            label: 'YÃªu thÃ­ch',
             onTap: () => context.read<FavoriteProvider>().toggleFavorite(movie),
           ),
           _actionCircle(
             icon: const Icon(Icons.add_rounded, color: AppTheme.textPrimary, size: 22),
-            label: 'Thêm vào', onTap: () {},
+            label: 'ThÃªm vÃ o', onTap: () {},
           ),
           _actionCircle(
             icon: Stack(
@@ -1072,20 +1059,20 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                   ),
               ],
             ),
-            label: 'Đánh giá', onTap: () => _showRatingDialog(movie),
+            label: 'ÄÃ¡nh giÃ¡', onTap: () => _showRatingDialog(movie),
           ),
           _actionCircle(
             icon: const Icon(Icons.chat_bubble_outline_rounded, color: AppTheme.textPrimary, size: 22),
-            label: 'Bình luận', onTap: () {},
+            label: 'BÃ¬nh luáº­n', onTap: () {},
           ),
           _actionCircle(
             icon: const Icon(Icons.send_rounded, color: AppTheme.textPrimary, size: 22),
-            label: 'Chia sẻ',
+            label: 'Chia sáº»',
             onTap: () {
               final slug = movie.slug ?? (_movieData?['slug'] ?? '');
               Clipboard.setData(ClipboardData(text: 'https://xiaofilm.online/phim/$slug'));
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Đã copy link phim'), backgroundColor: Color(0xFF2E7D32), duration: Duration(seconds: 2)),
+                const SnackBar(content: Text('ÄÃ£ copy link phim'), backgroundColor: Color(0xFF2E7D32), duration: Duration(seconds: 2)),
               );
             },
           ),
@@ -1115,7 +1102,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
           children: [
             Icon(Icons.photo_library_outlined, size: 56, color: AppTheme.textMuted),
             SizedBox(height: 12),
-            Text('ChÆ°a cÃ³ áº£nh', style: TextStyle(color: AppTheme.textSub, fontSize: 14)),
+            Text('ChÃ†Â°a cÃƒÂ³ Ã¡ÂºÂ£nh', style: TextStyle(color: AppTheme.textSub, fontSize: 14)),
           ],
         ),
       );
@@ -1182,7 +1169,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
               ),
               const SizedBox(width: 8),
               Text(
-                _commentTab == 0 ? 'BÃ¬nh luáº­n ($_totalCommentCount)' : 'ÄÃ¡nh giÃ¡ ($_ratingCount)',
+                _commentTab == 0 ? 'BÃƒÂ¬nh luÃ¡ÂºÂ­n ($_totalCommentCount)' : 'Ã„ÂÃƒÂ¡nh giÃƒÂ¡ ($_ratingCount)',
                 style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.w700),
               ),
               const Spacer(),
@@ -1194,8 +1181,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                 ),
                 child: Row(
                   children: [
-                    _commentTabBtn('BÃ¬nh luáº­n', _commentTab == 0, () => setState(() => _commentTab = 0)),
-                    _commentTabBtn('ÄÃ¡nh giÃ¡', _commentTab == 1, () => setState(() => _commentTab = 1)),
+                    _commentTabBtn('BÃƒÂ¬nh luÃ¡ÂºÂ­n', _commentTab == 0, () => setState(() => _commentTab = 0)),
+                    _commentTabBtn('Ã„ÂÃƒÂ¡nh giÃƒÂ¡', _commentTab == 1, () => setState(() => _commentTab = 1)),
                   ],
                 ),
               ),
@@ -1209,7 +1196,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             if (_comments.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(child: Text('ChÆ°a cÃ³ bÃ¬nh luáº­n nÃ o', style: TextStyle(color: AppTheme.textMuted, fontSize: 13))),
+                child: Center(child: Text('ChÃ†Â°a cÃƒÂ³ bÃƒÂ¬nh luÃ¡ÂºÂ­n nÃƒÂ o', style: TextStyle(color: AppTheme.textMuted, fontSize: 13))),
               )
             else
               ..._comments.take(50).map((c) => _buildCommentItem(c)),
@@ -1220,7 +1207,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             if (_ratings.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(child: Text('ChÆ°a cÃ³ Ä‘Ã¡nh giÃ¡ nÃ o', style: TextStyle(color: AppTheme.textMuted, fontSize: 13))),
+                child: Center(child: Text('ChÃ†Â°a cÃƒÂ³ Ã„â€˜ÃƒÂ¡nh giÃƒÂ¡ nÃƒÂ o', style: TextStyle(color: AppTheme.textMuted, fontSize: 13))),
               )
             else
               ..._ratings.take(10).map((r) => _buildRatingItem(r)),
@@ -1253,7 +1240,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                _myRating > 0 ? 'ÄÃ¡nh giÃ¡ cá»§a báº¡n: ${_ratingEmojis[_myRating]} ${_ratingLabels[_myRating]}' : 'Nháº¥n Ä‘á»ƒ Ä‘Ã¡nh giÃ¡ phim nÃ y',
+                _myRating > 0 ? 'Ã„ÂÃƒÂ¡nh giÃƒÂ¡ cÃ¡Â»Â§a bÃ¡ÂºÂ¡n: ${_ratingEmojis[_myRating]} ${_ratingLabels[_myRating]}' : 'NhÃ¡ÂºÂ¥n Ã„â€˜Ã¡Â»Æ’ Ã„â€˜ÃƒÂ¡nh giÃƒÂ¡ phim nÃƒÂ y',
                 style: TextStyle(color: _myRating > 0 ? AppTheme.textPrimary : AppTheme.textMuted, fontSize: 13),
               ),
             ),
@@ -1298,7 +1285,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             children: [
               Icon(Icons.login_rounded, color: AppTheme.textMuted, size: 20),
               SizedBox(width: 10),
-              Text('Vui lÃ²ng Ä‘Äƒng nháº­p Ä‘á»ƒ tham gia bÃ¬nh luáº­n', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
+              Text('Vui lÃƒÂ²ng Ã„â€˜Ã„Æ’ng nhÃ¡ÂºÂ­p Ã„â€˜Ã¡Â»Æ’ tham gia bÃƒÂ¬nh luÃ¡ÂºÂ­n', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
             ],
           ),
         ),
@@ -1323,7 +1310,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('BÃ¬nh luáº­n vá»›i tÃªn ${_currentUser['username'] ?? ''}', style: const TextStyle(color: AppTheme.textMuted, fontSize: 11)),
+              Text('BÃƒÂ¬nh luÃ¡ÂºÂ­n vÃ¡Â»â€ºi tÃƒÂªn ${_currentUser['username'] ?? ''}', style: const TextStyle(color: AppTheme.textMuted, fontSize: 11)),
               const SizedBox(height: 4),
               TextField(
                 controller: _commentController,
@@ -1333,7 +1320,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                 onChanged: (_) => setState(() {}),
                 style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
                 decoration: InputDecoration(
-                  hintText: 'Viáº¿t bÃ¬nh luáº­n',
+                  hintText: 'ViÃ¡ÂºÂ¿t bÃƒÂ¬nh luÃ¡ÂºÂ­n',
                   hintStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 13),
                   counterText: '${_commentController.text.length} / 1000',
                   counterStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 11),
@@ -1381,17 +1368,17 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                           ),
                         ),
                         const SizedBox(width: 6),
-                        const Text('Tiáº¿t lá»™?', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+                        const Text('TiÃ¡ÂºÂ¿t lÃ¡Â»â„¢?', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
                       ],
                     ),
                   ),
                   const Spacer(),
-                  // Gá»­i button
+                  // GÃ¡Â»Â­i button
                   GestureDetector(
                     onTap: _isPostingComment ? null : _postComment,
                     child: Row(
                       children: [
-                        Text('Gá»­i', style: TextStyle(
+                        Text('GÃ¡Â»Â­i', style: TextStyle(
                           color: _commentController.text.trim().isEmpty ? AppTheme.textMuted : AppTheme.gold,
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
@@ -1415,7 +1402,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     final votes = _commentVotes[commentId] ?? {'up': 0, 'down': 0};
     final myVote = _myVotes[commentId] ?? 0;
     final isSpoiler = c['spoiler'] == true || c['spoiler'] == 1;
-    final cUsername = c['username'] ?? c['guest_name'] ?? 'áº¨n danh';
+    final cUsername = c['username'] ?? c['guest_name'] ?? 'Ã¡ÂºÂ¨n danh';
     final cAvatar = c['avatar']?.toString();
     final cTime = _timeAgo(c['created_at'] != null ? DateTime.tryParse(c['created_at'].toString()) : null);
     final cUserId = c['user_id'];
@@ -1438,7 +1425,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  (c['_revealed'] ?? false) ? 'Spoiler â€” Ä‘Ã£ hiá»‡n' : 'âš  Spoiler â€” báº¥m Ä‘á»ƒ hiá»‡n',
+                  (c['_revealed'] ?? false) ? 'Spoiler Ã¢â‚¬â€ Ã„â€˜ÃƒÂ£ hiÃ¡Â»â€¡n' : 'Ã¢Å¡Â  Spoiler Ã¢â‚¬â€ bÃ¡ÂºÂ¥m Ã„â€˜Ã¡Â»Æ’ hiÃ¡Â»â€¡n',
                   style: TextStyle(
                     color: (c['_revealed'] ?? false) ? const Color(0xFF4CAF50) : const Color(0xFFF5C518),
                     fontSize: 11,
@@ -1543,7 +1530,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                       children: [
                         Icon(Icons.reply_rounded, size: 14, color: AppTheme.textMuted),
                         SizedBox(width: 3),
-                        Text('Tráº£ lá»i', style: TextStyle(color: AppTheme.textMuted, fontSize: 11)),
+                        Text('TrÃ¡ÂºÂ£ lÃ¡Â»Âi', style: TextStyle(color: AppTheme.textMuted, fontSize: 11)),
                       ],
                     ),
                   ),
@@ -1556,7 +1543,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                       children: [
                         Icon(Icons.delete_outline_rounded, size: 14, color: AppTheme.textMuted),
                         SizedBox(width: 3),
-                        Text('XÃ³a', style: TextStyle(color: AppTheme.textMuted, fontSize: 11)),
+                        Text('XÃƒÂ³a', style: TextStyle(color: AppTheme.textMuted, fontSize: 11)),
                       ],
                     ),
                   ),
@@ -1576,7 +1563,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                       autofocus: true,
                       style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12),
                       decoration: InputDecoration(
-                        hintText: 'Tráº£ lá»i $cUsername...',
+                        hintText: 'TrÃ¡ÂºÂ£ lÃ¡Â»Âi $cUsername...',
                         hintStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
                         filled: true,
                         fillColor: AppTheme.bgCard,
@@ -1610,7 +1597,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   void _startReply(int parentId, String userName) {
     if (!_isLoggedIn) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lÃ²ng Ä‘Äƒng nháº­p Ä‘á»ƒ tráº£ lá»i'), backgroundColor: Colors.orange),
+        const SnackBar(content: Text('Vui lÃƒÂ²ng Ã„â€˜Ã„Æ’ng nhÃ¡ÂºÂ­p Ã„â€˜Ã¡Â»Æ’ trÃ¡ÂºÂ£ lÃ¡Â»Âi'), backgroundColor: Colors.orange),
       );
       return;
     }
@@ -1644,14 +1631,14 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     } catch (_) {}
   }
 
-  // â”€â”€ Vote system â”€â”€
+  // Ã¢â€â‚¬Ã¢â€â‚¬ Vote system Ã¢â€â‚¬Ã¢â€â‚¬
   Map<int, Map<String, int>> _commentVotes = {};
   Map<int, int> _myVotes = {};
 
   Future<void> _voteComment(int commentId, int direction) async {
     if (!_isLoggedIn) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('ÄÄƒng nháº­p Ä‘á»ƒ vote'), backgroundColor: Colors.orange),
+        const SnackBar(content: Text('Ã„ÂÃ„Æ’ng nhÃ¡ÂºÂ­p Ã„â€˜Ã¡Â»Æ’ vote'), backgroundColor: Colors.orange),
       );
       return;
     }
@@ -1676,11 +1663,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppTheme.bgCard,
-        title: const Text('XÃ³a bÃ¬nh luáº­n', style: TextStyle(color: AppTheme.textPrimary)),
-        content: const Text('Báº¡n cÃ³ cháº¯c muá»‘n xÃ³a bÃ¬nh luáº­n nÃ y?', style: TextStyle(color: AppTheme.textSub)),
+        title: const Text('XÃƒÂ³a bÃƒÂ¬nh luÃ¡ÂºÂ­n', style: TextStyle(color: AppTheme.textPrimary)),
+        content: const Text('BÃ¡ÂºÂ¡n cÃƒÂ³ chÃ¡ÂºÂ¯c muÃ¡Â»â€˜n xÃƒÂ³a bÃƒÂ¬nh luÃ¡ÂºÂ­n nÃƒÂ y?', style: TextStyle(color: AppTheme.textSub)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Há»§y')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('XÃ³a', style: TextStyle(color: Colors.redAccent))),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('HÃ¡Â»Â§y')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('XÃƒÂ³a', style: TextStyle(color: Colors.redAccent))),
         ],
       ),
     );
@@ -1722,7 +1709,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        // ═══ Hero Banner — full width, natural height ═══
+        // â•â•â• Hero Banner â€” full width, natural height â•â•â•
         Stack(
           children: [
             CachedNetworkImage(
@@ -1748,7 +1735,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             ),
           ],
         ),
-        // ═══ 2 Action Buttons — 3px below banner ═══
+        // â•â•â• 2 Action Buttons â€” 3px below banner â•â•â•
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 3, 16, 0),
           child: Row(
@@ -1795,7 +1782,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                     children: [
                       Icon(Icons.list_rounded, color: Color(0xFF1A1100), size: 20),
                       SizedBox(width: 8),
-                      Text('Tập Phim', style: TextStyle(color: Color(0xFF1A1100), fontSize: 15, fontWeight: FontWeight.w700)),
+                      Text('Táº­p Phim', style: TextStyle(color: Color(0xFF1A1100), fontSize: 15, fontWeight: FontWeight.w700)),
                     ],
                   ),
                 ),
@@ -1803,7 +1790,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             ],
           ),
         ),
-        // ═══ Title + Chips — 3px below buttons ═══
+        // â•â•â• Title + Chips â€” 3px below buttons â•â•â•
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 3, 20, 0),
           child: Column(
@@ -1825,7 +1812,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                   if (quality.isNotEmpty) _chipBorder(quality),
                   if (movie.year != null && movie.year! > 0) _chipBorder('${movie.year}'),
                   if ((movie.time ?? '').isNotEmpty) _chipBorder(movie.time!),
-                  if ((movie.episodeCurrent ?? '').isNotEmpty) _chipBorder('Phần 1'),
+                  if ((movie.episodeCurrent ?? '').isNotEmpty) _chipBorder('Pháº§n 1'),
                 ],
               ),
             ],
@@ -1882,13 +1869,13 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                       children: _genresText().split(', ').map((g) => _genreChip(g)).toList(),
                     ),
                   if (_genresText().isNotEmpty) const SizedBox(height: 12),
-                  // Status badge â€” completed or airing
+                  // Status badge Ã¢â‚¬â€ completed or airing
                   if ((movie.episodeCurrent ?? '').isNotEmpty)
                     _buildStatusBadge(movie),
                   const SizedBox(height: 12),
                   // Synopsis
                   if ((movie.description ?? '').isNotEmpty) ...[
-                    Text('Giá»›i thiá»‡u:', style: TextStyle(color: AppTheme.textMuted, fontSize: 13, fontWeight: FontWeight.w700)),
+                    Text('GiÃ¡Â»â€ºi thiÃ¡Â»â€¡u:', style: TextStyle(color: AppTheme.textMuted, fontSize: 13, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 8),
                     Text(
                       movie.description!.replaceAll('&nbsp;', ' ').replaceAll(RegExp(r'<[^>]*>'), '').trim(),
@@ -1897,16 +1884,16 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                     const SizedBox(height: 16),
                   ],
                   // Detail rows
-                  _infoDetailRow('Thá»i lÆ°á»£ng:', movie.time ?? '--'),
-                  _infoDetailRow('Quá»‘c gia:', _countriesText().isNotEmpty ? _countriesText() : '--'),
+                  _infoDetailRow('ThÃ¡Â»Âi lÃ†Â°Ã¡Â»Â£ng:', movie.time ?? '--'),
+                  _infoDetailRow('QuÃ¡Â»â€˜c gia:', _countriesText().isNotEmpty ? _countriesText() : '--'),
                   if (_actorsText().isNotEmpty)
-                    _infoDetailRow('Diá»…n viÃªn:', _actorsText()),
+                    _infoDetailRow('DiÃ¡Â»â€¦n viÃƒÂªn:', _actorsText()),
                   if (movie.imdbRating != null && movie.imdbRating! > 0)
                     _infoDetailRow('IMDb:', movie.imdbRating!.toStringAsFixed(1)),
                   // Keywords
                   if (_genresText().isNotEmpty) ...[
                     const SizedBox(height: 12),
-                    Text('Tá»« khÃ³a:', style: TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w700)),
+                    Text('TÃ¡Â»Â« khÃƒÂ³a:', style: TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 6),
                     Text(
                       _genresText(),
@@ -1972,8 +1959,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     final current = movie.episodeCurrent ?? '';
     final total = movie.episodeTotal ?? '';
     final isTrailer = current.toLowerCase().contains('trailer');
-    final isCompleted = current.toLowerCase().contains('hoÃ n thÃ nh') ||
-        current.toLowerCase().contains('hoÃ n táº¥t') ||
+    final isCompleted = current.toLowerCase().contains('hoÃƒÂ n thÃƒÂ nh') ||
+        current.toLowerCase().contains('hoÃƒÂ n tÃ¡ÂºÂ¥t') ||
         (current.contains('/') && total.isNotEmpty && current.split('/')[0].trim() == total.trim());
 
     if (isTrailer) {
@@ -1990,7 +1977,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             Icon(Icons.videocam_rounded, color: Color(0xFFF5921E), size: 16),
             SizedBox(width: 6),
             Text(
-              'Phim Ä‘ang chiáº¿u: Trailer',
+              'Phim Ã„â€˜ang chiÃ¡ÂºÂ¿u: Trailer',
               style: TextStyle(color: Color(0xFFF5921E), fontSize: 13, fontWeight: FontWeight.w600),
             ),
           ],
@@ -2012,7 +1999,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             const Icon(Icons.check_circle_outline, color: Color(0xFF22C55E), size: 16),
             const SizedBox(width: 6),
             Text(
-              'HoÃ n táº¥t${total.isNotEmpty ? ' ($total/$total)' : ''}',
+              'HoÃƒÂ n tÃ¡ÂºÂ¥t${total.isNotEmpty ? ' ($total/$total)' : ''}',
               style: const TextStyle(color: Color(0xFF22C55E), fontSize: 13, fontWeight: FontWeight.w600),
             ),
           ],
@@ -2040,7 +2027,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             ),
             const SizedBox(width: 6),
             Text(
-              'Phim Ä‘ang chiáº¿u: ${_episodeText(movie)}',
+              'Phim Ã„â€˜ang chiÃ¡ÂºÂ¿u: ${_episodeText(movie)}',
               style: const TextStyle(color: Color(0xFFF5921E), fontSize: 13, fontWeight: FontWeight.w600),
             ),
           ],
@@ -2063,8 +2050,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
 
   String _typeLabel(String t) {
     switch (t) {
-      case 'series': return 'Phim bá»™';
-      case 'hoathinh': return 'Hoáº¡t hÃ¬nh';
+      case 'series': return 'Phim bÃ¡Â»â„¢';
+      case 'hoathinh': return 'HoÃ¡ÂºÂ¡t hÃƒÂ¬nh';
       case 'tvshows': return 'TV Shows';
       default: return t;
     }
@@ -2077,7 +2064,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     );
   }
 
-  /// Action bar ná»•i trÃªn banner â€” chá»‰ nÃºt back
+  /// Action bar nÃ¡Â»â€¢i trÃƒÂªn banner Ã¢â‚¬â€ chÃ¡Â»â€° nÃƒÂºt back
   Widget _buildActionBar(Movie movie) {
     return SizedBox(
       height: 56,
@@ -2099,10 +2086,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     final current = movie.episodeCurrent ?? '';
     final total = movie.episodeTotal ?? '';
 
-    // "HoÃ n thÃ nh (37/37)" â†’ giá»¯ nguyÃªn
-    if (current.contains('HoÃ n thÃ nh')) return current;
+    // "HoÃƒÂ n thÃƒÂ nh (37/37)" Ã¢â€ â€™ giÃ¡Â»Â¯ nguyÃƒÂªn
+    if (current.contains('HoÃƒÂ n thÃƒÂ nh')) return current;
 
-    // "37/37" hoáº·c "37 / 37" â†’ Ä‘Ã£ hoÃ n thÃ nh, chá»‰ láº¥y sá»‘ Ä‘áº§u
+    // "37/37" hoÃ¡ÂºÂ·c "37 / 37" Ã¢â€ â€™ Ã„â€˜ÃƒÂ£ hoÃƒÂ n thÃƒÂ nh, chÃ¡Â»â€° lÃ¡ÂºÂ¥y sÃ¡Â»â€˜ Ã„â€˜Ã¡ÂºÂ§u
     if (current.contains('/')) {
       final parts = current.split('/');
       final epNum = parts[0].trim().replaceAll(RegExp(r'[^0-9]'), '');
@@ -2110,7 +2097,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       if (epNum.isNotEmpty) return epNum;
     }
 
-    // Chá»‰ tráº£ sá»‘, khÃ´ng thÃªm "táº­p" (vÃ¬ label Ä‘Ã£ cÃ³ "Sá»‘ táº­p")
+    // ChÃ¡Â»â€° trÃ¡ÂºÂ£ sÃ¡Â»â€˜, khÃƒÂ´ng thÃƒÂªm "tÃ¡ÂºÂ­p" (vÃƒÂ¬ label Ã„â€˜ÃƒÂ£ cÃƒÂ³ "SÃ¡Â»â€˜ tÃ¡ÂºÂ­p")
     final currentNum = current.replaceAll(RegExp(r'[^0-9]'), '');
     if (currentNum.isNotEmpty && total.isNotEmpty) return '$currentNum / $total';
     if (currentNum.isNotEmpty) return currentNum;
@@ -2122,13 +2109,13 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     final current = movie.episodeCurrent ?? '';
     final total = movie.episodeTotal ?? '';
 
-    if (current.contains('HoÃ n thÃ nh') || current.contains('HoÃ n táº¥t')) {
-      return 'HoÃ n táº¥t ${_episodeText(movie)}';
+    if (current.contains('HoÃƒÂ n thÃƒÂ nh') || current.contains('HoÃƒÂ n tÃ¡ÂºÂ¥t')) {
+      return 'HoÃƒÂ n tÃ¡ÂºÂ¥t ${_episodeText(movie)}';
     }
     if (current.contains('/')) {
       return _episodeText(movie);
     }
-    return 'Pháº§n 1';
+    return 'PhÃ¡ÂºÂ§n 1';
   }
 
   String _formatAgeRating(String? rating) {
@@ -2147,7 +2134,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   }
 
   String _actorsText() {
-    // Æ¯u tiÃªn actor_vi (Ä‘Ã£ dá»‹ch HÃ¡n Viá»‡t tá»« API)
+    // Ã†Â¯u tiÃƒÂªn actor_vi (Ã„â€˜ÃƒÂ£ dÃ¡Â»â€¹ch HÃƒÂ¡n ViÃ¡Â»â€¡t tÃ¡Â»Â« API)
     final actorVi = _movieData?['actor_vi'];
     if (actorVi is String && actorVi.trim().isNotEmpty) return actorVi.trim();
     // Fallback: actor raw
@@ -2156,7 +2143,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       return raw.map((e) => e.toString()).where((s) => s.isNotEmpty).join(', ');
     }
     if (raw is String && raw.trim().isNotEmpty) return raw.trim();
-    // Fallback tá»« Movie model
+    // Fallback tÃ¡Â»Â« Movie model
     final movie = Movie.fromJson(_movieData!);
     if (movie.actors != null && movie.actors!.isNotEmpty) {
       return movie.actors!.join(', ');
@@ -2223,18 +2210,18 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
           children: [
             Icon(Icons.video_library_outlined, size: 56, color: AppTheme.textMuted),
             SizedBox(height: 12),
-            Text('ChÆ°a cÃ³ táº­p phim nÃ o', style: TextStyle(color: AppTheme.textSub, fontSize: 14)),
+            Text('ChÃ†Â°a cÃƒÂ³ tÃ¡ÂºÂ­p phim nÃƒÂ o', style: TextStyle(color: AppTheme.textSub, fontSize: 14)),
           ],
         ),
       );
     }
 
-    // Episodes cá»§a server Ä‘ang chá»n â€” API tráº£ ep_name + link_m3u8
+    // Episodes cÃ¡Â»Â§a server Ã„â€˜ang chÃ¡Â»Ân Ã¢â‚¬â€ API trÃ¡ÂºÂ£ ep_name + link_m3u8
     final currentEps = _servers.isNotEmpty && _selectedServer < _servers.length
         ? (_servers[_selectedServer]['episodes'] as List<dynamic>? ?? [])
         : _episodes;
 
-    // â˜… Pagination: chia page 100 táº­p/trang
+    // Ã¢Ëœâ€¦ Pagination: chia page 100 tÃ¡ÂºÂ­p/trang
     final totalEps = currentEps.length;
     final totalPages = (totalEps / _episodesPerPage).ceil();
     if (totalPages <= 1) _episodePage = 1;
@@ -2245,7 +2232,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
 
     return Column(
       children: [
-        // Server selector â€” hiá»‡n cho má»i user
+        // Server selector Ã¢â‚¬â€ hiÃ¡Â»â€¡n cho mÃ¡Â»Âi user
         if (_servers.isNotEmpty)
           SizedBox(
             height: 48,
@@ -2297,7 +2284,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        '${serverEpCount.length} táº­p',
+                        '${serverEpCount.length} tÃ¡ÂºÂ­p',
                         style: TextStyle(
                           color: isActive ? Colors.white.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.3),
                           fontSize: 10,
@@ -2313,7 +2300,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         if (_servers.isNotEmpty)
           const Divider(color: AppTheme.border, height: 1),
 
-        // â˜… Pagination controls â€” chá»‰ hiá»‡n khi > 100 táº­p
+        // Ã¢Ëœâ€¦ Pagination controls Ã¢â‚¬â€ chÃ¡Â»â€° hiÃ¡Â»â€¡n khi > 100 tÃ¡ÂºÂ­p
         if (totalPages > 1)
           Container(
             height: 40,
@@ -2372,7 +2359,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
               final rawName = ep is Map
                   ? (ep['ep_name'] ?? ep['name'] ?? '${startIdx + index + 1}').toString()
                   : '${startIdx + index + 1}';
-              final epName = rawName.replaceAll(RegExp(r'^[Tt]áº­?p?\s*', caseSensitive: false), '').trim();
+              final epName = rawName.replaceAll(RegExp(r'^[Tt]Ã¡ÂºÂ­?p?\s*', caseSensitive: false), '').trim();
               final epId = ep is Map ? ep['id'] : null;
               final isActive = _watchProgress != null && epId != null && epId == _watchProgress!['episode_id'];
               return GestureDetector(
@@ -2411,7 +2398,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     final slug  = widget.movie?.slug ?? (_movieData?['slug'] ?? '');
     final title = widget.movie?.name ?? (_movieData?['name'] ?? '');
 
-    // Æ¯u tiÃªn link_embed, fallback link_m3u8, fallback trang web
+    // Ã†Â¯u tiÃƒÂªn link_embed, fallback link_m3u8, fallback trang web
     String url = '';
     if (ep is Map) {
       final embed = (ep['link_embed'] ?? '').toString().trim();
@@ -2464,7 +2451,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     final auth = Provider.of<AuthProvider>(context, listen: false);
     if (!auth.isLoggedIn) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lÃ²ng Ä‘Äƒng nháº­p Ä‘á»ƒ bÃ¬nh luáº­n'), backgroundColor: Colors.orange),
+        const SnackBar(content: Text('Vui lÃƒÂ²ng Ã„â€˜Ã„Æ’ng nhÃ¡ÂºÂ­p Ã„â€˜Ã¡Â»Æ’ bÃƒÂ¬nh luÃ¡ÂºÂ­n'), backgroundColor: Colors.orange),
       );
       return;
     }
@@ -2481,18 +2468,18 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         _commentController.clear();
         _isSpoiler = false;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('ÄÃ£ gá»­i bÃ¬nh luáº­n'), backgroundColor: Color(0xFF2E7D32), duration: Duration(seconds: 2)),
+          const SnackBar(content: Text('Ã„ÂÃƒÂ£ gÃ¡Â»Â­i bÃƒÂ¬nh luÃ¡ÂºÂ­n'), backgroundColor: Color(0xFF2E7D32), duration: Duration(seconds: 2)),
         );
         _fetchComments();
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message.isNotEmpty ? message : 'KhÃ´ng thá»ƒ gá»­i bÃ¬nh luáº­n'), backgroundColor: Colors.redAccent),
+          SnackBar(content: Text(message.isNotEmpty ? message : 'KhÃƒÂ´ng thÃ¡Â»Æ’ gÃ¡Â»Â­i bÃƒÂ¬nh luÃ¡ÂºÂ­n'), backgroundColor: Colors.redAccent),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lá»—i: $e'), backgroundColor: Colors.redAccent),
+          SnackBar(content: Text('LÃ¡Â»â€”i: $e'), backgroundColor: Colors.redAccent),
         );
       }
     }
@@ -2503,11 +2490,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   String _timeAgo(DateTime? dt) {
     if (dt == null) return '';
     final diff = DateTime.now().difference(dt);
-    if (diff.inSeconds < 60) return 'vá»«a xong';
-    if (diff.inMinutes < 60) return '${diff.inMinutes} phÃºt trÆ°á»›c';
-    if (diff.inHours < 24) return '${diff.inHours} giá» trÆ°á»›c';
-    if (diff.inDays < 30) return '${diff.inDays} ngÃ y trÆ°á»›c';
-    return '${(diff.inDays / 30).floor()} thÃ¡ng trÆ°á»›c';
+    if (diff.inSeconds < 60) return 'vÃ¡Â»Â«a xong';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} phÃƒÂºt trÃ†Â°Ã¡Â»â€ºc';
+    if (diff.inHours < 24) return '${diff.inHours} giÃ¡Â»Â trÃ†Â°Ã¡Â»â€ºc';
+    if (diff.inDays < 30) return '${diff.inDays} ngÃƒÂ y trÃ†Â°Ã¡Â»â€ºc';
+    return '${(diff.inDays / 30).floor()} thÃƒÂ¡ng trÃ†Â°Ã¡Â»â€ºc';
   }
 
   // --- Comments Tab ---
@@ -2553,7 +2540,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                     textInputAction: TextInputAction.send,
                     onSubmitted: (_) => _postComment(),
                     decoration: const InputDecoration(
-                      hintText: 'Viáº¿t bÃ¬nh luáº­n...',
+                      hintText: 'ViÃ¡ÂºÂ¿t bÃƒÂ¬nh luÃ¡ÂºÂ­n...',
                       hintStyle: TextStyle(color: AppTheme.textMuted, fontSize: 14),
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,
@@ -2585,7 +2572,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
           child: _comments.isEmpty
               ? const Center(
                   child: Text(
-                    'ChÆ°a cÃ³ bÃ¬nh luáº­n nÃ o',
+                    'ChÃ†Â°a cÃƒÂ³ bÃƒÂ¬nh luÃ¡ÂºÂ­n nÃƒÂ o',
                     style: TextStyle(color: AppTheme.textSub, fontSize: 14),
                   ),
                 )
@@ -2595,7 +2582,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                       separatorBuilder: (_, __) => const Divider(color: AppTheme.border, height: 1),
                       itemBuilder: (context, index) {
                         final comment = _comments[index];
-                        final commentUser = comment['username'] ?? comment['user'] ?? 'NgÆ°á»i dÃ¹ng';
+                        final commentUser = comment['username'] ?? comment['user'] ?? 'NgÃ†Â°Ã¡Â»Âi dÃƒÂ¹ng';
                         final commentContent = comment['content'] ?? comment['comment'] ?? '';
                         final commentAvatar = comment['avatar']?.toString();
                         final commentTime = comment['created_at'] != null
@@ -2669,7 +2656,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     if (_actors.isEmpty) {
       return const Center(
         child: Text(
-          'KhÃ´ng cÃ³ thÃ´ng tin diá»…n viÃªn',
+          'KhÃƒÂ´ng cÃƒÂ³ thÃƒÂ´ng tin diÃ¡Â»â€¦n viÃƒÂªn',
           style: TextStyle(color: AppTheme.textSub, fontSize: 14),
         ),
       );
@@ -2680,7 +2667,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Diá»…n viÃªn',
+            'DiÃ¡Â»â€¦n viÃƒÂªn',
             style: TextStyle(
               color: AppTheme.textPrimary,
               fontSize: 18,
@@ -2842,7 +2829,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     if (_relatedMovies.isEmpty) {
       return const Center(
         child: Text(
-          'KhÃ´ng cÃ³ phim liÃªn quan',
+          'KhÃƒÂ´ng cÃƒÂ³ phim liÃƒÂªn quan',
           style: TextStyle(color: AppTheme.textSub, fontSize: 14),
         ),
       );
@@ -2850,7 +2837,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     return Padding(
       padding: const EdgeInsets.only(top: 16, bottom: 100),
       child: MovieRail(
-        title: 'Phim liÃªn quan',
+        title: 'Phim liÃƒÂªn quan',
         movies: _relatedMovies,
         onMovieTap: (movie) {
           Navigator.pushReplacement(
