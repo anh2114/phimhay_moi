@@ -1703,22 +1703,26 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   }
 
   Widget _buildHeader(Movie movie) {
-    // Determine if movie is from 2026 or later
     final isModern = (movie.year ?? 0) >= 2026;
     final quality = (movie.quality ?? '').toUpperCase();
     final type = _typeLabel(movie.type ?? '');
 
+    // ★ Banner backdrop: dùng posterUrl (ngang/landscape) — ưu tiên local WEBP
+    // ★ Poster card: dùng thumbUrl (dọc/portrait)
+    final backdropUrl = movie.posterUrl ?? movie.thumbUrl ?? '';
+    final posterCardUrl = movie.thumbUrl ?? movie.posterUrl ?? '';
+
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        // Hero Backdrop (480px)
+        // Hero Backdrop (480px) — posterUrl (ngang)
         Positioned(
           top: 0, left: 0, right: 0, height: 480,
           child: Stack(
             children: [
               Positioned.fill(
                 child: CachedNetworkImage(
-                  imageUrl: movie.thumbUrl ?? movie.posterUrl ?? '',
+                  imageUrl: backdropUrl,
                   fit: BoxFit.cover,
                   cacheManager: AppImageCacheManager(),
                   fadeInDuration: Duration.zero,
@@ -1763,7 +1767,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             ),
           ),
         ),
-        // Poster + Info
+        // Poster card (dọc) + Info
         Positioned(
           top: 280, left: 0, right: 0,
           child: Padding(
@@ -1771,14 +1775,14 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Poster — dùng posterUrl cho backdrop, thumbUrl cho poster card
+                // Poster card — thumbUrl (dọc/portrait)
                 ClipRRect(
                   borderRadius: BorderRadius.circular(14),
                   child: Container(
                     width: 130, height: 190,
                     decoration: BoxDecoration(boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.6), blurRadius: 24, offset: const Offset(0, 8))]),
                     child: CachedNetworkImage(
-                      imageUrl: movie.thumbUrl ?? movie.posterUrl ?? '',
+                      imageUrl: posterCardUrl,
                       width: 130, height: 190, fit: BoxFit.cover,
                       cacheManager: AppImageCacheManager(),
                       fadeInDuration: const Duration(milliseconds: 200),
@@ -1802,16 +1806,14 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                             style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 13)),
                         ],
                         const SizedBox(height: 10),
-                        // Meta chips — TMDB + T16 dùng nền trắng đậm, year 2026+ dùng viền trắng
                         Wrap(
                           spacing: 6, runSpacing: 6,
                           children: [
-                            // TMDB rating — nền trắng đậm, chữ đen
-                            if (movie.tmdbRating != null && movie.tmdbRating! > 0)
-                              _chipSolid('TMDB ${movie.tmdbRating!.toStringAsFixed(1)}'),
-                            // Age rating — nền trắng đậm, chữ đen
+                            // TMDB — LUÔN hiện kể cả 0.0
+                            _chipSolid('TMDB ${(movie.tmdbRating ?? 0).toStringAsFixed(1)}'),
+                            // Age rating
                             _chipSolid(_formatAgeRating(movie.ageRating)),
-                            // Year — viền trắng nếu >= 2026
+                            // Year
                             if (movie.year != null && movie.year! > 0)
                               _chipBorder('${movie.year}', isModern),
                             // Type
