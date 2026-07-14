@@ -621,11 +621,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                 parent: BouncingScrollPhysics(),
               ),
               slivers: [
-                // Small spacer for status bar only
-                SliverToBoxAdapter(
-                  child: SizedBox(height: statusBarHeight),
-                ),
-                // Banner
+                // Banner — starts at very top, no spacer
                 if (!_isLoading && _error == null && _movieData != null)
                   SliverToBoxAdapter(
                     child: _buildHeader(Movie.fromJson(_movieData!)),
