@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -1019,25 +1020,34 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
+          // Yêu thích — heart SVG
           _actionCircle(
             icon: Consumer<FavoriteProvider>(
-              builder: (_, fav, __) => Icon(
-                fav.isFavorite(movie.id) ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                color: fav.isFavorite(movie.id) ? Colors.redAccent : AppTheme.textPrimary, size: 22,
+              builder: (_, fav, __) => SvgPicture.asset(
+                'assets/images/icon_heart.svg',
+                width: 24, height: 24,
+                colorFilter: ColorFilter.mode(
+                  fav.isFavorite(movie.id) ? Colors.redAccent : AppTheme.textPrimary,
+                  BlendMode.srcIn,
+                ),
               ),
             ),
             label: 'Yêu thích',
             onTap: () => context.read<FavoriteProvider>().toggleFavorite(movie),
           ),
+          // Thêm vào — add SVG
           _actionCircle(
-            icon: const Icon(Icons.add_rounded, color: AppTheme.textPrimary, size: 22),
+            icon: SvgPicture.asset('assets/images/icon_add.svg', width: 24, height: 24,
+              colorFilter: const ColorFilter.mode(AppTheme.textPrimary, BlendMode.srcIn)),
             label: 'Thêm vào', onTap: () {},
           ),
+          // Đánh giá — mood SVG + badge
           _actionCircle(
             icon: Stack(
               clipBehavior: Clip.none,
               children: [
-                const Icon(Icons.mood_rounded, color: AppTheme.textPrimary, size: 22),
+                SvgPicture.asset('assets/images/icon_mood.svg', width: 24, height: 24,
+                  colorFilter: const ColorFilter.mode(AppTheme.textPrimary, BlendMode.srcIn)),
                 if (_avgRating > 0)
                   Positioned(
                     top: -6, right: -10,
@@ -1051,12 +1061,16 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             ),
             label: 'Đánh giá', onTap: () => _showRatingDialog(movie),
           ),
+          // Bình luận — comment SVG
           _actionCircle(
-            icon: const Icon(Icons.chat_bubble_outline_rounded, color: AppTheme.textPrimary, size: 22),
+            icon: SvgPicture.asset('assets/images/icon_comment.svg', width: 24, height: 24,
+              colorFilter: const ColorFilter.mode(AppTheme.textPrimary, BlendMode.srcIn)),
             label: 'Bình luận', onTap: () {},
           ),
+          // Chia sẻ — send SVG
           _actionCircle(
-            icon: const Icon(Icons.send_rounded, color: AppTheme.textPrimary, size: 22),
+            icon: SvgPicture.asset('assets/images/icon_send.svg', width: 24, height: 24,
+              colorFilter: const ColorFilter.mode(AppTheme.textPrimary, BlendMode.srcIn)),
             label: 'Chia sẻ',
             onTap: () {
               final slug = movie.slug ?? (_movieData?['slug'] ?? '');
