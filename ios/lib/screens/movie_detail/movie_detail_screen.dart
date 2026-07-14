@@ -1799,7 +1799,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             ),
           ),
         ),
-        const SizedBox(height: 540),
+        const SizedBox(height: 460),
       ],
     );
   }
