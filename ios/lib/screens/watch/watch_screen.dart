@@ -549,7 +549,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   Future<void> _saveCurrentProgress() async {
     if (widget.movieId <= 0) return;
     if (_watchRoomActive) return;
-    if (!_seekCompleted && _currentPosition > 15) return;
+    // ★ FIX: Chỉ skip nếu player chưa ready VÀ position > 15
+    // Nếu player đã ready hoặc position <= 15 → cho phép lưu (để update episode/server)
+    if (!_playerReady && !_seekCompleted && _currentPosition > 15) return;
     // Dedup: skip if save in-flight or too recent (< 3s)
     if (_isSaving) return;
     if (_lastSaveTime != null && DateTime.now().difference(_lastSaveTime!).inSeconds < 3) return;
@@ -617,7 +619,43 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   // ── Save khi thoát ───────────────────────────────────
   Future<void> _saveProgressOnExit() async {
     _saveProgressTimer?.cancel();
-    await _saveCurrentProgress();
+    // ★ FIX: Bypass _seekCompleted guard khi exit — LUÔN lưu progress
+    if (widget.movieId <= 0 || _watchRoomActive) return;
+
+    int pos = _currentPosition;
+    int dur = _currentDuration;
+    if (_playerMode == _PlayerMode.embed && _webController != null) {
+      try {
+        final posResult = await _webController!.evaluateJavascript(
+          source: "document.querySelector('video')?.currentTime || 0",
+        );
+        if (posResult != null) pos = (posResult as num).toInt();
+        final durResult = await _webController!.evaluateJavascript(
+          source: "document.querySelector('video')?.duration || 0",
+        );
+        if (durResult != null) dur = (durResult as num).toInt();
+      } catch (_) {}
+    }
+
+    String? epSlug;
+    final eps = _currentServerEps;
+    for (final ep in eps) {
+      if (ep['id'] == _currentEpId) {
+        epSlug = (ep['ep_slug'] ?? ep['slug'] ?? '').toString();
+        break;
+      }
+    }
+
+    await _movieService.saveWatchProgress(
+      movieId: widget.movieId,
+      episodeId: _currentEpId is int ? _currentEpId : null,
+      epSlug: epSlug,
+      serverIdx: _selectedServer,
+      position: pos,
+      duration: dur > 0 ? dur : _currentDuration,
+      sourceType: _playerMode == _PlayerMode.hls ? 'hls' : 'embed',
+      sourceUrl: _currentUrl,
+    );
   }
 
 
@@ -1111,6 +1149,16 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       _currentPos = pos;
       _currentPosition = pos.inSeconds;
 
+      // ★ FIX: Detect seek completion from stream — set _seekCompleted when position arrives near target
+      if (!_seekCompleted && _seekTargetTime > 0 && (pos.inSeconds - _seekTargetTime).abs() <= 3) {
+        _seekCompleted = true;
+        _seekRetryTimer?.cancel();
+        // Ensure playing after seek completes
+        if (!_isPlaying) {
+          _player?.play();
+        }
+      }
+
       // ★ Subtitle cần update nhanh (mỗi frame) để ẩn đúng lúc khi cue kết thúc
       if (_subtitleEnabled && _subtitles.isNotEmpty) {
         setState(() {});
@@ -1139,15 +1187,16 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (mounted) {
         final wasPlaying = _isPlaying;
         setState(() => _isPlaying = playing);
-        // Nếu user chủ động pause → không hiện spinner
+        // Nếu player dừng unexpected (không phải user pause) → hiện spinner
         if (!playing && wasPlaying && _playerReady && !_isSeeking && !_userPaused) {
           setState(() => _isBuffering = true);
         }
-        // Nếu start play lại → hết buffer, clear userPaused
+        // Nếu start play lại → hết buffer, clear flags
         if (playing) {
           setState(() {
             _isBuffering = false;
             _userPaused = false;
+            _isSeeking = false;
           });
         }
       }
@@ -1200,6 +1249,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _subDuration?.cancel();
     _subCompleted?.cancel();
     _seekRetryTimer?.cancel();
+
+    // ★ FIX: Reset seek state —避免 stale _seekCompleted từ player cũ
+    _seekCompleted = false;
+    _seekTargetTime = 0;
 
     // ★ FIX: Capture target position NGAY SAU khi cancel streams
     // mà TRƯỚC KHI dispose player (dispose có thể emit event cuối = 0)
@@ -1311,6 +1364,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     // Seek lần đầu
     _player!.seek(Duration(seconds: targetSec));
+
+    // ★ FIX: Store target for stream-based seek completion detection
+    _seekTargetTime = targetSec;
 
     // Retry 1 lần sau 2s — nếu player đã buffer đủ thì seek sẽ work
     _seekRetryTimer = Timer(const Duration(seconds: 2), () {
