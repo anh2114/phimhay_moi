@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:phimhay_app/config/app_config.dart';
 import 'package:phimhay_app/config/responsive.dart';
 import 'package:phimhay_app/config/theme.dart';
@@ -51,15 +53,60 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
   List<Map<String, dynamic>> _countries = [];
   final List<int> _years = List.generate(21, (i) => DateTime.now().year - i);
 
+  // Search history
+  List<String> _searchHistory = [];
+  bool _showHistory = false;
+  static const int _historyMaxSize = 20;
+
   @override
   bool get wantKeepAlive => widget.isTab;
 
   bool get _hasActiveFilters => _country.isNotEmpty || _genre.isNotEmpty || _year.isNotEmpty || _sortBy.isNotEmpty || _filterType.isNotEmpty || _serverType.isNotEmpty;
 
+  // ── Search History ──
+  static const String _historyKey = 'search_history';
+
+  Future<void> _loadHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_historyKey);
+    if (raw != null) {
+      setState(() { _searchHistory = (jsonDecode(raw) as List<dynamic>).cast<String>(); });
+    }
+  }
+
+  Future<void> _saveToHistory(String query) async {
+    final q = query.trim();
+    if (q.isEmpty) return;
+    setState(() { _searchHistory.remove(q); _searchHistory.insert(0, q); });
+    if (_searchHistory.length > _historyMaxSize) {
+      _searchHistory = _searchHistory.sublist(0, _historyMaxSize);
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_historyKey, jsonEncode(_searchHistory));
+  }
+
+  Future<void> _removeFromHistory(String query) async {
+    setState(() { _searchHistory.remove(query); });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_historyKey, jsonEncode(_searchHistory));
+  }
+
+  Future<void> _clearHistory() async {
+    setState(() { _searchHistory.clear(); });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_historyKey);
+  }
+
   @override
   void initState() {
     super.initState();
     _fetchFilterData();
+    _loadHistory();
+    _searchFocus.addListener(() {
+      if (mounted && _searchFocus.hasFocus && _searchCtrl.text.trim().isEmpty) {
+        setState(() { _showHistory = true; });
+      }
+    });
     if (!widget.isTab) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _searchFocus.requestFocus());
     }
@@ -89,11 +136,17 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
 
   void _onSearchChanged(String query) {
     _debounce?.cancel();
+    if (query.trim().isEmpty) {
+      setState(() { _showHistory = true; _results = []; _hasSearched = false; _errorMessage = null; });
+      return;
+    }
+    setState(() { _showHistory = false; });
     _debounce = Timer(const Duration(milliseconds: 300), () {
       if (query.trim().isEmpty && !_hasActiveFilters) {
         setState(() { _results = []; _hasSearched = false; _errorMessage = null; });
         return;
       }
+      _saveToHistory(query.trim());
       _currentPage = 1;
       _hasMore = true;
       _performSearch();
@@ -262,6 +315,8 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
                 _debounce?.cancel();
                 _currentPage = 1;
                 _hasMore = true;
+                final q = _searchCtrl.text.trim();
+                if (q.isNotEmpty) { _saveToHistory(q); setState(() { _showHistory = false; }); }
                 _performSearch();
               },
               style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16),
@@ -274,7 +329,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
                         _debounce?.cancel();
                         _pendingCancel?.cancel();
                         _searchCtrl.clear();
-                        setState(() { _results = []; _hasSearched = false; _errorMessage = null; _isLoading = false; });
+                        setState(() { _results = []; _hasSearched = false; _errorMessage = null; _isLoading = false; _showHistory = true; });
                         _searchFocus.requestFocus();
                       })
                     : null,
@@ -654,6 +709,28 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
   }
 
   Widget _buildInitialState() {
+    // Show search history if available and focused
+    if (_showHistory && _searchHistory.isNotEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Lich su tim kiem', style: TextStyle(color: Color(0xFF9AA0B4), fontSize: 14, fontWeight: FontWeight.w700)),
+                GestureDetector(
+                  onTap: _clearHistory,
+                  child: const Text('Xoa tat ca', style: TextStyle(color: Color(0xFFF5C518), fontSize: 12, fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ),
+          ),
+          ..._searchHistory.map((q) => _buildHistoryItem(q)),
+        ],
+      );
+    }
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -662,6 +739,33 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
           const SizedBox(height: 12),
           Text('Nhap tu khoa de tim kiem', style: TextStyle(color: AppTheme.textMuted, fontSize: 14)),
         ],
+      ),
+    );
+  }
+
+  Widget _buildHistoryItem(String query) {
+    return GestureDetector(
+      onTap: () {
+        _searchCtrl.text = query;
+        _searchCtrl.selection = TextSelection.fromPosition(TextPosition(offset: query.length));
+        setState(() { _showHistory = false; });
+        _currentPage = 1;
+        _hasMore = true;
+        _performSearch();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            const Icon(Icons.history_rounded, color: Color(0xFF5C627A), size: 18),
+            const SizedBox(width: 12),
+            Expanded(child: Text(query, style: const TextStyle(color: Color(0xFFF0F0F0), fontSize: 15))),
+            GestureDetector(
+              onTap: () { _removeFromHistory(query); },
+              child: const Icon(Icons.close_rounded, color: Color(0xFF5C627A), size: 18),
+            ),
+          ],
+        ),
       ),
     );
   }
