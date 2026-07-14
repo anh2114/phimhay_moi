@@ -1790,6 +1790,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             ),
           ),
         ),
+        // ★ Fix: Set Stack height — 380 banner + 200 title/chips area
+        const SizedBox(height: 580),
       ],
     );
   }
