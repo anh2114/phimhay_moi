@@ -1743,11 +1743,74 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             ),
           ),
         ),
-        // ═══ Title + Meta chips — right after banner ═══
+        // ═══ 2 Action Buttons — ngay dưới banner ═══
         Positioned(
           top: 380, left: 0, right: 0,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+            child: Row(
+              children: [
+                // Xem phim — gold button
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      dynamic firstEp;
+                      if (_servers.isNotEmpty) {
+                        final eps = _servers[_selectedServer]['episodes'] as List<dynamic>? ?? [];
+                        if (eps.isNotEmpty) firstEp = eps[0];
+                      }
+                      if (firstEp == null && _episodes.isNotEmpty) firstEp = _episodes[0];
+                      if (firstEp != null) _tapEpisode(firstEp, 0);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF5E6B8),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.play_arrow_rounded, color: Color(0xFF1A1100), size: 22),
+                          SizedBox(width: 8),
+                          Text('Xem phim', style: TextStyle(color: Color(0xFF1A1100), fontSize: 16, fontWeight: FontWeight.w800)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Tập Phim — outlined button
+                GestureDetector(
+                  onTap: () {
+                    // Scroll to episode section
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: Colors.transparent,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.list_rounded, color: Colors.white70, size: 20),
+                        SizedBox(width: 8),
+                        Text('Tập Phim', style: TextStyle(color: Colors.white70, fontSize: 15, fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        // ═══ Title + Meta chips — right after buttons ═══
+        Positioned(
+          top: 440, left: 0, right: 0,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -1774,7 +1837,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             ),
           ),
         ),
-        // ★ Fix: Set Stack height — 380 banner + 200 title/chips area
+        // ★ Stack height: 380 banner + 60 buttons + 140 title/chips
         const SizedBox(height: 580),
       ],
     );
