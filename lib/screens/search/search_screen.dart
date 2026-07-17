@@ -10,6 +10,7 @@ import 'package:phimhay_app/config/theme.dart';
 import 'package:phimhay_app/models/movie.dart';
 import 'package:phimhay_app/services/image_cache_manager.dart';
 import 'package:phimhay_app/screens/movie_detail/movie_detail_screen.dart';
+import 'package:phimhay_app/widgets/svg_icon.dart';
 
 class SearchScreen extends StatefulWidget {
   final bool isTab;
@@ -57,7 +58,12 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
   // Search history
   List<String> _searchHistory = [];
   bool _showHistory = false;
+  bool _isLoadingHistory = false;
   static const int _historyMaxSize = 20;
+
+  // Search suggestions (autocomplete)
+  List<String> _suggestions = [];
+  bool _showSuggestions = false;
 
   @override
   bool get wantKeepAlive => widget.isTab;
@@ -68,11 +74,12 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
   static const String _historyKey = 'search_history';
 
   Future<void> _loadHistory() async {
+    setState(() { _isLoadingHistory = true; });
     try {
       final res = await _dio.get('${AppConfig.apiUrl}/search_history.php', queryParameters: {'action': 'list'});
       if (res.data is Map && res.data['success'] == true) {
         final list = res.data['history'] as List<dynamic>? ?? [];
-        setState(() { _searchHistory = list.cast<String>(); });
+        setState(() { _searchHistory = list.cast<String>(); _isLoadingHistory = false; });
         return;
       }
     } catch (_) {}
@@ -82,6 +89,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
     if (raw != null) {
       setState(() { _searchHistory = (jsonDecode(raw) as List<dynamic>).cast<String>(); });
     }
+    setState(() { _isLoadingHistory = false; });
   }
 
   Future<void> _saveToHistory(String query) async {
@@ -131,7 +139,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
     _searchFocus.addListener(() {
       if (mounted && _searchFocus.hasFocus) {
         // Bất kể có text hay không → đều hiện history
-        setState(() { _showHistory = true; _results = []; _hasSearched = false; });
+        setState(() { _showHistory = true; _results = []; _hasSearched = false; _showSuggestions = false; _suggestions = []; });
       }
     });
     // Tab: auto-focus search field để keyboard hiện ra ngay (giống YouTube)
@@ -166,20 +174,39 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
   void _onSearchChanged(String query) {
     _debounce?.cancel();
     if (query.trim().isEmpty) {
-      setState(() { _showHistory = true; _results = []; _hasSearched = false; _errorMessage = null; });
+      setState(() { _showHistory = true; _results = []; _hasSearched = false; _errorMessage = null; _suggestions = []; _showSuggestions = false; });
       return;
     }
-    setState(() { _showHistory = false; });
+    setState(() { _showHistory = false; _showSuggestions = false; });
     _debounce = Timer(const Duration(milliseconds: 300), () {
       if (query.trim().isEmpty && !_hasActiveFilters) {
-        setState(() { _results = []; _hasSearched = false; _errorMessage = null; });
+        setState(() { _results = []; _hasSearched = false; _errorMessage = null; _suggestions = []; _showSuggestions = false; });
         return;
       }
-      _saveToHistory(query.trim());
+      // Lưu history SAU KHI search (không phải trước)
       _currentPage = 1;
       _hasMore = true;
+      _fetchSuggestions(query.trim());
       _performSearch();
     });
+  }
+
+  // Fetch search suggestions (autocomplete)
+  Future<void> _fetchSuggestions(String query) async {
+    if (query.length < 2) {
+      setState(() { _suggestions = []; _showSuggestions = false; });
+      return;
+    }
+    try {
+      final res = await _dio.get('${AppConfig.apiUrl}/search.php', queryParameters: {'q': query, 'type': 'phim', 'limit': 5});
+      if (res.data is Map && res.data['success'] == true) {
+        final movies = res.data['movies'] as List<dynamic>? ?? [];
+        final suggestions = movies.map((m) => (m['name'] ?? '').toString()).where((s) => s.isNotEmpty).toList();
+        if (mounted) {
+          setState(() { _suggestions = suggestions; _showSuggestions = suggestions.isNotEmpty; });
+        }
+      }
+    } catch (_) {}
   }
 
   String _cacheKey(String q) {
@@ -253,6 +280,10 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
           if (_cache.length > _cacheMaxSize) {
             _cache.remove(_cache.keys.first);
             _cacheTotal.remove(_cacheTotal.keys.first);
+          }
+          // Lưu history SAU KHI search thành công
+          if (q.isNotEmpty && newResults.isNotEmpty) {
+            _saveToHistory(q);
           }
         }
       }
@@ -740,6 +771,43 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
   }
 
   Widget _buildInitialState() {
+    // Show loading indicator
+    if (_isLoadingHistory) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppTheme.accent, strokeWidth: 2),
+      );
+    }
+
+    // Show search suggestions if available
+    if (_showSuggestions && _suggestions.isNotEmpty) {
+      return ListView.builder(
+        itemCount: _suggestions.length,
+        itemBuilder: (context, index) {
+          final suggestion = _suggestions[index];
+          return GestureDetector(
+            onTap: () {
+              _searchCtrl.text = suggestion;
+              _searchCtrl.selection = TextSelection.fromPosition(TextPosition(offset: suggestion.length));
+              setState(() { _showSuggestions = false; _showHistory = false; });
+              _currentPage = 1;
+              _hasMore = true;
+              _performSearch();
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  AppSvgIcon('clock.svg', size: 18, color: const Color(0xFF5C627A)),
+                  const SizedBox(width: 12),
+                  Expanded(child: Text(suggestion, style: const TextStyle(color: Color(0xFFF0F0F0), fontSize: 15))),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    }
+
     // Show search history if available and focused
     if (_showHistory && _searchHistory.isNotEmpty) {
       return Column(
@@ -750,10 +818,10 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Lich su tim kiem', style: TextStyle(color: Color(0xFF9AA0B4), fontSize: 14, fontWeight: FontWeight.w700)),
+                const Text('Lịch sử tìm kiếm', style: TextStyle(color: Color(0xFF9AA0B4), fontSize: 14, fontWeight: FontWeight.w700)),
                 GestureDetector(
                   onTap: _clearHistory,
-                  child: const Text('Xoa tat ca', style: TextStyle(color: Color(0xFFF5C518), fontSize: 12, fontWeight: FontWeight.w600)),
+                  child: const Text('Xóa tất cả', style: TextStyle(color: Color(0xFFF5C518), fontSize: 12, fontWeight: FontWeight.w600)),
                 ),
               ],
             ),
@@ -768,7 +836,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
         children: [
           Icon(Icons.search_rounded, size: 64, color: AppTheme.textMuted.withValues(alpha: 0.3)),
           const SizedBox(height: 12),
-          Text('Nhap tu khoa de tim kiem', style: TextStyle(color: AppTheme.textMuted, fontSize: 14)),
+          Text('Nhập từ khóa để tìm kiếm', style: TextStyle(color: AppTheme.textMuted, fontSize: 14)),
         ],
       ),
     );
@@ -788,12 +856,12 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            const Icon(Icons.history_rounded, color: Color(0xFF5C627A), size: 18),
+            AppSvgIcon('clock.svg', size: 18, color: const Color(0xFF5C627A)),
             const SizedBox(width: 12),
             Expanded(child: Text(query, style: const TextStyle(color: Color(0xFFF0F0F0), fontSize: 15))),
             GestureDetector(
               onTap: () { _removeFromHistory(query); },
-              child: const Icon(Icons.close_rounded, color: Color(0xFF5C627A), size: 18),
+              child: AppSvgIcon('trash.svg', size: 16, color: const Color(0xFF5C627A)),
             ),
           ],
         ),

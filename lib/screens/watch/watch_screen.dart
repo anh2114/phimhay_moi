@@ -37,6 +37,20 @@ import 'package:phimhay_app/services/srt_parser.dart';
 /// Loại player hiện tại
 enum _PlayerMode { hls, embed }
 
+/// Generate server label with quality: Server#1•FHD
+String _serverLabel(int index, Map<String, dynamic> server) {
+  final source = (server['source'] ?? '').toString().trim().toLowerCase();
+  final sName = (server['server_name'] ?? '').toString().toLowerCase();
+
+  if (source == 'kkphim') return 'Server#${index + 1}•FHD';
+  if (source == 'ophim') return 'Server#${index + 1}•HD';
+  if (source == 'manual') return 'Server#${index + 1}•4K';
+
+  if (sName.contains('4k')) return 'Server#${index + 1}•4K';
+  if (sName.contains('fhd') || sName.contains('1080')) return 'Server#${index + 1}•FHD';
+  return 'Server#${index + 1}•HD';
+}
+
 class WatchScreen extends StatefulWidget {
   final int movieId;
   final dynamic episodeId;   // id của episode đang phát
@@ -45,6 +59,7 @@ class WatchScreen extends StatefulWidget {
   final String? movieSlug;
   final String? movieTitle;
   final int initialPosition; // Giây đã xem (để seek khi mở)
+  final bool startFullscreen; // Bắt đầu ở fullscreen landscape
 
   const WatchScreen({
     super.key,
@@ -55,6 +70,7 @@ class WatchScreen extends StatefulWidget {
     this.movieSlug,
     this.movieTitle,
     this.initialPosition = 0,
+    this.startFullscreen = false,
   });
 
   @override
@@ -210,23 +226,17 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _loadWatchProgress();
     _setupPiPListener();
 
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
-
-    // iPad lớn: tự chuyển landscape khi mở watch screen
-    if (_isLargeIpad && !_isLandscape) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          SystemChrome.setPreferredOrientations([
-            DeviceOrientation.landscapeLeft,
-            DeviceOrientation.landscapeRight,
-          ]);
-        }
-      });
-    }
+    // Luôn force landscape fullscreen
+    _forceFullscreen = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      }
+    });
 
     if (widget.initialPosition > 0) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -430,8 +440,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   void _restoreFromProgress() {
     // ★ FIX: Neu da chuyen tap trong watch screen → skip restore
     if (_hasSwitchedEp) return;
-    // ★ FIX: Nếu user đã chọn cụ thể tập từ movie detail → skip restore
+    // ★ FIX: Nếu user đã chọn cụ thể tập hoặc server từ movie detail → skip restore
     if (widget.episodeId != null && widget.episodeId > 0) return;
+    if (widget.serverIdx > 0) return; // User explicitly selected a server
 
     final progress = _savedProgress;
     if (progress == null || _servers.isEmpty) return;
@@ -478,7 +489,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   // ── Save watch progress định kỳ ────────────────────
   void _startProgressTimer() {
     _saveProgressTimer?.cancel();
-    _saveProgressTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+    // Lưu mỗi 5 giây thay vì 10 giây — giảm mất dữ liệu khi kill app
+    _saveProgressTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       _saveCurrentProgress();
     });
   }
@@ -673,6 +685,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         _positionBeforePause = _currentPos.inSeconds;
         _saveCurrentProgress();
       }
+    } else if (state == AppLifecycleState.detached) {
+      // iOS/Android: app đang bị kill — lưu progress lần cuối
+      _saveCurrentProgress();
     } else if (state == AppLifecycleState.resumed) {
       // Skip resume logic if PiP is active — native player handles playback
       if (_isPiPMode) return;
@@ -985,9 +1000,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       _servers = rawServers;
       _flatEps = rawEpisodes;
 
-      // Chọn server mặc định thông minh (4K + tập mới nhất)
-      if (_servers.isNotEmpty && widget.serverIdx == 0) {
+      // Respect serverIdx from caller (movie detail screen)
+      // Only auto-pick if serverIdx is invalid
+      if (widget.serverIdx < 0 || widget.serverIdx >= _servers.length) {
         _selectedServer = pickBestServer(_servers);
+      } else {
+        _selectedServer = widget.serverIdx;
       }
 
       // Không check health — tất cả nguồn đều sống (mobile HLS chạy được hết)
@@ -1261,6 +1279,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     _player?.dispose();
     _player = null;
+    _videoController = null; // Force widget rebuild
     _healthCheckTimer?.cancel();
     _playerReady = false;
 
@@ -1665,76 +1684,34 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   // ── Build ──────────────────────────────────────────
   final GlobalKey _playerKey = GlobalKey();
   bool _isLandscape = false;
+  bool _forceFullscreen = false; // Lock fullscreen, không thoát khi xoay dọc
 
   @override
   Widget build(BuildContext context) {
     final orientation = MediaQuery.of(context).orientation;
     final isLandscape = orientation == Orientation.landscape;
 
-    // Auto fullscreen khi xoay ngang
+    // Auto fullscreen khi xoay ngang - LUÔN giữ fullscreen
     if (isLandscape != _isLandscape) {
       _isLandscape = isLandscape;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (isLandscape) {
           SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-        } else {
-          SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
         }
+        // Không thoát fullscreen khi xoay dọc - luôn giữ immersive
       });
     }
 
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
-        top: !isLandscape,
-        left: !isLandscape,
-        right: !isLandscape,
-        bottom: !isLandscape,
-        child: isLandscape
-            ? Stack(children: [
-                Positioned.fill(child: _buildPlayer(expandToFill: true)),
-              ])
-            : Column(children: [
-                // Header
-                Header(
-                  onSearchTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchScreen())),
-                  onWatchPartyTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WatchPartyScreen())),
-                  onNotificationTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationScreen())),
-                  onActorsTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ActorsListScreen())),
-                  onAccountTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 3))),
-                ),
-                // Player — Auto: detect video ratio, Fill: maximize, Manual: fixed ratio
-                _buildPortraitPlayer(),
-                // Info + Episodes (padding đáy cho BottomNav)
-                Expanded(
-                  child: Stack(
-                    children: [
-                      _buildInfoAndEpisodes(),
-                      Positioned(
-                        bottom: 0, left: 0, right: 0,
-                        child: Builder(
-                          builder: (context) {
-                            final auth = context.watch<AuthProvider>();
-                            return BottomNav(
-                              currentIndex: -1,
-                              onTabSelected: (index) {
-                                Navigator.pushReplacement(
-                                  context,
-                                  MaterialPageRoute(builder: (_) => HomeScreen(initialIndex: index)),
-                                );
-                              },
-                              avatarUrl: auth.isLoggedIn ? (() {
-                                final raw = auth.user?['avatar']?.toString() ?? '';
-                                return raw.isNotEmpty && !raw.startsWith('http') ? '${AppConfig.baseUrl}$raw' : raw;
-                              })() : null,
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ]),
+        top: false,
+        left: false,
+        right: false,
+        bottom: false,
+        child: Stack(children: [
+          Positioned.fill(child: _buildPlayer(expandToFill: true)),
+        ]),
       ),
     );
   }
@@ -1841,7 +1818,17 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   // ── Info + Episodes (chỉ hiện ở portrait) ─────────
   Widget _buildInfoAndEpisodes() {
+    // Get current server info
+    final currentServer = _servers.isNotEmpty && _selectedServer < _servers.length
+        ? _servers[_selectedServer]
+        : null;
+    final currentServerName = _serverLabel(_selectedServer, currentServer ?? {});
+
+    // Get episode_current from movie data (if available)
+    final episodeCurrent = widget.movieTitle ?? 'Tập phim';
+
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Info bar
         Container(
@@ -1850,9 +1837,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           child: Row(
             children: [
               GestureDetector(
-                onTap: () {
-                  Navigator.pop(context);
-                },
+                onTap: () => Navigator.pop(context),
                 child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
               ),
               const SizedBox(width: 10),
@@ -1864,7 +1849,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              // Nút xem chung
               GestureDetector(
                 onTap: _createWatchParty,
                 child: Container(
@@ -1882,39 +1866,82 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   ]),
                 ),
               ),
-              // Badge player mode — luôn hiện để biết đang chạy HLS hay Embed
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: _playerMode == _PlayerMode.hls ? Colors.green.withValues(alpha: 0.2) : const Color(0x33FFFFFF),
-                  borderRadius: BorderRadius.circular(4),
+            ],
+          ),
+        ),
+
+        // Header: "Tập phim" + server dropdown
+        if (_servers.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Row(
+              children: [
+                const Icon(Icons.menu_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  episodeCurrent,
+                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700),
                 ),
-                child: Text(
-                  _playerMode == _PlayerMode.hls ? 'HLS' : 'Embed',
-                  style: TextStyle(
-                    color: _playerMode == _PlayerMode.hls ? Colors.greenAccent : Colors.white38,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
+                const Spacer(),
+                PopupMenuButton<int>(
+                  onSelected: (index) {
+                    setState(() {
+                      _selectedServer = index;
+                      _epPage = 1;
+                    });
+                  },
+                  offset: const Offset(0, 30),
+                  color: const Color(0xFF1E2026),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  itemBuilder: (ctx) => List.generate(_servers.length, (index) {
+                    final isActive = index == _selectedServer;
+                    final label = _serverLabel(index, _servers[index]);
+                    final rawEps = (_servers[index]['episodes'] as List<dynamic>?) ?? [];
+                    final epCount = rawEps.length;
+                    return PopupMenuItem<int>(
+                      value: index,
+                      child: Row(
+                        children: [
+                          if (isActive)
+                            const Icon(Icons.check_rounded, color: Color(0xFFF5E6B8), size: 16),
+                          if (isActive) const SizedBox(width: 6),
+                          Text(
+                            '$label ($epCount tập)',
+                            style: TextStyle(
+                              color: isActive ? const Color(0xFFF5E6B8) : Colors.white,
+                              fontSize: 13,
+                              fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E2026),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: Colors.white, width: 1),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          currentServerName,
+                          style: const TextStyle(color: Colors.white70, fontSize: 12),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white70, size: 16),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-        // Server selector — hiện cho mọi user
-        if (_servers.length > 1) _buildServerSelector(),
-        const Divider(color: Color(0x22FFFFFF), height: 1),
-        // Episode list header
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
-          child: Row(
-            children: [
-              const Text('Chọn tập', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
-              const Spacer(),
-            ],
-          ),
-        ),
-        // Episodes grid (with pagination inside)
+
+        // Episodes grid
         Expanded(
           child: _buildEpisodeGrid(),
         ),
@@ -1960,10 +1987,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   ? Center(
                       child: AspectRatio(
                         aspectRatio: _aspectRatios[_aspectRatioIndex]!,
-                        child: Video(controller: _videoController!, key: _bpGlobalKey, controls: NoVideoControls),
+                        child: Video(controller: _videoController!, key: ValueKey('hls_$_currentEpId'), controls: NoVideoControls),
                       ),
                     )
-                  : Video(controller: _videoController!, key: _bpGlobalKey, controls: NoVideoControls),
+                  : Video(controller: _videoController!, key: ValueKey('hls_$_currentEpId'), controls: NoVideoControls),
             ),
 
           // ── Subtitle overlay — đặt TRONG player stack ──
@@ -2955,7 +2982,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               _buildToolbarItem(Icons.aspect_ratio_rounded, _aspectRatioLabels[_aspectRatioIndex], _cycleAspectRatio),
               const SizedBox(width: 40),
               // Server (mic icon → server popup)
-              _buildToolbarItem(Icons.mic_none_rounded, _servers.isNotEmpty ? (_servers[_selectedServer]['server_name']?.toString() ?? 'Server') : 'Server', _showServerPopup),
+              _buildToolbarItem(Icons.mic_none_rounded, _servers.isNotEmpty ? _serverLabel(_selectedServer, _servers[_selectedServer]) : 'Server', _showServerPopup),
               // Phụ đề — hiển thị mọi server (có thể load SRT/ASS)
               const SizedBox(width: 40),
               _buildToolbarItem(Icons.subtitles_rounded, 'Phụ đề', _showSettingsPopup),
@@ -3589,12 +3616,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   void _toggleFullscreen() {
-    if (_isLandscape) {
-      _restoreOrientations();
-      Future.delayed(const Duration(milliseconds: 300), () {
-        _restoreOrientations();
-      });
-    } else {
+    // Luôn giữ fullscreen landscape
+    if (!_isLandscape) {
+      _forceFullscreen = true;
       SystemChrome.setPreferredOrientations([
         DeviceOrientation.landscapeLeft,
         DeviceOrientation.landscapeRight,
@@ -3665,9 +3689,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 shrinkWrap: true,
                 itemCount: _servers.length,
                 itemBuilder: (context, i) {
-                   final serverName =
-                       _servers[i]['server_name']?.toString() ??
-                           'Server ${i + 1}';
+                   final serverLabelStr = _serverLabel(i, _servers[i]);
                    final isActive = i == _selectedServer;
                    final rawEps = (_servers[i]['episodes'] as List<dynamic>?) ?? [];
                    final dedupedNames = <String>{};
@@ -3696,7 +3718,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                          children: [
                            Expanded(
                              child: Text(
-                               '$serverName • ${dedupedNames.length} tập',
+                               '$serverLabelStr • ${dedupedNames.length} tập',
                               style: TextStyle(
                                 color: isActive
                                     ? AppTheme.accent
@@ -3790,7 +3812,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  s['server_name']?.toString() ?? 'Server ${i + 1}',
+                  _serverLabel(i, s),
                   style: TextStyle(
                     color: isActive ? Colors.white.withValues(alpha: 0.85) : Colors.white.withValues(alpha: 0.5),
                     fontSize: 12,
@@ -3899,12 +3921,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         // Grid
         Expanded(
           child: GridView.builder(
-            padding: const EdgeInsets.fromLTRB(14, 4, 14, 16),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: Responsive.episodeColumns(context),
-              crossAxisSpacing: 6,
-              mainAxisSpacing: 6,
-              childAspectRatio: 2.2,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
+              childAspectRatio: 2.8,
             ),
             itemCount: pagedList.length,
             itemBuilder: (context, i) {
@@ -3912,27 +3934,28 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               final epId = ep['id'];
               final isActive = epId == _currentEpId ||
                   (epId == null && i == 0 && _currentEpId == widget.episodeId);
-              final label = (ep['ep_name'] ?? ep['name'] ?? '${startIdx + i + 1}').toString();
+              final rawName = (ep['ep_name'] ?? ep['name'] ?? '${startIdx + i + 1}').toString();
+              final epNum = rawName.replaceAll(RegExp(r'^[Tt]ậ?p?\s*', caseSensitive: false), '').trim();
+              final displayName = 'Tập $epNum';
 
               return GestureDetector(
                 onTap: () => _switchEpisode(ep),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
                   decoration: BoxDecoration(
-                    gradient: isActive ? const LinearGradient(colors: [Color(0xFFFECF59), Color(0xFFF1E2B0)], begin: Alignment.centerLeft, end: Alignment.centerRight) : null,
-                    color: isActive ? null : const Color(0xFF1E2130),
-                    borderRadius: BorderRadius.circular(6),
+                    color: isActive ? const Color(0xFFF5E6B8) : const Color(0xFF1E2130),
+                    borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: isActive ? const Color(0xFFFECF59) : const Color(0x22FFFFFF),
+                      color: isActive ? const Color(0xFFF5E6B8) : const Color(0x22FFFFFF),
                     ),
                   ),
                   child: Center(
                     child: Text(
-                      label,
+                      displayName,
                       style: TextStyle(
                         color: isActive ? const Color(0xFF1A1100) : Colors.white70,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
                       ),
                       textAlign: TextAlign.center,
                       maxLines: 1,
@@ -4101,7 +4124,7 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
                             children: widget.servers.asMap().entries.map((entry) {
                               final idx = entry.key;
                               final server = entry.value;
-                              final serverName = server['server_name']?.toString() ?? 'Server ${idx + 1}';
+                              final serverLabelStr = _serverLabel(idx, server);
                               final isActive = idx == _selectedServer;
                               final serverEps = (server['episodes'] as List<dynamic>?) ?? [];
                               final serverEpCount = <String>{};
@@ -4130,7 +4153,7 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
                                         decoration: const BoxDecoration(color: Color(0xFF4CAF50), shape: BoxShape.circle),
                                       ),
                                       const SizedBox(width: 6),
-                                      Text(serverName, style: TextStyle(color: isActive ? Colors.white.withValues(alpha: 0.85) : Colors.white.withValues(alpha: 0.5), fontSize: 12, fontWeight: FontWeight.w600)),
+                                      Text(serverLabelStr, style: TextStyle(color: isActive ? Colors.white.withValues(alpha: 0.85) : Colors.white.withValues(alpha: 0.5), fontSize: 12, fontWeight: FontWeight.w600)),
                                       const SizedBox(width: 4),
                                       Text('${serverEpCount.length} tập', style: TextStyle(color: isActive ? Colors.white.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.3), fontSize: 10)),
                                     ],

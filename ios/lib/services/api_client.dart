@@ -22,6 +22,11 @@ class ApiClient {
   static String? get refreshToken => _refreshToken;
   static bool get isAuth => _token != null && _token!.isNotEmpty;
 
+  // ETag cache: url -> etag
+  static final Map<String, String> _etagCache = {};
+  // Response cache: url -> response data (cho 304)
+  static final Map<String, dynamic> _responseCache = {};
+
   // Secure storage thay SharedPreferences
   static const _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -50,13 +55,40 @@ class ApiClient {
     _dio!.interceptors.add(InterceptorsWrapper(
       onRequest: (opts, handler) {
         if (_token != null && _token!.isNotEmpty) {
-          // Gửi cả 2 cách: header + query param (backward compatible)
           opts.headers['Authorization'] = 'Bearer $_token';
           opts.queryParameters['auth_token'] = _token;
         }
+        // Gửi ETag nếu có
+        final url = opts.uri.toString();
+        if (_etagCache.containsKey(url)) {
+          opts.headers['If-None-Match'] = _etagCache[url];
+        }
         handler.next(opts);
       },
+      onResponse: (response, handler) {
+        // Lưu ETag từ response
+        final etag = response.headers.value('etag');
+        final url = response.requestOptions.uri.toString();
+        if (etag != null && etag.isNotEmpty) {
+          _etagCache[url] = etag;
+          _responseCache[url] = response.data;
+        }
+        handler.next(response);
+      },
       onError: (err, handler) async {
+        // Xử lý 304 Not Modified → dùng cached response
+        if (err.response?.statusCode == 304) {
+          final url = err.requestOptions.uri.toString();
+          if (_responseCache.containsKey(url)) {
+            // Trả về cached response
+            handler.resolve(Response(
+              requestOptions: err.requestOptions,
+              statusCode: 200,
+              data: _responseCache[url],
+            ));
+            return;
+          }
+        }
         if (err.response?.statusCode == 401 && _token != null) {
           final refreshed = await _refresh();
           if (refreshed) {
@@ -190,6 +222,12 @@ class ApiClient {
     await _storage.delete(key: _keyToken);
     await _storage.delete(key: _keyRefreshToken);
     _refreshCompleter = null;
+  }
+
+  // Clear ETag cache (dùng khi cần force refresh)
+  static void clearEtagCache() {
+    _etagCache.clear();
+    _responseCache.clear();
   }
 
   static Future<Response> get(String path, {Map<String, dynamic>? params}) async {

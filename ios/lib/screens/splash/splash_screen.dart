@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../config/theme.dart';
 import '../../services/update_service.dart';
 import '../../widgets/update_dialog.dart';
@@ -67,23 +68,60 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
               opacity: _fadeIn,
               child: ScaleTransition(
                 scale: _scale,
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
+                child: SizedBox(
+                  width: double.infinity,
+                  height: double.infinity,
+                  child: Stack(
                     children: [
-                      Image.asset(
-                        'assets/images/logo2.png',
-                        width: 180,
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => const Text('Xiao Phim', style: TextStyle(fontSize: 36, fontWeight: FontWeight.w800, color: AppTheme.gold, letterSpacing: -1)),
+                      // Logo — center
+                      Center(
+                        child: Image.asset(
+                          'assets/images/logo2.png',
+                          width: 180,
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => Text(
+                            'Xiao Phim',
+                            style: GoogleFonts.inter(
+                              fontSize: 36,
+                              fontWeight: FontWeight.w800,
+                              color: AppTheme.gold,
+                              letterSpacing: -1,
+                              decoration: TextDecoration.none,
+                            ),
+                          ),
+                        ),
                       ),
-                      const SizedBox(height: 24),
-                      // 3 bouncing dots
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: List.generate(3, (i) {
-                          return _Dot(i);
-                        }),
+                      // Spinner + "Đang tải" — bottom 20%
+                      Positioned(
+                        bottom: MediaQuery.of(context).size.height * 0.2,
+                        left: 0,
+                        right: 0,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const SizedBox(
+                              width: 32,
+                              height: 32,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 3,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            DecoratedBox(
+                              decoration: const BoxDecoration(),
+                              child: Text(
+                                'Đang tải',
+                                style: GoogleFonts.inter(
+                                  color: Colors.white70,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  decoration: TextDecoration.none,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -92,53 +130,6 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
             ),
           ),
       ],
-    );
-  }
-}
-
-class _Dot extends StatefulWidget {
-  final int index;
-  const _Dot(this.index);
-
-  @override
-  State<_Dot> createState() => _DotState();
-}
-
-class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
-  late AnimationController _c;
-  late Animation<double> _anim;
-
-  @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
-    _anim = Tween<double>(begin: 0.4, end: 1.0).animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut));
-    Future.delayed(Duration(milliseconds: (widget.index * 200).toInt()), () {
-      if (mounted) _c.repeat(reverse: true);
-    });
-  }
-
-  @override
-  void dispose() { _c.dispose(); super.dispose(); }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _anim,
-      builder: (_, __) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: Transform.scale(
-          scale: _anim.value,
-          child: Container(
-            width: 8,
-            height: 8,
-            decoration: const BoxDecoration(
-              color: AppTheme.accent,
-              borderRadius: BorderRadius.all(Radius.circular(4)),
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

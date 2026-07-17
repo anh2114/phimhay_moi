@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/services.dart';
 import 'package:phimhay_app/config/app_config.dart';
@@ -77,32 +78,114 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   int _myRating = 0;
   List<String> _galleryImages = [];
 
+  // Server grouping by source
+  List<Map<String, dynamic>> _serverSources = []; // [{name: "Server#1", servers: [...]}]
+  int _selectedSource = 0;
+  int _selectedSourceServer = 0; // Server within selected source
+
   Map<String, dynamic> get _currentUser {
     return Provider.of<AuthProvider>(context, listen: false).user ?? {};
   }
 
   /// Chọn server mặc định thông minh:
-  /// 1. Server có "4K" trong tên + tập mới nhất
-  /// 2. Server có tập mới nhất
-  /// 3. Server đầu tiên
+  /// Ưu tiên server có nhiều tập nhất
   static int pickBestServer(List<dynamic> servers) {
     if (servers.isEmpty) return 0;
     int bestIdx = 0;
-    int bestSort = -1;
-    int best4kIdx = -1;
-    int best4kSort = -1;
+    int maxEps = 0;
     for (int i = 0; i < servers.length; i++) {
-      final name = (servers[i]['server_name'] ?? '').toString();
       final eps = servers[i]['episodes'] as List<dynamic>? ?? [];
-      if (eps.isEmpty) continue;
-      final lastEp = eps.last;
-      final sortVal = (lastEp['sort_order'] ?? 0) as int;
-      if (sortVal > bestSort) { bestSort = sortVal; bestIdx = i; }
-      if (name.toUpperCase().contains('4K') && sortVal > best4kSort) {
-        best4kSort = sortVal; best4kIdx = i;
+      if (eps.length > maxEps) {
+        maxEps = eps.length;
+        bestIdx = i;
       }
     }
-    return best4kIdx >= 0 ? best4kIdx : bestIdx;
+    return bestIdx;
+  }
+
+  /// Group servers by source (kkphim, ophim, etc.)
+  void _groupServersBySource() {
+    _serverSources = [];
+    if (_servers.isEmpty) return;
+
+    // Check if any server has a non-empty source field
+    final hasSourceField = _servers.any((s) {
+      final src = (s['source'] ?? '').toString().trim();
+      return src.isNotEmpty;
+    });
+
+    // Helper: detect quality from source/server names
+    String detectQuality(String source, List<dynamic> servers) {
+      // Check source first
+      if (source == 'kkphim') return 'FHD';
+      if (source == 'ophim') return 'HD';
+      if (source == 'manual') return '4K';
+      // Fallback: check server names
+      for (final s in servers) {
+        final name = (s['server_name'] ?? '').toString().toLowerCase();
+        if (name.contains('4k')) return '4K';
+        if (name.contains('fhd') || name.contains('1080')) return 'FHD';
+      }
+      return 'HD';
+    }
+
+    if (!hasSourceField) {
+      // No source field → each server is its own "source"
+      int serverNum = 1;
+      for (final server in _servers) {
+        final sName = (server['server_name'] ?? 'Server $serverNum').toString();
+        final epCount = (server['episodes'] as List<dynamic>?)?.length ?? 0;
+        final quality = detectQuality('', [server]);
+        _serverSources.add({
+          'name': 'Server#$serverNum•$quality',
+          'source': sName,
+          'servers': [server],
+          'totalEps': epCount,
+        });
+        serverNum++;
+      }
+    } else {
+      // Has source field → group by source
+      final Map<String, List<dynamic>> sourceGroups = {};
+      for (final server in _servers) {
+        final source = (server['source'] ?? '').toString().trim().toLowerCase();
+        if (source.isEmpty) continue;
+        if (!sourceGroups.containsKey(source)) {
+          sourceGroups[source] = [];
+        }
+        sourceGroups[source]!.add(server);
+      }
+
+      int serverNum = 1;
+      for (final entry in sourceGroups.entries) {
+        final servers = entry.value;
+        servers.sort((a, b) {
+          final aEps = (a['episodes'] as List<dynamic>?)?.length ?? 0;
+          final bEps = (b['episodes'] as List<dynamic>?)?.length ?? 0;
+          return bEps.compareTo(aEps);
+        });
+        int totalEps = 0;
+        for (final s in servers) {
+          totalEps += (s['episodes'] as List<dynamic>?)?.length ?? 0;
+        }
+        final quality = detectQuality(entry.key, servers);
+        _serverSources.add({
+          'name': 'Server#$serverNum•$quality',
+          'source': entry.key,
+          'servers': servers,
+          'totalEps': totalEps,
+        });
+        serverNum++;
+      }
+    }
+
+    // Sort by total episodes (most first)
+    _serverSources.sort((a, b) => (b['totalEps'] as int).compareTo(a['totalEps'] as int));
+
+    if (_serverSources.isNotEmpty) {
+      _selectedSource = 0;
+      _selectedSourceServer = 0;
+    }
   }
 
   // Watch progress — "Xem tiếp"
@@ -278,9 +361,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         _episodes = data['episodes'] as List<dynamic>? ?? [];
       }
 
-      // Chọn server mặc định thông minh (4K + tập mới nhất)
+      // Chọn server mặc định thông minh (nhiều tập nhất)
       if (_servers.isNotEmpty) {
         _selectedServer = pickBestServer(_servers);
+        _groupServersBySource();
       }
 
       final related = data['related'] as List<dynamic>? ?? [];
@@ -761,7 +845,22 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                 const SizedBox(width: 8),
                 GestureDetector(
                   onTap: () => _showInfoBottomSheet(movie),
-                  child: Text('Chi tiết', style: TextStyle(color: AppTheme.textSub, fontSize: 13, fontWeight: FontWeight.w600)),
+                  child: Container(
+                    padding: const EdgeInsets.only(left: 8),
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        left: BorderSide(color: AppTheme.border, width: 1),
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text('Chi tiết', style: TextStyle(color: AppTheme.textSub, fontSize: 13, fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 2),
+                        const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.textSub, size: 16),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -777,14 +876,17 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             controller: _tabController,
             isScrollable: true,
             tabAlignment: TabAlignment.start,
-            indicatorColor: AppTheme.gold,
+            indicatorColor: Color(0xFFF5E6B8),
             indicatorWeight: 3,
-            labelColor: AppTheme.gold,
+            labelColor: Color(0xFFF5E6B8),
             unselectedLabelColor: AppTheme.textSub,
             labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
             unselectedLabelStyle: const TextStyle(fontSize: 14),
+            overlayColor: WidgetStateProperty.all(Colors.transparent),
+            splashFactory: NoSplash.splashFactory,
             tabs: const [
               Tab(text: 'Tập phim'),
+              Tab(text: 'Phòng trưng bày'),
               Tab(text: 'Diễn viên'),
               Tab(text: 'Đề xuất'),
             ],
@@ -803,6 +905,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       backgroundColor: AppTheme.bgCard,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       isScrollControlled: true,
+      clipBehavior: Clip.none,
       builder: (ctx) => DraggableScrollableSheet(
         initialChildSize: 0.7, maxChildSize: 0.9, minChildSize: 0.4, expand: false,
         builder: (ctx, scrollController) => SingleChildScrollView(
@@ -811,8 +914,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)))),
-              const SizedBox(height: 20),
+              // Xóa drag handle — ẩn đi
+              const SizedBox(height: 8),
               const Text('Thông tin phim', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
               const SizedBox(height: 20),
               Text('Giới thiệu:', style: TextStyle(color: AppTheme.textMuted, fontSize: 13, fontWeight: FontWeight.w700)),
@@ -1713,17 +1816,22 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Banner — full width, natural height
+        // Banner — full width, fixed 16:9 aspect ratio
         Stack(
           children: [
-            CachedNetworkImage(
-              imageUrl: backdropUrl,
-              width: double.infinity,
-              fit: BoxFit.fitWidth,
-              cacheManager: AppImageCacheManager(),
-              fadeInDuration: Duration.zero,
-              placeholder: (_, __) => Container(color: AppTheme.bgCard, width: double.infinity, height: 200),
-              errorWidget: (_, __, ___) => Container(color: AppTheme.bgCard, width: double.infinity, height: 200),
+            AspectRatio(
+              aspectRatio: 16 / 9,
+              child: CachedNetworkImage(
+                imageUrl: backdropUrl,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                memCacheWidth: (MediaQuery.of(context).size.width * 2).toInt(),
+                cacheManager: AppImageCacheManager(),
+                fadeInDuration: const Duration(milliseconds: 250),
+                fadeOutDuration: Duration.zero,
+                placeholder: (_, __) => Container(color: AppTheme.bgCard),
+                errorWidget: (_, __, ___) => Container(color: AppTheme.bgCard),
+              ),
             ),
             Positioned(
               top: MediaQuery.of(context).padding.top + 8, left: 12,
@@ -1738,9 +1846,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             ),
           ],
         ),
-        // 2 buttons — 3px dưới banner
+        // 2 buttons — 10px dưới banner
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 3, 16, 0),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
           child: Row(
             children: [
               Expanded(
@@ -1755,7 +1863,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                     if (firstEp != null) _tapEpisode(firstEp, 0);
                   },
                   child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
                     decoration: BoxDecoration(color: const Color(0xFFF5E6B8), borderRadius: BorderRadius.circular(12)),
                     child: const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -1772,7 +1880,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
               GestureDetector(
                 onTap: () {},
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                   decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
                   child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -1795,7 +1903,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(movie.name, maxLines: 2, overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800)),
+                style: GoogleFonts.merienda(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w700)),
               if ((movie.originName ?? '').isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Text(movie.originName!, maxLines: 1, overflow: TextOverflow.ellipsis,
@@ -1806,10 +1914,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                 spacing: 8, runSpacing: 8,
                 children: [
                   _chipSolid('IMDb ${(movie.tmdbRating ?? movie.imdbRating ?? 0).toStringAsFixed(1)}'),
+                  _chipSolid((movie.ageRating ?? '').toUpperCase().isNotEmpty ? movie.ageRating!.toUpperCase() : 'P'),
                   if (quality.isNotEmpty) _chipBorder(quality, true),
                   if (movie.year != null && movie.year! > 0) _chipBorder('${movie.year}', (movie.year ?? 0) >= 2026),
                   if ((movie.time ?? '').isNotEmpty) _chipBorder(movie.time!, false),
-                  if ((movie.episodeCurrent ?? '').isNotEmpty) _chipBorder('Phần 1', false),
+                  ..._buildServerEpChips(),
                 ],
               ),
             ],
@@ -1839,7 +1948,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: isModern ? Colors.white.withValues(alpha: 0.7) : Colors.white.withValues(alpha: 0.3),
+          color: isModern ? Colors.white.withValues(alpha: 0.7) : Colors.white,
           width: isModern ? 1.2 : 0.8,
         ),
       ),
@@ -1848,6 +1957,46 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         fontSize: 11, fontWeight: FontWeight.w600,
       )),
     );
+  }
+
+  List<Widget> _buildServerEpChips() {
+    if (_servers.isEmpty) return [];
+
+    // Group servers by type, keep max episode count per type
+    final Map<String, int> typeMaxEps = {};
+
+    for (int i = 0; i < _servers.length; i++) {
+      final sName = (_servers[i]['server_name'] ?? '').toString().toLowerCase();
+      final eps = (_servers[i]['episodes'] as List<dynamic>?) ?? [];
+      if (eps.isEmpty) continue;
+
+      String type;
+      if (sName.contains('thuyết minh') || sName.contains('tm') || sName.contains('dub')) {
+        type = 'TM';
+      } else if (sName.contains('vietsub') || sName.contains('phụ đề') || sName.contains('pd') || sName.contains('đ')) {
+        type = 'PĐ';
+      } else if (sName.contains('4k')) {
+        type = '4K';
+      } else if (sName.contains('raw') || sName.contains('raws')) {
+        type = 'RW';
+      } else if (sName.contains('playlist')) {
+        type = 'PL';
+      } else {
+        type = sName.length > 3 ? sName.substring(0, 2).toUpperCase() : sName.toUpperCase();
+      }
+
+      // Keep highest episode count for each type
+      final epCount = eps.length;
+      if (!typeMaxEps.containsKey(type) || epCount > typeMaxEps[type]!) {
+        typeMaxEps[type] = epCount;
+      }
+    }
+
+    if (typeMaxEps.isEmpty) return [];
+
+    // Build combined chip: TM.40/PĐ.42
+    final parts = typeMaxEps.entries.map((e) => '${e.key}.${e.value}').toList();
+    return [_chipBorder(parts.join('/'), false)];
   }
 
   Widget _buildInfoPanel(Movie movie) {
@@ -2225,12 +2374,22 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       );
     }
 
-    // Episodes của server đang chọn — API trả ep_name + link_m3u8
-    final currentEps = _servers.isNotEmpty && _selectedServer < _servers.length
-        ? (_servers[_selectedServer]['episodes'] as List<dynamic>? ?? [])
+    // Get servers from selected source
+    final sourceServers = _serverSources.isNotEmpty && _selectedSource < _serverSources.length
+        ? (_serverSources[_selectedSource]['servers'] as List<dynamic>)
+        : _servers;
+
+    // Get current server within source
+    final currentServer = sourceServers.isNotEmpty && _selectedSourceServer < sourceServers.length
+        ? sourceServers[_selectedSourceServer]
+        : (sourceServers.isNotEmpty ? sourceServers.first : null);
+
+    // Episodes of current server
+    final currentEps = currentServer != null
+        ? (currentServer['episodes'] as List<dynamic>? ?? [])
         : _episodes;
 
-    // ★ Pagination: chia page 100 tập/trang
+    // Pagination
     final totalEps = currentEps.length;
     final totalPages = (totalEps / _episodesPerPage).ceil();
     if (totalPages <= 1) _episodePage = 1;
@@ -2239,77 +2398,153 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     final endIdx = (startIdx + _episodesPerPage).clamp(0, totalEps);
     final pagedEps = currentEps.sublist(startIdx, endIdx);
 
-    return Column(
-      children: [
-        // Server selector — hiện cho mọi user
-        if (_servers.isNotEmpty)
-          SizedBox(
-            height: 48,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              itemCount: _servers.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (context, index) {
-                final isActive = index == _selectedServer;
-                final sName  = (_servers[index]['server_name'] ?? 'Server ${index + 1}').toString();
-                final serverEps = (_servers[index]['episodes'] as List<dynamic>?) ?? [];
-                final serverEpCount = <String>{};
-                for (final e in serverEps) {
-                  serverEpCount.add((e['ep_name'] ?? e['name'] ?? '').toString());
-                }
+    // Dropdown shows Server#1•FHD, Server#2•HD...
+    final currentSourceName = _serverSources.isNotEmpty && _selectedSource < _serverSources.length
+        ? (_serverSources[_selectedSource]['name'] ?? '').toString()
+        : 'Server';
 
-                return GestureDetector(
-                  onTap: () => setState(() {
-                    _selectedServer = index;
-                    _episodePage = 1;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header: "Phần X" + source dropdown
+        if (_serverSources.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Row(
+              children: [
+                const Icon(Icons.menu_rounded, color: AppTheme.textPrimary, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  (_movieData?['episode_current'] ?? 'Phần 1').toString(),
+                  style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+                const Spacer(),
+                PopupMenuButton<int>(
+                  onSelected: (index) {
+                    setState(() {
+                      _selectedSource = index;
+                      _selectedSourceServer = 0;
+                      _episodePage = 1;
+                      final servers = _serverSources[index]['servers'] as List<dynamic>;
+                      if (servers.isNotEmpty) {
+                        _selectedServer = _servers.indexOf(servers.first);
+                      }
+                    });
+                  },
+                  offset: const Offset(0, 30),
+                  color: AppTheme.bgCard,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  itemBuilder: (ctx) => List.generate(_serverSources.length, (index) {
+                    final isActive = index == _selectedSource;
+                    final sourceLabel = (_serverSources[index]['name'] ?? '').toString();
+                    final totalEps = _serverSources[index]['totalEps'] ?? 0;
+                    return PopupMenuItem<int>(
+                      value: index,
+                      child: Row(
+                        children: [
+                          if (isActive)
+                            const Icon(Icons.check_rounded, color: Color(0xFFF5E6B8), size: 16),
+                          if (isActive) const SizedBox(width: 6),
+                          Text(
+                            '$sourceLabel ($totalEps tập)',
+                            style: TextStyle(
+                              color: isActive ? const Color(0xFFF5E6B8) : AppTheme.textPrimary,
+                              fontSize: 13,
+                              fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
                   }),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: isActive ? Colors.white.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.02),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: isActive ? Colors.white.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.1),
-                      ),
+                      color: AppTheme.bgCard,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: Colors.white, width: 1),
                     ),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Container(
-                        width: 6, height: 6,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF4CAF50),
-                          shape: BoxShape.circle,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          currentSourceName,
+                          style: const TextStyle(color: AppTheme.textSub, fontSize: 12),
                         ),
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        sName,
-                        style: TextStyle(
-                          color: isActive ? Colors.white.withValues(alpha: 0.85) : Colors.white.withValues(alpha: 0.5),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${serverEpCount.length} tập',
-                        style: TextStyle(
-                          color: isActive ? Colors.white.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.3),
-                          fontSize: 10,
-                        ),
-                      ),
-                    ]),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.textSub, size: 16),
+                      ],
+                    ),
                   ),
-                );
-              },
+                ),
+              ],
             ),
           ),
 
-        if (_servers.isNotEmpty)
-          const Divider(color: AppTheme.border, height: 1),
+        // Server name buttons within source
+        if (sourceServers.length > 1)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: List.generate(sourceServers.length > 2 ? 2 : sourceServers.length, (index) {
+                final isActive = index == _selectedSourceServer;
+                final sName = (sourceServers[index]['server_name'] ?? '').toString();
+                final serverEps = (sourceServers[index]['episodes'] as List<dynamic>?) ?? [];
+                final epCount = serverEps.length;
 
-        // ★ Pagination controls — chỉ hiện khi > 100 tập
+                return Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(right: index == 0 ? 8 : 0),
+                    child: GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _selectedSourceServer = index;
+                          _selectedServer = _servers.indexOf(sourceServers[index]);
+                          _episodePage = 1;
+                        });
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        decoration: BoxDecoration(
+                          color: isActive ? const Color(0xFFF5E6B8) : AppTheme.bgCard,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isActive ? const Color(0xFFF5E6B8) : AppTheme.border,
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              sName,
+                              style: TextStyle(
+                                color: isActive ? const Color(0xFF1A1100) : AppTheme.textPrimary,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '($epCount tập)',
+                              style: TextStyle(
+                                color: isActive ? const Color(0xFF1A1100).withValues(alpha: 0.6) : AppTheme.textMuted,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+
+        const SizedBox(height: 4),
+
+        // Pagination controls — chỉ hiện khi > 100 tập
         if (totalPages > 1)
           Container(
             height: 40,
@@ -2351,16 +2586,16 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             ),
           ),
 
-        // Episode grid
+        // Episode grid — 3 columns with "Tập X" prefix
         GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(14),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: Responsive.isMobile(context) ? 4 : 6,
-            mainAxisSpacing: 8,
-            crossAxisSpacing: 8,
-            childAspectRatio: Responsive.isMobile(context) ? 2.2 : 2.0,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 2.0,
           ),
           itemCount: pagedEps.length,
           itemBuilder: (context, index) {
@@ -2368,25 +2603,24 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
               final rawName = ep is Map
                   ? (ep['ep_name'] ?? ep['name'] ?? '${startIdx + index + 1}').toString()
                   : '${startIdx + index + 1}';
-              final epName = rawName.replaceAll(RegExp(r'^[Tt]ậ?p?\s*', caseSensitive: false), '').trim();
               final epId = ep is Map ? ep['id'] : null;
               final isActive = _watchProgress != null && epId != null && epId == _watchProgress!['episode_id'];
+              final epNum = rawName.replaceAll(RegExp(r'^[Tt]ậ?p?\s*', caseSensitive: false), '').trim();
+              final displayName = 'Tập $epNum';
               return GestureDetector(
                 onTap: () => _tapEpisode(ep, startIdx + index),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
                   decoration: BoxDecoration(
-                    gradient: isActive ? const LinearGradient(colors: [Color(0xFFFECF59), Color(0xFFF1E2B0)], begin: Alignment.centerLeft, end: Alignment.centerRight) : null,
-                    color: isActive ? null : AppTheme.bgCard,
+                    color: isActive ? const Color(0xFFF5E6B8) : const Color(0xFF1E2130),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: isActive ? const Color(0xFFFECF59) : AppTheme.border),
                   ),
                   child: Center(
                     child: Text(
-                      epName,
+                      displayName,
                       style: TextStyle(
-                        color: isActive ? const Color(0xFF1A1100) : AppTheme.textPrimary,
-                        fontSize: 11,
+                        color: isActive ? const Color(0xFF1A1100) : Colors.white.withValues(alpha: 0.85),
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                       ),
                       textAlign: TextAlign.center,
@@ -2432,6 +2666,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
           streamUrl:  url,
           movieSlug:  slug,
           movieTitle: title,
+          startFullscreen: true,
         ),
       ),
     );

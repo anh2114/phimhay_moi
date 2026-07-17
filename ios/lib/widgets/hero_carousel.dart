@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:phimhay_app/config/theme.dart';
 import 'package:phimhay_app/models/movie.dart';
 import 'package:phimhay_app/services/image_cache_manager.dart';
@@ -195,9 +196,9 @@ class _HeroCarouselState extends State<HeroCarousel> {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: GoogleFonts.merienda(
                   fontSize: 20,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                   color: AppTheme.textPrimary,
                   letterSpacing: -0.2,
                   height: 1.2,
@@ -245,7 +246,7 @@ class _HeroCarouselState extends State<HeroCarousel> {
                 children: [
                   _HeroPill(
                     label:
-                        'TMDB ${(m.tmdbRating ?? 0).toStringAsFixed(1)}',
+                        'IMDb ${(m.tmdbRating ?? 0).toStringAsFixed(1)}',
                     style: PillStyle.tmdb,
                   ),
                   if ((m.ageRating ?? '').isNotEmpty)

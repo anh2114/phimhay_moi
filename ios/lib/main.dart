@@ -53,8 +53,7 @@ void main() async {
   try {
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool('cache_migrated_v3') != true) {
-      // Chỉ trim cache cũ (remove stale), KHÔNG emptyCache
-      await DefaultCacheManager().removeExpiredFiles();
+      // Giữ nguyên cache — không clear
       await prefs.setBool('cache_migrated_v3', true);
     }
   } catch (_) {}
