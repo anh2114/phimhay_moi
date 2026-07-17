@@ -127,6 +127,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   // Danh sách servers + episodes lấy từ API
   List<Map<String, dynamic>> _servers = [];
+  List<Map<String, dynamic>> _serverSources = []; // [{name: "Server#1", servers: [...]}]
   List<Map<String, dynamic>> _flatEps = [];
   int _selectedServer = 0;
   dynamic _currentEpId;
@@ -1000,6 +1001,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       _servers = rawServers;
       _flatEps = rawEpisodes;
 
+      // Group servers by source (Server#1, Server#2...)
+      _groupServersBySource();
+
       // Respect serverIdx from caller (movie detail screen)
       // Only auto-pick if serverIdx is invalid
       if (widget.serverIdx < 0 || widget.serverIdx >= _servers.length) {
@@ -1043,6 +1047,87 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       final movieUrl = '${AppConfig.baseUrl}/phim/${widget.movieSlug ?? ''}';
       _currentUrl = movieUrl;
       if (mounted) setState(() { _playerMode = _PlayerMode.embed; _isLoading = false; });
+    }
+  }
+
+  void _groupServersBySource() {
+    _serverSources = [];
+    if (_servers.isEmpty) return;
+
+    // Check if any server has a source field
+    final hasSourceField = _servers.any((s) {
+      final src = (s['source'] ?? '').toString().trim();
+      return src.isNotEmpty;
+    });
+
+    if (!hasSourceField) {
+      // No source field → each server is its own "source"
+      int serverNum = 1;
+      for (final server in _servers) {
+        final sName = (server['server_name'] ?? 'Server $serverNum').toString();
+        final epCount = (server['episodes'] as List<dynamic>?)?.length ?? 0;
+
+        // Detect quality
+        final lower = sName.toLowerCase();
+        String quality = 'HD';
+        if (lower.contains('4k')) quality = '4K';
+        else if (lower.contains('fhd') || lower.contains('1080')) quality = 'FHD';
+
+        _serverSources.add({
+          'name': 'Server#$serverNum•$quality',
+          'source': sName,
+          'servers': [server],
+          'totalEps': epCount,
+        });
+        serverNum++;
+      }
+    } else {
+      // Has source field → group by source
+      final Map<String, List<dynamic>> sourceGroups = {};
+      for (final server in _servers) {
+        final source = (server['source'] ?? '').toString().trim().toLowerCase();
+        if (source.isEmpty) continue;
+        if (!sourceGroups.containsKey(source)) {
+          sourceGroups[source] = [];
+        }
+        sourceGroups[source]!.add(server);
+      }
+
+      int serverNum = 1;
+      for (final entry in sourceGroups.entries) {
+        final servers = entry.value;
+        servers.sort((a, b) {
+          final aEps = (a['episodes'] as List<dynamic>?)?.length ?? 0;
+          final bEps = (b['episodes'] as List<dynamic>?)?.length ?? 0;
+          return bEps.compareTo(aEps);
+        });
+        int totalEps = 0;
+        for (final s in servers) {
+          totalEps += (s['episodes'] as List<dynamic>?)?.length ?? 0;
+        }
+
+        // Detect quality from source name
+        final sourceLower = entry.key.toLowerCase();
+        String quality = 'HD';
+        if (sourceLower == 'kkphim') quality = 'FHD';
+        else if (sourceLower == 'ophim') quality = 'HD';
+        else if (sourceLower == 'manual') quality = '4K';
+
+        _serverSources.add({
+          'name': 'Server#$serverNum•$quality',
+          'source': entry.key,
+          'servers': servers,
+          'totalEps': totalEps,
+        });
+        serverNum++;
+      }
+    }
+
+    // Sort by total episodes (most first)
+    _serverSources.sort((a, b) => (b['totalEps'] as int).compareTo(a['totalEps'] as int));
+
+    if (_serverSources.isNotEmpty) {
+      _selectedSource = 0;
     }
   }
 
@@ -1718,6 +1803,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   final GlobalKey _playerKey = GlobalKey();
   bool _isLandscape = false;
   bool _forceFullscreen = false; // Lock fullscreen, không thoát khi xoay dọc
+  bool _showServerSelector = false; // Hiện server selector inline
+  int _selectedSource = 0; // Nguồn đang chọn (Server#1, Server#2...)
 
   @override
   Widget build(BuildContext context) {
@@ -3007,16 +3094,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             ],
           ),
           const SizedBox(height: 4),
-          // Toolbar: [Tỷ lệ] [🎤 Server] [💬 Phụ đề]
+          // Toolbar: [Tỷ lệ] [🎤 Server name] [💬 Phụ đề]
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Tỷ lệ (aspect ratio)
               _buildToolbarItem(Icons.aspect_ratio_rounded, _aspectRatioLabels[_aspectRatioIndex], _cycleAspectRatio),
               const SizedBox(width: 40),
-              // Server (mic icon → server popup)
-              _buildToolbarItem(Icons.mic_none_rounded, _servers.isNotEmpty ? _serverLabel(_selectedServer, _servers[_selectedServer]) : 'Server', _showServerPopup),
-              // Phụ đề — hiển thị mọi server (có thể load SRT/ASS)
+              _buildToolbarItem(Icons.mic_none_rounded, _servers.isNotEmpty ? _serverLabel(_selectedServer, _servers[_selectedServer]) : 'Server', _showServerDialog),
               const SizedBox(width: 40),
               _buildToolbarItem(Icons.subtitles_rounded, 'Phụ đề', _showSettingsPopup),
             ],
@@ -3782,6 +3866,166 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         ),
       ),
     );
+  }
+
+  // Server selector dialog — accordion style
+  int _expandedSource = -1; // -1 = không source nào expand
+
+  void _showServerDialog() {
+    if (_serverSources.isEmpty) return;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.6,
+          ),
+          decoration: const BoxDecoration(
+            color: Color(0xFF1E2026),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 16),
+              // Title: "Chọn Server"
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Text(
+                      'Chọn Server',
+                      style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              // Tier 1: Server sources (Server#1, Server#2...)
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _serverSources.length,
+                  itemBuilder: (context, index) {
+                    final sourceName = (_serverSources[index]['name'] ?? '').toString();
+                    final totalEps = _serverSources[index]['totalEps'] ?? 0;
+                    final servers = _serverSources[index]['servers'] as List<dynamic>;
+                    final isExpanded = index == _expandedSource;
+
+                    return Column(
+                      children: [
+                        // Tier 1: Source button
+                        GestureDetector(
+                          onTap: () {
+                            setModalState(() {
+                              _expandedSource = isExpanded ? -1 : index;
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  isExpanded ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_right_rounded,
+                                  color: Colors.white70,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  sourceName,
+                                  style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '($totalEps tập)',
+                                  style: const TextStyle(color: Colors.white54, fontSize: 13),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        // Tier 2: Server names (hidden when not expanded)
+                        if (isExpanded)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 44, right: 16, bottom: 12),
+                            child: Row(
+                              children: List.generate(
+                                servers.length > 2 ? 2 : servers.length,
+                                (i) {
+                                  final server = servers[i];
+                                  final isActive = _servers.indexOf(server) == _selectedServer;
+                                  final sName = (server['server_name'] ?? '').toString();
+                                  final epCount = (server['episodes'] as List<dynamic>?)?.length ?? 0;
+
+                                  return Expanded(
+                                    child: Padding(
+                                      padding: EdgeInsets.only(right: i == 0 ? 8 : 0),
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          final newIdx = _servers.indexOf(server);
+                                          if (newIdx >= 0) {
+                                            setState(() => _selectedServer = newIdx);
+                                            Navigator.pop(context);
+                                          }
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(vertical: 10),
+                                          decoration: BoxDecoration(
+                                            color: isActive ? const Color(0xFFF5E6B8) : Colors.white.withValues(alpha: 0.1),
+                                            borderRadius: BorderRadius.circular(10),
+                                            border: Border.all(
+                                              color: isActive ? const Color(0xFFF5E6B8) : Colors.white.withValues(alpha: 0.2),
+                                            ),
+                                          ),
+                                          child: Column(
+                                            children: [
+                                              Text(
+                                                sName,
+                                                style: TextStyle(
+                                                  color: isActive ? const Color(0xFF1A1100) : Colors.white,
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                                textAlign: TextAlign.center,
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                '($epCount tập)',
+                                                style: TextStyle(
+                                                  color: isActive ? const Color(0xFF1A1100).withValues(alpha: 0.6) : Colors.white54,
+                                                  fontSize: 11,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        // Divider
+                        if (index < _serverSources.length - 1)
+                          const Divider(color: Colors.white12, height: 1, indent: 16),
+                      ],
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+    ).then((_) {
+      // Reset expanded source khi đóng dialog
+      setState(() { _expandedSource = -1; });
+    });
   }
 
   void _showVolumeSlider() {

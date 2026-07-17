@@ -63,7 +63,12 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         // Splash overlay
         if (!_ready)
           Container(
-            color: AppTheme.bg,
+            decoration: const BoxDecoration(
+              image: DecorationImage(
+                image: AssetImage('assets/images/nen_loader.png'),
+                fit: BoxFit.cover,
+              ),
+            ),
             child: FadeTransition(
               opacity: _fadeIn,
               child: ScaleTransition(
