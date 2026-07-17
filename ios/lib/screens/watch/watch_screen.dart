@@ -1274,7 +1274,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     // ★ FIX: Capture target position NGAY SAU khi cancel streams
     // mà TRƯỚC KHI dispose player (dispose có thể emit event cuối = 0)
-    final targetPosition = _currentPosition;
+    int targetPosition = _currentPosition;
 
 
     _player?.dispose();
@@ -1288,6 +1288,16 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     // ★ Proxy m3u8 — strip ad segments (mobile only)
     if (!kIsWeb && url.contains('.m3u8')) {
       playUrl = AppConfig.proxyM3u8Url(url);
+      
+      // ★ FIX: Fetch X-Ads-Removed-Duration từ proxy để adjust position
+      _fetchAdsRemovedDuration(playUrl).then((removedDuration) {
+        if (removedDuration > 0 && targetPosition > removedDuration) {
+          // Adjust position: nếu saved position > removed duration → trừ đi
+          targetPosition = max(0, targetPosition - removedDuration.toInt());
+          _currentPosition = targetPosition;
+          debugPrint('[Watch] Adjusted position for stripped ads: $targetPosition (removed: ${removedDuration}s)');
+        }
+      });
     }
 
     final headers = <String, String>{};
@@ -1370,6 +1380,29 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     });
 
     _startProgressTimer();
+  }
+
+  /// Fetch X-Ads-Removed-Duration header từ proxy để adjust seek position
+  Future<double> _fetchAdsRemovedDuration(String m3u8Url) async {
+    try {
+      final response = await _dio.head(
+        m3u8Url,
+        options: Options(
+          headers: {
+            'Referer': AppConfig.baseUrl,
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
+          },
+          validateStatus: (status) => status != null && status < 500,
+        ),
+      );
+      final durationStr = response.headers.value('x-ads-removed-duration');
+      if (durationStr != null && durationStr.isNotEmpty) {
+        return double.tryParse(durationStr) ?? 0.0;
+      }
+    } catch (e) {
+      debugPrint('[Watch] Failed to fetch ads duration: $e');
+    }
+    return 0.0;
   }
 
   /// ★ Seek — 1 lần ngay + 1 lần retry sau 2s nếu chưa tới target
