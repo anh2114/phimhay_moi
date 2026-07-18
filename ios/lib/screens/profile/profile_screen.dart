@@ -20,6 +20,7 @@ import 'package:phimhay_app/screens/search/search_screen.dart';
 import 'package:phimhay_app/screens/schedule/schedule_screen.dart';
 import 'package:phimhay_app/screens/list/list_screen.dart';
 import 'package:phimhay_app/widgets/bottom_nav.dart';
+import 'package:phimhay_app/providers/favorite_provider.dart';
 
 
 class ProfileScreen extends StatefulWidget {
@@ -585,10 +586,6 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       _secHeader('🕐 Xem Gần Đây'),
       if (_recentMovies.isEmpty) _emptyBox('Chưa có lịch sử xem phim.')
       else _recentGrid(_recentMovies),
-      const SizedBox(height: 20),
-      _secHeader('❤️ Yêu Thích Gần Đây'),
-      if (_recentFavs.isEmpty) _emptyBox('Chưa có phim yêu thích.')
-      else _posterGrid(_recentFavs),
     ]);
   }
 
@@ -687,7 +684,8 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   }
 
   Widget _buildFavorites() {
-    if (_favorites.isEmpty) {
+    final favProvider = context.watch<FavoriteProvider>();
+    if (favProvider.favorites.isEmpty) {
       return _glassCard(child: Padding(padding: const EdgeInsets.symmetric(vertical: 40), child: Column(children: [
         const Text('💔', style: TextStyle(fontSize: 40)), const SizedBox(height: 8),
         const Text('Chưa có phim yêu thích nào.', style: TextStyle(color: AppTheme.textSub, fontSize: 13)), const SizedBox(height: 16),
@@ -699,10 +697,10 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     return Padding(padding: const EdgeInsets.only(bottom: 20), child: GridView.builder(
       shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 10, mainAxisSpacing: 10, childAspectRatio: 0.65),
-      itemCount: _favorites.length,
+      itemCount: favProvider.favorites.length,
       itemBuilder: (_, i) {
-        final m = _favorites[i]; final slug = m['slug']?.toString() ?? ''; final name = m['name']?.toString() ?? '';
-        final thumb = m['thumb_url']?.toString() ?? ''; final quality = m['quality']?.toString() ?? ''; final year = m['year'];
+        final m = favProvider.favorites[i]; final slug = m.slug; final name = m.name;
+        final thumb = m.thumbUrl ?? ''; final quality = m.quality ?? ''; final year = m.year;
         return _glassTap(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MovieDetailScreen(slug: slug))),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Expanded(child: Stack(children: [

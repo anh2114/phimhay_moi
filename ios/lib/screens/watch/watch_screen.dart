@@ -51,6 +51,17 @@ String _serverLabel(int index, Map<String, dynamic> server) {
   return 'Server#${index + 1}•HD';
 }
 
+/// Server type label: PĐ, TM, 4K, RW, PL
+String _serverTypeLabel(String serverName) {
+  final lower = serverName.toLowerCase();
+  if (lower.contains('vietsub') || lower.contains('phụ đề') || lower.contains('pd')) return 'PĐ';
+  if (lower.contains('thuyết minh') || lower.contains('tm') || lower.contains('dub')) return 'TM';
+  if (lower.contains('4k')) return '4K';
+  if (lower.contains('raw') || lower.contains('raws')) return 'RW';
+  if (lower.contains('playlist')) return 'PL';
+  return serverName.length > 3 ? serverName.substring(0, 2).toUpperCase() : serverName.toUpperCase();
+}
+
 class WatchScreen extends StatefulWidget {
   final int movieId;
   final dynamic episodeId;   // id của episode đang phát
@@ -1002,8 +1013,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       _flatEps = rawEpisodes;
 
       // Group servers by source (Server#1, Server#2...)
-      _groupServersBySource();
-
       // Respect serverIdx from caller (movie detail screen)
       // Only auto-pick if serverIdx is invalid
       if (widget.serverIdx < 0 || widget.serverIdx >= _servers.length) {
@@ -1019,6 +1028,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       }
 
       if (_selectedServer >= _servers.length) _selectedServer = 0;
+
+      // Group servers SAU KHI _selectedServer đã được set
+      _groupServersBySource();
 
       setState(() {});
 
@@ -1126,8 +1138,19 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     // Sort by total episodes (most first)
     _serverSources.sort((a, b) => (b['totalEps'] as int).compareTo(a['totalEps'] as int));
 
+    // Tính _selectedSource dựa trên _selectedServer
     if (_serverSources.isNotEmpty) {
       _selectedSource = 0;
+      // Tìm source chứa _selectedServer
+      for (int i = 0; i < _serverSources.length; i++) {
+        final servers = _serverSources[i]['servers'] as List<dynamic>;
+        for (final s in servers) {
+          if (_servers.indexOf(s) == _selectedServer) {
+            _selectedSource = i;
+            break;
+          }
+        }
+      }
     }
   }
 
@@ -1805,6 +1828,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   bool _forceFullscreen = false; // Lock fullscreen, không thoát khi xoay dọc
   bool _showServerSelector = false; // Hiện server selector inline
   int _selectedSource = 0; // Nguồn đang chọn (Server#1, Server#2...)
+  int _selectedSourceServer = 0; // Server con đang chọn trong nguồn
 
   @override
   Widget build(BuildContext context) {
@@ -3100,7 +3124,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             children: [
               _buildToolbarItem(Icons.aspect_ratio_rounded, _aspectRatioLabels[_aspectRatioIndex], _cycleAspectRatio),
               const SizedBox(width: 40),
-              _buildToolbarItem(Icons.mic_none_rounded, _servers.isNotEmpty ? _serverLabel(_selectedServer, _servers[_selectedServer]) : 'Server', _showServerDialog),
+              _buildToolbarItem(Icons.mic_none_rounded, _serverSources.isNotEmpty && _selectedSource < _serverSources.length ? (_serverSources[_selectedSource]['name'] ?? '').toString() : 'Server', _showServerDialog),
               const SizedBox(width: 40),
               _buildToolbarItem(Icons.subtitles_rounded, 'Phụ đề', _showSettingsPopup),
             ],
@@ -3871,6 +3895,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   // Server selector dialog — accordion style
   int _expandedSource = -1; // -1 = không source nào expand
 
+  // Helper: detect server type abbreviation
   void _showServerDialog() {
     if (_serverSources.isEmpty) return;
 
@@ -3911,9 +3936,26 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   itemCount: _serverSources.length,
                   itemBuilder: (context, index) {
                     final sourceName = (_serverSources[index]['name'] ?? '').toString();
-                    final totalEps = _serverSources[index]['totalEps'] ?? 0;
                     final servers = _serverSources[index]['servers'] as List<dynamic>;
                     final isExpanded = index == _expandedSource;
+
+                    // Kiểm tra source này có chứa server đang chọn không
+                    bool isCurrentSource = false;
+                    for (final s in servers) {
+                      if (_servers.indexOf(s) == _selectedServer) {
+                        isCurrentSource = true;
+                        break;
+                      }
+                    }
+
+                    // Build summary: PĐ.45 / TM.23
+                    final summaryParts = <String>[];
+                    for (final s in servers) {
+                      final sName = (s['server_name'] ?? '').toString();
+                      final epCount = (s['episodes'] as List<dynamic>?)?.length ?? 0;
+                      summaryParts.add('${_serverTypeLabel(sName)}.$epCount');
+                    }
+                    final summary = summaryParts.join(' / ');
 
                     return Column(
                       children: [
@@ -3934,15 +3976,39 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                                   size: 20,
                                 ),
                                 const SizedBox(width: 8),
-                                Text(
-                                  sourceName,
-                                  style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
+                                // Green dot + source name
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: isCurrentSource ? const Color(0xFF4CAF50) : Colors.white24,
+                                    shape: BoxShape.circle,
+                                  ),
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  '($totalEps tập)',
-                                  style: const TextStyle(color: Colors.white54, fontSize: 13),
+                                  sourceName,
+                                  style: TextStyle(
+                                    color: isCurrentSource ? const Color(0xFFF5E6B8) : Colors.white,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  summary,
+                                  style: TextStyle(
+                                    color: isCurrentSource ? const Color(0xFFF5E6B8).withValues(alpha: 0.7) : Colors.white54,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                if (isCurrentSource) ...[
+                                  const SizedBox(width: 8),
+                                  const Text(
+                                    'đang chọn',
+                                    style: TextStyle(color: Color(0xFF4CAF50), fontSize: 11, fontWeight: FontWeight.w600),
+                                  ),
+                                ],
                               ],
                             ),
                           ),
@@ -3956,18 +4022,31 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                                 servers.length > 2 ? 2 : servers.length,
                                 (i) {
                                   final server = servers[i];
-                                  final isActive = _servers.indexOf(server) == _selectedServer;
                                   final sName = (server['server_name'] ?? '').toString();
+                                  final serverSource = (server['source'] ?? '').toString();
                                   final epCount = (server['episodes'] as List<dynamic>?)?.length ?? 0;
+
+                                  // Tìm server index bằng server_name
+                                  int serverIdx = -1;
+                                  for (int j = 0; j < _servers.length; j++) {
+                                    if (_servers[j]['server_name'] == sName) {
+                                      serverIdx = j;
+                                      break;
+                                    }
+                                  }
+                                  final isActive = serverIdx == _selectedServer;
 
                                   return Expanded(
                                     child: Padding(
                                       padding: EdgeInsets.only(right: i == 0 ? 8 : 0),
                                       child: GestureDetector(
                                         onTap: () {
-                                          final newIdx = _servers.indexOf(server);
-                                          if (newIdx >= 0) {
-                                            setState(() => _selectedServer = newIdx);
+                                          if (serverIdx >= 0 && serverIdx != _selectedServer) {
+                                            _switchServer(serverIdx);
+                                            setState(() {
+                                              _selectedSource = index;
+                                              _selectedSourceServer = i;
+                                            });
                                             Navigator.pop(context);
                                           }
                                         },
@@ -4284,11 +4363,99 @@ class _EpisodeFullscreenSheet extends StatefulWidget {
 class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
   late int _selectedServer;
   int _epPage = 1;
+  int _selectedSource = 0;
+  int _selectedSourceServer = 0;
+  List<Map<String, dynamic>> _serverSources = [];
 
   @override
   void initState() {
     super.initState();
     _selectedServer = widget.selectedServer;
+    _groupServersBySource();
+  }
+
+  void _groupServersBySource() {
+    _serverSources = [];
+    if (widget.servers.isEmpty) return;
+
+    final hasSourceField = widget.servers.any((s) {
+      final src = (s['source'] ?? '').toString().trim();
+      return src.isNotEmpty;
+    });
+
+    if (!hasSourceField) {
+      int serverNum = 1;
+      for (final server in widget.servers) {
+        final sName = (server['server_name'] ?? 'Server $serverNum').toString();
+        final epCount = (server['episodes'] as List<dynamic>?)?.length ?? 0;
+        final lower = sName.toLowerCase();
+        String quality = 'HD';
+        if (lower.contains('4k')) quality = '4K';
+        else if (lower.contains('fhd') || lower.contains('1080')) quality = 'FHD';
+
+        _serverSources.add({
+          'name': 'Server#$serverNum•$quality',
+          'source': sName,
+          'servers': [server],
+          'totalEps': epCount,
+        });
+        serverNum++;
+      }
+    } else {
+      final Map<String, List<dynamic>> sourceGroups = {};
+      for (final server in widget.servers) {
+        final source = (server['source'] ?? '').toString().trim().toLowerCase();
+        if (source.isEmpty) continue;
+        if (!sourceGroups.containsKey(source)) {
+          sourceGroups[source] = [];
+        }
+        sourceGroups[source]!.add(server);
+      }
+
+      int serverNum = 1;
+      for (final entry in sourceGroups.entries) {
+        final servers = entry.value;
+        servers.sort((a, b) {
+          final aEps = (a['episodes'] as List<dynamic>?)?.length ?? 0;
+          final bEps = (b['episodes'] as List<dynamic>?)?.length ?? 0;
+          return bEps.compareTo(aEps);
+        });
+        int totalEps = 0;
+        for (final s in servers) {
+          totalEps += (s['episodes'] as List<dynamic>?)?.length ?? 0;
+        }
+
+        final sourceLower = entry.key.toLowerCase();
+        String quality = 'HD';
+        if (sourceLower == 'kkphim') quality = 'FHD';
+        else if (sourceLower == 'ophim') quality = 'HD';
+        else if (sourceLower == 'manual') quality = '4K';
+
+        _serverSources.add({
+          'name': 'Server#$serverNum•$quality',
+          'source': entry.key,
+          'servers': servers,
+          'totalEps': totalEps,
+        });
+        serverNum++;
+      }
+    }
+
+    _serverSources.sort((a, b) => (b['totalEps'] as int).compareTo(a['totalEps'] as int));
+
+    if (_serverSources.isNotEmpty) {
+      _selectedSource = 0;
+      // Tìm source chứa _selectedServer
+      for (int i = 0; i < _serverSources.length; i++) {
+        final servers = _serverSources[i]['servers'] as List<dynamic>;
+        for (final s in servers) {
+          if (widget.servers.indexOf(s) == _selectedServer) {
+            _selectedSource = i;
+            break;
+          }
+        }
+      }
+    }
   }
 
   /// Lấy episodes trực tiếp từ server đang chọn, không phụ thuộc widget.currentServerEps
@@ -4391,53 +4558,151 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
                         ],
                       ),
                     ),
-                    // Server tabs
-                    if (widget.servers.length > 1)
+                    // Server sources (Server#1, Server#2...)
+                    if (_serverSources.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            children: widget.servers.asMap().entries.map((entry) {
-                              final idx = entry.key;
-                              final server = entry.value;
-                              final serverLabelStr = _serverLabel(idx, server);
-                              final isActive = idx == _selectedServer;
-                              final serverEps = (server['episodes'] as List<dynamic>?) ?? [];
-                              final serverEpCount = <String>{};
-                              for (final e in serverEps) {
-                                serverEpCount.add((e['ep_name'] ?? e['name'] ?? '').toString());
-                              }
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: List.generate(_serverSources.length > 3 ? 3 : _serverSources.length, (index) {
+                            final isActive = index == _selectedSource;
+                            final sourceLabel = (_serverSources[index]['name'] ?? '').toString();
+                            final servers = _serverSources[index]['servers'] as List<dynamic>;
 
-                              return GestureDetector(
+                            // Build summary: TM.23 / PĐ.32
+                            final summaryParts = <String>[];
+                            for (final s in servers) {
+                              final sName = (s['server_name'] ?? '').toString();
+                              final epCount = (s['episodes'] as List<dynamic>?)?.length ?? 0;
+                              summaryParts.add('${_serverTypeLabel(sName)}.$epCount');
+                            }
+                            final summary = summaryParts.join(' / ');
+
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: GestureDetector(
                                 onTap: () {
-                                  setState(() { _selectedServer = idx; _epPage = 1; });
-                                  widget.onServerChanged(idx);
+                                  setState(() {
+                                    _selectedSource = index;
+                                    _selectedSourceServer = 0;
+                                    _epPage = 1;
+                                    final srcServers = _serverSources[index]['servers'] as List<dynamic>;
+                                    if (srcServers.isNotEmpty) {
+                                      final newIdx = widget.servers.indexOf(srcServers.first);
+                                      if (newIdx >= 0) {
+                                        _selectedServer = newIdx;
+                                        widget.onServerChanged(newIdx);
+                                      }
+                                    }
+                                  });
                                 },
                                 child: Container(
-                                  margin: const EdgeInsets.only(right: 8),
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                   decoration: BoxDecoration(
-                                    color: isActive ? Colors.white.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.02),
+                                    color: isActive ? const Color(0xFFF5E6B8) : Colors.white.withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: isActive ? Colors.white.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.1)),
+                                    border: Border.all(
+                                      color: isActive ? const Color(0xFFF5E6B8) : Colors.white.withValues(alpha: 0.2),
+                                    ),
                                   ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
+                                  child: Column(
                                     children: [
-                                      Container(
-                                        width: 6, height: 6,
-                                        decoration: const BoxDecoration(color: Color(0xFF4CAF50), shape: BoxShape.circle),
+                                      Text(
+                                        sourceLabel,
+                                        style: TextStyle(
+                                          color: isActive ? const Color(0xFF1A1100) : Colors.white,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                        ),
                                       ),
-                                      const SizedBox(width: 6),
-                                      Text(serverLabelStr, style: TextStyle(color: isActive ? Colors.white.withValues(alpha: 0.85) : Colors.white.withValues(alpha: 0.5), fontSize: 12, fontWeight: FontWeight.w600)),
-                                      const SizedBox(width: 4),
-                                      Text('${serverEpCount.length} tập', style: TextStyle(color: isActive ? Colors.white.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.3), fontSize: 10)),
+                                      const SizedBox(height: 1),
+                                      Text(
+                                        summary,
+                                        style: TextStyle(
+                                          color: isActive ? const Color(0xFF1A1100).withValues(alpha: 0.6) : Colors.white54,
+                                          fontSize: 10,
+                                        ),
+                                      ),
                                     ],
                                   ),
                                 ),
+                              ),
+                            );
+                          }),
+                        ),
+                      ),
+                    // Server names within source
+                    if (_serverSources.isNotEmpty && _selectedSource < _serverSources.length)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: List.generate(
+                            (_serverSources[_selectedSource]['servers'] as List<dynamic>).length > 2
+                                ? 2
+                                : (_serverSources[_selectedSource]['servers'] as List<dynamic>).length,
+                            (i) {
+                              final servers = _serverSources[_selectedSource]['servers'] as List<dynamic>;
+                              final server = servers[i];
+                              final sName = (server['server_name'] ?? '').toString();
+                              final serverSource = (server['source'] ?? '').toString();
+                              final epCount = (server['episodes'] as List<dynamic>?)?.length ?? 0;
+
+                              int serverIdx = -1;
+                              for (int j = 0; j < widget.servers.length; j++) {
+                                if (widget.servers[j]['server_name'] == sName && widget.servers[j]['source'] == serverSource) {
+                                  serverIdx = j;
+                                  break;
+                                }
+                              }
+                              final isActive = serverIdx == _selectedServer;
+
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: GestureDetector(
+                                  onTap: () {
+                                    if (serverIdx >= 0 && serverIdx != _selectedServer) {
+                                      setState(() {
+                                        _selectedServer = serverIdx;
+                                        _selectedSourceServer = i;
+                                        _epPage = 1;
+                                      });
+                                      widget.onServerChanged(serverIdx);
+                                    }
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: isActive ? const Color(0xFFF5E6B8) : Colors.white.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: isActive ? const Color(0xFFF5E6B8) : Colors.white.withValues(alpha: 0.2),
+                                      ),
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        Text(
+                                          sName,
+                                          style: TextStyle(
+                                            color: isActive ? const Color(0xFF1A1100) : Colors.white,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 1),
+                                        Text(
+                                          '($epCount tập)',
+                                          style: TextStyle(
+                                            color: isActive ? const Color(0xFF1A1100).withValues(alpha: 0.6) : Colors.white54,
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
                               );
-                            }).toList(),
+                            },
                           ),
                         ),
                       ),

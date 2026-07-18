@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/movie.dart';
+import '../services/api_client.dart';
 
 class FavoriteProvider extends ChangeNotifier {
   static const String _storageKey = 'favorites';
@@ -60,17 +61,41 @@ class FavoriteProvider extends ChangeNotifier {
     _favorites.add(movie);
     notifyListeners();
     await _saveToStorage();
+    
+    // Sync lên server
+    try {
+      await ApiClient.dio.post('/favorite.php', data: {'movie_id': movie.id});
+    } catch (_) {}
   }
 
   Future<void> removeFavorite(int movieId) async {
     _favorites.removeWhere((m) => m.id == movieId);
     notifyListeners();
     await _saveToStorage();
+    
+    // Sync lên server
+    try {
+      await ApiClient.dio.post('/favorite.php', data: {'movie_id': movieId});
+    } catch (_) {}
   }
 
   Future<void> clearAll() async {
     _favorites.clear();
     notifyListeners();
     await _saveToStorage();
+  }
+
+  /// Load favorites từ server (dùng khi mở profile)
+  Future<void> loadFromServer() async {
+    try {
+      final res = await ApiClient.get('/profile.php', params: {'tab': 'favorites'});
+      final data = res.data;
+      if (data is Map && data['success'] == true) {
+        final list = data['favorites'] as List<dynamic>? ?? [];
+        _favorites = list.map((e) => Movie.fromJson(e as Map<String, dynamic>)).toList();
+        await _saveToStorage();
+        notifyListeners();
+      }
+    } catch (_) {}
   }
 }
