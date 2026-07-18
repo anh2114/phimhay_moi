@@ -1393,19 +1393,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     String playUrl = url;
 
-    // ★ Proxy m3u8 — strip ad segments (mobile only)
+    // ★ Proxy m3u8 — CORS proxy (mobile only)
     if (!kIsWeb && url.contains('.m3u8')) {
       playUrl = AppConfig.proxyM3u8Url(url);
-      
-      // ★ FIX: Fetch X-Ads-Removed-Duration từ proxy để adjust position
-      _fetchAdsRemovedDuration(playUrl).then((removedDuration) {
-        if (removedDuration > 0 && targetPosition > removedDuration) {
-          // Adjust position: nếu saved position > removed duration → trừ đi
-          targetPosition = max(0, targetPosition - removedDuration.toInt());
-          _currentPosition = targetPosition;
-          debugPrint('[Watch] Adjusted position for stripped ads: $targetPosition (removed: ${removedDuration}s)');
-        }
-      });
     }
 
     final headers = <String, String>{};
@@ -1457,11 +1447,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         _player!.setRate(_playbackSpeed);
       }
 
+      // Seek TRƯỚC, rồi mới play — dùng _performSeekRetry
       if (targetPosition > 0 && !_seekCompleted) {
+        _seekTargetTime = targetPosition;
         _performSeekRetry(targetPosition);
       }
 
-      // Pre-buffer PiP player trên iOS (sau khi video bắt đầu play)
+      // Pre-buffer PiP player trên iOS
       if (Platform.isIOS && _playerMode == _PlayerMode.hls) {
         final pipUrl = playUrl.contains('hls_proxy.php') ? playUrl : AppConfig.proxyHlsFullUrl(playUrl);
         _pipChannel.invokeMethod('preparePiP', {
@@ -1474,7 +1466,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         });
       }
     }).catchError((e) {
-
       _fallbackToEmbed();
     });
 
@@ -1739,7 +1730,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     if (matchingEp != null) {
       _switchEpisode(matchingEp, keepPosition: true);
     } else {
-      _switchingServer = false;
+      // Không tìm thấy episode tương ứng → play episode đầu tiên trên server mới
+      final newEps = (_servers[newServerIdx]['episodes'] as List<dynamic>?) ?? [];
+      if (newEps.isNotEmpty) {
+        _switchEpisode(newEps.first, keepPosition: true);
+      } else {
+        _switchingServer = false;
+      }
     }
   }
 
@@ -4043,10 +4040,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                                         onTap: () {
                                           if (serverIdx >= 0 && serverIdx != _selectedServer) {
                                             _switchServer(serverIdx);
-                                            setState(() {
-                                              _selectedSource = index;
-                                              _selectedSourceServer = i;
-                                            });
                                             Navigator.pop(context);
                                           }
                                         },
