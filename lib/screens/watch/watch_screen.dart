@@ -1286,7 +1286,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       // Ưu tiên HLS cho tất cả (mobile chạy được hết)
       if (m3u8.isNotEmpty) {
         _currentUrl = m3u8;
-        _initPlayer(m3u8);
+        // ★ FIX: Nếu đang reuse player → KHÔNG gọi _initPlayer (giữ nguyên player)
+        if (!_isReusingPlayer) {
+          _initPlayer(m3u8);
+        }
         if (mounted) setState(() { _playerMode = _PlayerMode.hls; _isLoading = false; });
       } else if (embed.isNotEmpty) {
         _currentUrl = embed;
@@ -1360,6 +1363,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   bool _isDraggingDown = false;
   double _dragStartY = 0;
   bool _playerTransferred = false;
+  bool _isReusingPlayer = false; // Đang reuse player từ mini-player
 
   void _cycleAspectRatio() {
     _aspectRatioIndex = (_aspectRatioIndex + 1) % _aspectRatios.length;
