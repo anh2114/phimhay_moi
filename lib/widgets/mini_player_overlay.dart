@@ -61,23 +61,30 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> {
     // ★ Force rebuild ngay lập tức — xóa Video widget TRƯỚC khi push WatchScreen
     PlayerHolder.notifyStateChange();
 
-    // ★ FIX: Push ngay — MiniPlayerOverlay đã rebuild (Video removed)
-    // Không cần addPostFrameCallback nữa vì notifyStateChange đã force rebuild
-    if (context.mounted) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => WatchScreen(
-            movieId: movieId,
-            episodeId: epId,
-            serverIdx: sIdx,
-            movieSlug: slug,
-            movieTitle: title,
-            initialPosition: pos,
-          ),
-        ),
-      );
-    }
+    // ★ Force rebuild ngay → xóa Video widget
+    PlayerHolder.notifyStateChange();
+
+    // ★ FIX: Đợi 2 frames — frame 1: MiniPlayerOverlay rebuild (xóa Video)
+    // frame 2: push WatchScreen (chỉ có 1 Video widget)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => WatchScreen(
+                movieId: movieId,
+                episodeId: epId,
+                serverIdx: sIdx,
+                movieSlug: slug,
+                movieTitle: title,
+                initialPosition: pos,
+              ),
+            ),
+          );
+        }
+      });
+    });
   }
 
   /// Close mini-player entirely
