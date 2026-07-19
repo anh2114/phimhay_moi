@@ -1,11 +1,12 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:phimhay_app/config/theme.dart';
 import 'package:phimhay_app/services/player_holder.dart';
 import 'package:phimhay_app/screens/watch/watch_screen.dart';
 
 /// Persistent mini-player overlay at App root level
+/// Shows Home/Search content behind + mini-player bar at bottom
 class MiniPlayerOverlay extends StatefulWidget {
   const MiniPlayerOverlay({super.key});
 
@@ -14,20 +15,17 @@ class MiniPlayerOverlay extends StatefulWidget {
 }
 
 class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> {
-  Timer? _refreshTimer;
-
   @override
   void initState() {
     super.initState();
-    // Poll player state — simple and reliable
-    _refreshTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+    PlayerHolder.startPolling(() {
       if (mounted) setState(() {});
     });
   }
 
   @override
   void dispose() {
-    _refreshTimer?.cancel();
+    PlayerHolder.stopPolling();
     super.dispose();
   }
 
@@ -49,38 +47,33 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> {
     final title = PlayerHolder.movieTitle;
     final pos = PlayerHolder.currentPosition;
 
-    // ★ Remove overlay FIRST, then push WatchScreen
-    setState(() {
-      PlayerHolder.isMiniPlayerMode = false;
-    });
+    PlayerHolder.isMiniPlayerMode = false;
+    PlayerHolder.isInWatchScreen = true;
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => WatchScreen(
-              movieId: movieId,
-              episodeId: epId,
-              serverIdx: sIdx,
-              movieSlug: slug,
-              movieTitle: title,
-              initialPosition: pos,
-            ),
-          ),
-        );
-      }
-    });
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => WatchScreen(
+          movieId: movieId,
+          episodeId: epId,
+          serverIdx: sIdx,
+          movieSlug: slug,
+          movieTitle: title,
+          initialPosition: pos,
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    // Don't show if no active player or not in mini-player mode
     if (!PlayerHolder.isActive || !PlayerHolder.isMiniPlayerMode || PlayerHolder.player == null) {
       return const SizedBox.shrink();
     }
 
-    final player = PlayerHolder.player;
+    // Don't render Video if WatchScreen has it
+    if (PlayerHolder.isInWatchScreen) return const SizedBox.shrink();
+
     final videoCtrl = PlayerHolder.videoController;
     final pos = Duration(seconds: PlayerHolder.currentPosition);
     final dur = Duration(seconds: PlayerHolder.currentDuration);
@@ -96,25 +89,16 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> {
       child: GestureDetector(
         onTap: _goToFullscreen,
         onVerticalDragEnd: (details) {
-          if (details.velocity.pixelsPerSecond.dy < -300) {
-            _goToFullscreen();
-          }
+          if (details.velocity.pixelsPerSecond.dy < -300) _goToFullscreen();
         },
         child: Container(
           height: 80,
           decoration: BoxDecoration(
             color: const Color(0xFF1A1C21),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.5),
-                blurRadius: 12,
-                offset: const Offset(0, -4),
-              ),
-            ],
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 12, offset: const Offset(0, -4))],
           ),
           child: Column(
             children: [
-              // Progress bar
               SizedBox(
                 height: 2,
                 child: LinearProgressIndicator(
@@ -123,28 +107,16 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> {
                   valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.accent),
                 ),
               ),
-              // Content
               Expanded(
                 child: Row(
                   children: [
-                    // Video thumbnail (live)
                     if (videoCtrl != null)
                       SizedBox(
-                        width: 142,
-                        height: 78,
-                        child: Video(
-                          controller: videoCtrl,
-                          controls: NoVideoControls,
-                        ),
+                        width: 142, height: 78,
+                        child: Video(controller: videoCtrl, key: const ValueKey('mini_overlay'), controls: NoVideoControls),
                       )
                     else
-                      Container(
-                        width: 142,
-                        height: 78,
-                        color: Colors.black,
-                        child: const Icon(Icons.play_circle_outline, color: Colors.white38, size: 32),
-                      ),
-                    // Title + controls
+                      Container(width: 142, height: 78, color: Colors.black),
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -152,52 +124,35 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              PlayerHolder.movieTitle,
-                              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                            Text(PlayerHolder.movieTitle, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
                             const SizedBox(height: 2),
-                            Text(
-                              'Tập $epClean  •  ${_formatDuration(pos)} / ${_formatDuration(dur)}',
-                              style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 10),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                            Text('Tập $epClean  •  ${_formatDuration(pos)} / ${_formatDuration(dur)}', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis),
                             const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                GestureDetector(
-                                  onTap: () {
-                                    if (PlayerHolder.isPlaying) {
-                                      player?.pause();
-                                    } else {
-                                      player?.play();
-                                    }
-                                    PlayerHolder.isPlaying = !PlayerHolder.isPlaying;
-                                  },
-                                  child: Icon(
-                                    PlayerHolder.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                                    color: Colors.white,
-                                    size: 24,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                GestureDetector(
-                                  onTap: _goToFullscreen,
-                                  child: const Icon(Icons.fullscreen_rounded, color: Colors.white70, size: 20),
-                                ),
-                                const Spacer(),
-                                GestureDetector(
-                                  onTap: () {
-                                    player?.dispose();
-                                    PlayerHolder.clear();
-                                  },
-                                  child: const Icon(Icons.close_rounded, color: Colors.white38, size: 18),
-                                ),
-                              ],
-                            ),
+                            Row(children: [
+                              GestureDetector(
+                                onTap: () {
+                                  if (PlayerHolder.isPlaying) {
+                                    PlayerHolder.player?.pause();
+                                  } else {
+                                    PlayerHolder.player?.play();
+                                  }
+                                },
+                                child: Icon(PlayerHolder.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 24),
+                              ),
+                              const SizedBox(width: 12),
+                              GestureDetector(
+                                onTap: _goToFullscreen,
+                                child: const Icon(Icons.fullscreen_rounded, color: Colors.white70, size: 20),
+                              ),
+                              const Spacer(),
+                              GestureDetector(
+                                onTap: () {
+                                  PlayerHolder.player?.dispose();
+                                  PlayerHolder.clear();
+                                },
+                                child: const Icon(Icons.close_rounded, color: Colors.white38, size: 18),
+                              ),
+                            ]),
                           ],
                         ),
                       ),
