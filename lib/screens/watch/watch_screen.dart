@@ -15,7 +15,6 @@ import 'package:phimhay_app/config/app_config.dart';
 import 'package:phimhay_app/config/theme.dart';
 import 'package:phimhay_app/config/responsive.dart';
 import 'package:phimhay_app/providers/auth_provider.dart';
-import 'package:phimhay_app/services/player_holder.dart';
 import 'package:phimhay_app/services/api_client.dart';
 import 'package:provider/provider.dart';
 import 'package:phimhay_app/services/movie_service.dart';
@@ -234,39 +233,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     }
 
     // Normal flow — create new player
-    // ★ Check if there's an existing player from mini-player mode
-    if (PlayerHolder.isActive && PlayerHolder.player != null) {
-      // ★ REUSE existing player
-      _player = PlayerHolder.player;
-      _videoController = PlayerHolder.videoController;
-      _currentPosition = PlayerHolder.currentPosition;
-      _currentDuration = PlayerHolder.currentDuration;
-      _isPlaying = PlayerHolder.isPlaying;
-      _currentEpId = PlayerHolder.episodeId;
-      _currentEpName = PlayerHolder.epName;
-      _currentUrl = PlayerHolder.currentUrl;
-      _selectedServer = PlayerHolder.serverIdx;
-      _playerReady = true;
-      _isLoading = false;
-      _playerTransferred = false;
-      PlayerHolder.isInWatchScreen = true;
-
-      _initPlayerStreams();
-      _forceFullscreen = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          SystemChrome.setPreferredOrientations([
-            DeviceOrientation.landscapeLeft,
-            DeviceOrientation.landscapeRight,
-          ]);
-          SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-        }
-      });
-      setState(() {});
-      _setupPiPListener();
-      return;
-    }
-
     _fetchEpisodes();
     _loadWatchProgress();
     _setupPiPListener();
@@ -812,10 +778,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _subPlaying?.cancel();
     _subDuration?.cancel();
     _subCompleted?.cancel();
-    if (!_playerTransferred) {
-      _player?.dispose();
-      _webController?.dispose();
-    }
+    _player?.dispose();
+    _webController?.dispose();
     _pipChannel.setMethodCallHandler(null);
     super.dispose();
   }
@@ -1291,7 +1255,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   double _dragOffset = 0;
   bool _isDraggingDown = false;
   double _dragStartY = 0;
-  bool _playerTransferred = false;
 
   void _cycleAspectRatio() {
     _aspectRatioIndex = (_aspectRatioIndex + 1) % _aspectRatios.length;
@@ -1301,30 +1264,15 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   // ── Mini-player methods ──────────────────────────────
   void _enterMiniPlayer() {
     _saveCurrentProgress();
-    // ★ Store player vào PlayerHolder rồi pop WatchScreen
-    PlayerHolder.player = _player;
-    PlayerHolder.videoController = _videoController;
-    PlayerHolder.isPlaying = _isPlaying;
-    PlayerHolder.currentPosition = _currentPosition;
-    PlayerHolder.currentDuration = _currentDuration;
-    PlayerHolder.movieId = widget.movieId;
-    PlayerHolder.movieTitle = widget.movieTitle ?? '';
-    PlayerHolder.movieSlug = widget.movieSlug ?? '';
-    PlayerHolder.episodeId = _currentEpId;
-    PlayerHolder.serverIdx = widget.serverIdx;
-    PlayerHolder.epName = _currentEpName;
-    PlayerHolder.currentUrl = _currentUrl;
-    PlayerHolder.isActive = true;
-    PlayerHolder.isMiniPlayerMode = true;
-    PlayerHolder.isInWatchScreen = false;
-
-    _playerTransferred = true;
-
+    // ★ KHÔNG pop WatchScreen — chỉ đổi layout
+    // Player vẫn chạy, video vẫn render, không tạo mới gì cả
+    setState(() {
+      _isMiniPlayerMode = true;
+      _showControls = false;
+    });
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     try { WakelockPlus.disable(); } catch (_) {}
-
-    Navigator.pop(context);
   }
 
   void _exitMiniPlayer() {
@@ -1376,9 +1324,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (!_seekCompleted && _seekTargetTime > 0 && (pos.inSeconds - _seekTargetTime).abs() <= 3) {
         _seekCompleted = true;
         _seekRetryTimer?.cancel();
-        // ★ FIX: LUÔN play sau seek — không check _isPlaying (có thể stale)
-        Future.delayed(const Duration(milliseconds: 300), () {
-          if (mounted && _player != null && !_isPlaying) {
+        // ★ FIX: Chỉ play nếu player đang PAUSED (không phải buffering)
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted && _player != null && !_isPlaying && !_isBuffering) {
             _player!.play();
           }
         });
@@ -1550,16 +1498,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (targetPosition > 0 && !_seekCompleted) {
         _seekTargetTime = targetPosition;
         _performSeekRetry(targetPosition);
-        // ★ FIX: Force play sau seek — đảm bảo video chạy
-        Future.delayed(const Duration(milliseconds: 1000), () {
-          if (mounted && _player != null) {
-            _player!.play();
-          }
-        });
       }
 
       // ★ FIX: Safety net — seek lại sau 1 frame nếu vẫn chưa seek xong
-      // Đảm bảo position từ history/server switch luôn được apply
       if (targetPosition > 15) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && !_seekCompleted && _player != null && _currentPosition < targetPosition - 5) {
@@ -1567,13 +1508,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           }
         });
       }
-
-      // ★ FIX: Force play sau 2s — backup cho mọi trường hợp
-      Future.delayed(const Duration(seconds: 2), () {
-        if (mounted && _player != null && !_isPlaying) {
-          _player!.play();
-        }
-      });
 
       // Pre-buffer PiP player trên iOS
       if (Platform.isIOS && _playerMode == _PlayerMode.hls) {
@@ -1654,10 +1588,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _seekRetryTimer?.cancel();
     if (_seekCompleted || !mounted || _player == null) return;
 
-    _seekRetryTimer = Timer(const Duration(seconds: 2), () {
+    _seekRetryTimer = Timer(const Duration(seconds: 3), () {
       if (!mounted || _player == null || _seekCompleted) return;
       final diff = (_currentPosition - targetSec).abs();
-      if (diff > 3) {
+      if (diff > 5) {
         _player!.seek(Duration(seconds: targetSec));
         _seekRetryCount++;
         if (_seekRetryCount < _maxSeekRetries) {
@@ -1666,9 +1600,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         }
       }
       _seekCompleted = true;
-      // ★ FIX: LUÔN force play sau seek — không check _isPlaying
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (mounted && _player != null) {
+      // ★ FIX: Chỉ play nếu player đang PAUSED (không phải buffering)
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (mounted && _player != null && !_isPlaying && !_isBuffering) {
           _player!.play();
         }
       });
@@ -1983,7 +1917,24 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       });
     }
 
-    // ★ FULLSCREEN ONLY — mini-player pop WatchScreen, dùng overlay ở App level
+    // ★ MINI-PLAYER MODE — video chạy trong bar, nội dung chính = HomeScreen
+    if (_isMiniPlayerMode) {
+      return Scaffold(
+        backgroundColor: AppTheme.bg,
+        body: SafeArea(
+          child: Column(
+            children: [
+              // ★ Nội dung chính — HomeScreen (browse phim, tìm kiếm...)
+              Expanded(child: HomeScreen()),
+              // ★ MINI PLAYER BAR — cùng 1 player instance
+              _buildInlineMiniPlayer(),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // ★ FULLSCREEN MODE — bình thường
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
