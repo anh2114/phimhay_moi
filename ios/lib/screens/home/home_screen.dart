@@ -29,8 +29,7 @@ import '../../widgets/collection_carousel.dart';
 
 class HomeScreen extends StatefulWidget {
   final int initialIndex;
-  final bool showBottomNav; // Ẩn BottomNav khi embed trong mini-player
-  const HomeScreen({super.key, this.initialIndex = 0, this.showBottomNav = true});
+  const HomeScreen({super.key, this.initialIndex = 0});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -190,23 +189,22 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           // BottomNav thường — không zoom
-          if (widget.showBottomNav)
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: Builder(
-                builder: (context) {
-                  final auth = context.watch<AuthProvider>();
-                  return BottomNav(
-                    currentIndex: _navIndex,
-                    onTabSelected: _onNavSelected,
-                    avatarUrl: auth.isLoggedIn ? (() {
-                      final raw = auth.user?['avatar']?.toString() ?? '';
-                      return raw.isNotEmpty && !raw.startsWith('http') ? '${AppConfig.baseUrl}$raw' : raw;
-                    })() : null,
-                  );
-                },
-              ),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Builder(
+              builder: (context) {
+                final auth = context.watch<AuthProvider>();
+                return BottomNav(
+                  currentIndex: _navIndex,
+                  onTabSelected: _onNavSelected,
+                  avatarUrl: auth.isLoggedIn ? (() {
+                    final raw = auth.user?['avatar']?.toString() ?? '';
+                    return raw.isNotEmpty && !raw.startsWith('http') ? '${AppConfig.baseUrl}$raw' : raw;
+                  })() : null,
+                );
+              },
             ),
+          ),
         ],
       ),
     );

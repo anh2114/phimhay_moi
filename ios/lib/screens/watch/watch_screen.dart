@@ -1917,21 +1917,48 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       });
     }
 
-    // ★ MINI-PLAYER MODE — video chạy trong bar, nội dung chính = HomeScreen
+    // ★ MINI-PLAYER MODE — video vẫn chạy, chỉ đổi layout
     if (_isMiniPlayerMode) {
       return Scaffold(
         backgroundColor: AppTheme.bg,
         body: SafeArea(
           child: Column(
             children: [
-              // ★ Nội dung chính — HomeScreen + padding bottom cho mini-player bar
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 80),
-                  child: HomeScreen(showBottomNav: false),
+              // Header
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.play_circle_fill_rounded, color: AppTheme.accent, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        widget.movieTitle ?? '',
+                        style: const TextStyle(color: AppTheme.textPrimary, fontSize: 15, fontWeight: FontWeight.w700),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () {
+                        _saveProgressOnExit();
+                        _player?.pause();
+                        _restoreOrientations();
+                        Navigator.pop(context);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.1), shape: BoxShape.circle),
+                        child: const Icon(Icons.close_rounded, color: AppTheme.textMuted, size: 18),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              // ★ MINI PLAYER BAR — cùng 1 player instance
+              const Divider(color: AppTheme.border, height: 0.5, thickness: 0.5),
+              // Episode grid
+              Expanded(child: _buildEpisodeGrid()),
+              // ★ MINI PLAYER BAR — cùng 1 player instance, không tạo mới
               _buildInlineMiniPlayer(),
             ],
           ),
