@@ -219,27 +219,68 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    _enableWakelockWithRetry(); // Chặn màn hình khóa khi xem phim
-    _lockBrightness(); // Giữ độ sáng khi xem phim
+    _enableWakelockWithRetry();
+    _lockBrightness();
     WidgetsBinding.instance.addObserver(this);
     _currentEpId = widget.episodeId;
-    _showControlsWithAutoHide(); // hiện controls khi vào, auto ẩn sau 4s
-    // Đồng hồ chỉ update khi landscape (tick mỗi 1s)
+    _showControlsWithAutoHide();
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted && _isLandscape) setState(() {});
     });
     _selectedServer = widget.serverIdx;
 
-    // Nếu có initialPosition → dùng ngay, không cần load từ API
     if (widget.initialPosition > 0) {
       _currentPosition = widget.initialPosition;
     }
 
+    // ★ FIX: Check if there's an existing player from mini-player mode
+    // Nếu có player từ mini-player → reuse, không tạo mới
+    final pp = context.read<PlayerProvider>();
+    if (pp.hasActivePlayer && pp.player != null) {
+      // Reuse existing player
+      _player = pp.player;
+      _videoController = pp.videoController;
+      _currentPosition = pp.currentPosition;
+      _currentDuration = pp.currentDuration;
+      _isPlaying = pp.isPlaying;
+      _currentEpId = pp.episodeId;
+      _currentEpName = pp.epName;
+      _currentUrl = pp.currentUrl;
+      _selectedServer = pp.serverIdx;
+      _playerReady = true;
+      _isLoading = false;
+      _playerTransferredToProvider = false; // WatchScreen now owns the player
+
+      // Clear provider
+      pp.isMiniPlayerMode = false;
+      pp.hasActivePlayer = false;
+
+      // Setup streams on existing player
+      _initPlayerStreams();
+
+      // Force landscape fullscreen
+      _forceFullscreen = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          SystemChrome.setPreferredOrientations([
+            DeviceOrientation.landscapeLeft,
+            DeviceOrientation.landscapeRight,
+          ]);
+          SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+        }
+      });
+
+      setState(() {});
+      _setupPiPListener();
+      return; // Don't fetch episodes — already have them
+    }
+
+    // Normal flow — create new player
     _fetchEpisodes();
     _loadWatchProgress();
     _setupPiPListener();
 
-    // Luôn force landscape fullscreen
+    // Force landscape fullscreen
     _forceFullscreen = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
