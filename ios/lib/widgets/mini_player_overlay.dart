@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -5,8 +6,9 @@ import 'package:phimhay_app/config/theme.dart';
 import 'package:phimhay_app/services/player_holder.dart';
 import 'package:phimhay_app/screens/watch/watch_screen.dart';
 
-/// Persistent mini-player overlay at App root level
-/// Shows Home/Search content behind + mini-player bar at bottom
+/// Persistent mini-player overlay — floating card góc phải dưới
+/// Luôn nằm ở Layer 2 của Root Stack, trên cùng tất cả nội dung
+/// User có thể browse Home/Search trong khi video chạy
 class MiniPlayerOverlay extends StatefulWidget {
   const MiniPlayerOverlay({super.key});
 
@@ -37,6 +39,7 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> {
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
+  /// Tap card → fullscreen WatchScreen (reuse player từ PlayerHolder)
   void _goToFullscreen() {
     if (!PlayerHolder.isActive || PlayerHolder.player == null) return;
 
@@ -47,6 +50,7 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> {
     final title = PlayerHolder.movieTitle;
     final pos = PlayerHolder.currentPosition;
 
+    // Đánh dấu player đang trong WatchScreen → overlay KHÔNG render Video
     PlayerHolder.isMiniPlayerMode = false;
     PlayerHolder.isInWatchScreen = true;
 
@@ -65,13 +69,18 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> {
     );
   }
 
+  /// Close mini-player entirely
+  void _closeMiniPlayer() {
+    PlayerHolder.player?.dispose();
+    PlayerHolder.clear();
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Không hiện nếu: chưa active, không ở mini mode, không có player, hoặc player đang trong WatchScreen
     if (!PlayerHolder.isActive || !PlayerHolder.isMiniPlayerMode || PlayerHolder.player == null) {
       return const SizedBox.shrink();
     }
-
-    // Don't render Video if WatchScreen has it
     if (PlayerHolder.isInWatchScreen) return const SizedBox.shrink();
 
     final videoCtrl = PlayerHolder.videoController;
@@ -80,87 +89,107 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> {
     final progress = PlayerHolder.currentDuration > 0
         ? PlayerHolder.currentPosition / PlayerHolder.currentDuration
         : 0.0;
-    final epClean = PlayerHolder.epName.replaceAll(RegExp(r'^[Tt]ậ?p?\s*', caseSensitive: false), '').trim();
 
     return Positioned(
-      bottom: 0,
-      left: 0,
-      right: 0,
-      child: GestureDetector(
-        onTap: _goToFullscreen,
-        onVerticalDragEnd: (details) {
-          if (details.velocity.pixelsPerSecond.dy < -300) _goToFullscreen();
-        },
-        child: Container(
-          height: 80,
-          decoration: BoxDecoration(
-            color: const Color(0xFF1A1C21),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 12, offset: const Offset(0, -4))],
-          ),
-          child: Column(
-            children: [
-              SizedBox(
-                height: 2,
-                child: LinearProgressIndicator(
-                  value: progress.clamp(0.0, 1.0),
-                  backgroundColor: Colors.white.withValues(alpha: 0.15),
-                  valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.accent),
+      right: 12,
+      bottom: 70, // 10px trên BottomNav (BottomNav ~60px)
+      child: Material(
+        color: Colors.transparent,
+        child: GestureDetector(
+          onTap: _goToFullscreen,
+          onVerticalDragEnd: (details) {
+            final dy = details.velocity.pixelsPerSecond.dy;
+            if (dy > 500) {
+              // Vuốt xuống → dismiss
+              _closeMiniPlayer();
+            } else if (dy < -500) {
+              // Vuốt lên → fullscreen
+              _goToFullscreen();
+            }
+          },
+          child: Container(
+            width: 200,
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A1C21),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.6),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
                 ),
-              ),
-              Expanded(
-                child: Row(
-                  children: [
-                    if (videoCtrl != null)
-                      SizedBox(
-                        width: 142, height: 78,
-                        child: Video(controller: videoCtrl, key: const ValueKey('mini_overlay'), controls: NoVideoControls),
-                      )
-                    else
-                      Container(width: 142, height: 78, color: Colors.black),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(PlayerHolder.movieTitle, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
-                            const SizedBox(height: 2),
-                            Text('Tập $epClean  •  ${_formatDuration(pos)} / ${_formatDuration(dur)}', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis),
-                            const SizedBox(height: 4),
-                            Row(children: [
-                              GestureDetector(
-                                onTap: () {
-                                  if (PlayerHolder.isPlaying) {
-                                    PlayerHolder.player?.pause();
-                                  } else {
-                                    PlayerHolder.player?.play();
-                                  }
-                                },
-                                child: Icon(PlayerHolder.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 24),
-                              ),
-                              const SizedBox(width: 12),
-                              GestureDetector(
-                                onTap: _goToFullscreen,
-                                child: const Icon(Icons.fullscreen_rounded, color: Colors.white70, size: 20),
-                              ),
-                              const Spacer(),
-                              GestureDetector(
-                                onTap: () {
-                                  PlayerHolder.player?.dispose();
-                                  PlayerHolder.clear();
-                                },
-                                child: const Icon(Icons.close_rounded, color: Colors.white38, size: 18),
-                              ),
-                            ]),
-                          ],
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ★ Video thumbnail/live — 16:9
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                  child: SizedBox(
+                    width: 200,
+                    height: 112, // 200 * 9/16 = 112
+                    child: videoCtrl != null
+                        ? Video(
+                            controller: videoCtrl,
+                            key: const ValueKey('mini_overlay_card'),
+                            controls: NoVideoControls,
+                          )
+                        : Container(
+                            color: Colors.black,
+                            child: const Icon(Icons.movie, color: Colors.white24, size: 32),
+                          ),
+                  ),
+                ),
+                // ★ Controls row: rewind, play/pause, forward
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      GestureDetector(
+                        onTap: () {
+                          final target = max(0, PlayerHolder.currentPosition - 10);
+                          PlayerHolder.player?.seek(Duration(seconds: target));
+                        },
+                        child: const Icon(Icons.replay_10_rounded, color: Colors.white70, size: 22),
+                      ),
+                      GestureDetector(
+                        onTap: () {
+                          if (PlayerHolder.isPlaying) {
+                            PlayerHolder.player?.pause();
+                          } else {
+                            PlayerHolder.player?.play();
+                          }
+                        },
+                        child: Icon(
+                          PlayerHolder.isPlaying
+                              ? Icons.pause_circle_filled
+                              : Icons.play_circle_filled,
+                          color: Colors.white,
+                          size: 32,
                         ),
                       ),
-                    ),
-                  ],
+                      GestureDetector(
+                        onTap: () {
+                          final target = PlayerHolder.currentPosition + 10;
+                          PlayerHolder.player?.seek(Duration(seconds: target));
+                        },
+                        child: const Icon(Icons.forward_10_rounded, color: Colors.white70, size: 22),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                // ★ Close button
+                GestureDetector(
+                  onTap: _closeMiniPlayer,
+                  child: const Padding(
+                    padding: EdgeInsets.only(bottom: 4),
+                    child: Icon(Icons.close_rounded, color: Colors.white38, size: 16),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

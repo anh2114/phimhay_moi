@@ -15,6 +15,7 @@ import 'package:phimhay_app/config/app_config.dart';
 import 'package:phimhay_app/config/theme.dart';
 import 'package:phimhay_app/config/responsive.dart';
 import 'package:phimhay_app/providers/auth_provider.dart';
+import 'package:phimhay_app/services/player_holder.dart';
 import 'package:phimhay_app/services/api_client.dart';
 import 'package:provider/provider.dart';
 import 'package:phimhay_app/services/movie_service.dart';
@@ -233,6 +234,39 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     }
 
     // Normal flow — create new player
+    // ★ Check if there's an existing player from mini-player mode
+    if (PlayerHolder.isActive && PlayerHolder.player != null) {
+      // ★ REUSE existing player — không tạo mới
+      _player = PlayerHolder.player;
+      _videoController = PlayerHolder.videoController;
+      _currentPosition = PlayerHolder.currentPosition;
+      _currentDuration = PlayerHolder.currentDuration;
+      _isPlaying = PlayerHolder.isPlaying;
+      _currentEpId = PlayerHolder.episodeId;
+      _currentEpName = PlayerHolder.epName;
+      _currentUrl = PlayerHolder.currentUrl;
+      _selectedServer = PlayerHolder.serverIdx;
+      _playerReady = true;
+      _isLoading = false;
+      _playerTransferred = false;
+      PlayerHolder.isInWatchScreen = true;
+
+      _initPlayerStreams();
+      _forceFullscreen = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          SystemChrome.setPreferredOrientations([
+            DeviceOrientation.landscapeLeft,
+            DeviceOrientation.landscapeRight,
+          ]);
+          SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+        }
+      });
+      setState(() {});
+      _setupPiPListener();
+      return;
+    }
+
     _fetchEpisodes();
     _loadWatchProgress();
     _setupPiPListener();
@@ -778,8 +812,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _subPlaying?.cancel();
     _subDuration?.cancel();
     _subCompleted?.cancel();
-    _player?.dispose();
-    _webController?.dispose();
+    // ★ Chỉ dispose player nếu KHÔNG transfer sang PlayerHolder
+    if (!_playerTransferred) {
+      _player?.dispose();
+      _webController?.dispose();
+    }
     _pipChannel.setMethodCallHandler(null);
     super.dispose();
   }
@@ -1255,6 +1292,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   double _dragOffset = 0;
   bool _isDraggingDown = false;
   double _dragStartY = 0;
+  bool _playerTransferred = false;
 
   void _cycleAspectRatio() {
     _aspectRatioIndex = (_aspectRatioIndex + 1) % _aspectRatios.length;
@@ -1264,15 +1302,29 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   // ── Mini-player methods ──────────────────────────────
   void _enterMiniPlayer() {
     _saveCurrentProgress();
-    // ★ KHÔNG pop WatchScreen — chỉ đổi layout
-    // Player vẫn chạy, video vẫn render, không tạo mới gì cả
-    setState(() {
-      _isMiniPlayerMode = true;
-      _showControls = false;
-    });
+    // ★ Transfer player → PlayerHolder → pop WatchScreen
+    // Player chạy tiếp trong MiniPlayerOverlay ở App level
+    PlayerHolder.takeFromWatchScreen(
+      p: _player,
+      vc: _videoController,
+      playing: _isPlaying,
+      pos: _currentPosition,
+      dur: _currentDuration,
+      mId: widget.movieId,
+      title: widget.movieTitle ?? '',
+      slug: widget.movieSlug ?? '',
+      epId: _currentEpId,
+      sIdx: widget.serverIdx,
+      ep: _currentEpName,
+      url: _currentUrl,
+    );
+    _playerTransferred = true;
+
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     try { WakelockPlus.disable(); } catch (_) {}
+
+    Navigator.pop(context);
   }
 
   void _exitMiniPlayer() {
@@ -1917,28 +1969,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       });
     }
 
-    // ★ MINI-PLAYER MODE — YouTube-style floating card góc phải dưới
-    if (_isMiniPlayerMode) {
-      return Scaffold(
-        backgroundColor: AppTheme.bg,
-        body: SafeArea(
-          child: Stack(
-            children: [
-              // Nội dung chính —空白 để user có thể navigate
-              const SizedBox.expand(),
-              // ★ Mini-player card — góc phải dưới
-              Positioned(
-                right: 12,
-                bottom: 70,
-                child: _buildMiniPlayerCard(),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    // ★ FULLSCREEN MODE — bình thường
+    // ★ FULLSCREEN ONLY — mini-player ở App level (MiniPlayerOverlay)
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
@@ -1971,65 +2002,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   // ── Mini-player card — YouTube-style floating card góc phải dưới ──
-  Widget _buildMiniPlayerCard() {
-    return GestureDetector(
-      onTap: _exitMiniPlayer,
-      onVerticalDragEnd: (details) {
-        if (details.velocity.pixelsPerSecond.dy < -300) _exitMiniPlayer();
-      },
-      child: Container(
-        width: 200,
-        decoration: BoxDecoration(
-          color: const Color(0xFF1A1C21),
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.6), blurRadius: 16, offset: const Offset(0, 4))],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // ★ Video thumbnail/live — 16:9
-            ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-              child: SizedBox(
-                width: 200,
-                height: 112, // 200 * 9/16 = 112
-                child: _videoController != null
-                    ? Video(controller: _videoController!, key: const ValueKey('mini_player_card'), controls: NoVideoControls)
-                    : Container(color: Colors.black),
-              ),
-            ),
-            // ★ Controls row: rewind, play, forward
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  GestureDetector(
-                    onTap: () { final target = max(0, _currentPosition - 10); _player?.seek(Duration(seconds: target)); },
-                    child: const Icon(Icons.replay_10_rounded, color: Colors.white70, size: 22),
-                  ),
-                  GestureDetector(
-                    onTap: () { if (_isPlaying) _player?.pause(); else _player?.play(); },
-                    child: Icon(_isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled, color: Colors.white, size: 32),
-                  ),
-                  GestureDetector(
-                    onTap: () { final target = _currentPosition + 10; _player?.seek(Duration(seconds: target)); },
-                    child: const Icon(Icons.forward_10_rounded, color: Colors.white70, size: 22),
-                  ),
-                ],
-              ),
-            ),
-            // Close button
-            GestureDetector(
-              onTap: _closeMiniPlayer,
-              child: const Padding(padding: EdgeInsets.only(bottom: 4), child: Icon(Icons.close_rounded, color: Colors.white38, size: 16)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   // ── Drag-to-minimize gesture handlers ────────────────
   void _onMiniDragStart(DragStartDetails details) {
     _dragStartY = details.globalPosition.dy;
