@@ -15,9 +15,11 @@ import 'providers/favorite_provider.dart';
 import 'providers/watch_history_provider.dart';
 import 'providers/reminder_provider.dart';
 import 'providers/collection_provider.dart';
+import 'providers/player_provider.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/splash/splash_screen.dart';
 import 'services/push_service.dart';
+import 'widgets/mini_player_overlay.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -81,6 +83,7 @@ void main() async {
           ChangeNotifierProvider(create: (_) => WatchHistoryProvider()),
           ChangeNotifierProvider(create: (_) => ReminderProvider()),
           ChangeNotifierProvider(create: (_) => CollectionProvider()),
+          ChangeNotifierProvider(create: (_) => PlayerProvider()),
         ],
         child: const XiaoPhimApp(),
       ),
@@ -103,7 +106,16 @@ class XiaoPhimApp extends StatelessWidget {
       title: 'Xiao Phim',
       theme: AppTheme.darkTheme,
       debugShowCheckedModeBanner: false,
-      home: SplashScreen(child: const HomeScreen()),
+      home: SplashScreen(
+        child: Scaffold(
+          body: Stack(
+            children: [
+              const HomeScreen(),
+              const MiniPlayerOverlay(),
+            ],
+          ),
+        ),
+      ),
       routes: {},
     );
   }

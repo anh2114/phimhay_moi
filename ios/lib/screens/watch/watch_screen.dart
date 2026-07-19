@@ -15,6 +15,7 @@ import 'package:phimhay_app/config/app_config.dart';
 import 'package:phimhay_app/config/theme.dart';
 import 'package:phimhay_app/config/responsive.dart';
 import 'package:phimhay_app/providers/auth_provider.dart';
+import 'package:phimhay_app/providers/player_provider.dart';
 import 'package:phimhay_app/services/api_client.dart';
 import 'package:provider/provider.dart';
 import 'package:phimhay_app/services/movie_service.dart';
@@ -779,8 +780,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _subPlaying?.cancel();
     _subDuration?.cancel();
     _subCompleted?.cancel();
-    _player?.dispose();
-    _webController?.dispose();
+    // ★ FIX: Không dispose player nếu đã transfer sang provider (mini-player)
+    if (!_playerTransferredToProvider) {
+      _player?.dispose();
+      _webController?.dispose();
+    }
     _pipChannel.setMethodCallHandler(null);
     super.dispose();
   }
@@ -1256,6 +1260,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   double _dragOffset = 0;
   bool _isDraggingDown = false;
   double _dragStartY = 0;
+  bool _playerTransferredToProvider = false; // Player đã chuyển sang provider chưa
 
   void _cycleAspectRatio() {
     _aspectRatioIndex = (_aspectRatioIndex + 1) % _aspectRatios.length;
@@ -1265,18 +1270,36 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   // ── Mini-player methods ──────────────────────────────
   void _enterMiniPlayer() {
     _saveCurrentProgress();
-    setState(() {
-      _isMiniPlayerMode = true;
-      _dragOffset = 0;
-      _isDraggingDown = false;
-      _showControls = false;
-    });
+    // Transfer player to provider for mini-player overlay
+    final pp = context.read<PlayerProvider>();
+    pp.player = _player;
+    pp.videoController = _videoController;
+    pp.isPlaying = _isPlaying;
+    pp.currentPosition = _currentPosition;
+    pp.currentDuration = _currentDuration;
+    pp.movieId = widget.movieId;
+    pp.movieTitle = widget.movieTitle ?? '';
+    pp.movieSlug = widget.movieSlug ?? '';
+    pp.episodeId = _currentEpId;
+    pp.serverIdx = widget.serverIdx;
+    pp.epName = _currentEpName;
+    pp.currentUrl = _currentUrl;
+    pp.hasActivePlayer = true;
+    pp.isMiniPlayerMode = true;
+    pp.notifyListeners();
+
+    // Mark player as transferred so dispose won't kill it
+    _playerTransferredToProvider = true;
+
     // Chuyển sang portrait
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     try { WakelockPlus.disable(); } catch (_) {}
+
+    // Pop WatchScreen — mini-player overlay takes over
+    Navigator.pop(context);
   }
 
   void _exitMiniPlayer() {
@@ -1906,11 +1929,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    // ★ Mini-player mode
-    if (_isMiniPlayerMode) {
-      return _buildMiniPlayerScaffold();
-    }
-
     final orientation = MediaQuery.of(context).orientation;
     final isLandscape = orientation == Orientation.landscape;
 
@@ -1921,7 +1939,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         if (isLandscape) {
           SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
         }
-        // Không thoát fullscreen khi xoay dọc - luôn giữ immersive
       });
     }
 
@@ -1935,11 +1952,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         child: WillPopScope(
           onWillPop: () async {
             // Back button → mini-player thay vì close
-            if (!_isMiniPlayerMode) {
-              _enterMiniPlayer();
-              return false;
-            }
-            return true;
+            _enterMiniPlayer();
+            return false;
           },
           child: Stack(children: [
             // ★ Drag-to-minimize gesture wrapper
