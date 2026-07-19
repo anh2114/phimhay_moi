@@ -1251,9 +1251,58 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   // ── Screen lock ──
   bool _isScreenLocked = false;
 
+  // ── Mini-player state (YouTube-style) ──
+  bool _isMiniPlayerMode = false;
+  double _dragOffset = 0;
+  bool _isDraggingDown = false;
+  double _dragStartY = 0;
+
   void _cycleAspectRatio() {
     _aspectRatioIndex = (_aspectRatioIndex + 1) % _aspectRatios.length;
     setState(() {});
+  }
+
+  // ── Mini-player methods ──────────────────────────────
+  void _enterMiniPlayer() {
+    _saveCurrentProgress();
+    setState(() {
+      _isMiniPlayerMode = true;
+      _dragOffset = 0;
+      _isDraggingDown = false;
+      _showControls = false;
+    });
+    // Chuyển sang portrait
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+    ]);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    try { WakelockPlus.disable(); } catch (_) {}
+  }
+
+  void _exitMiniPlayer() {
+    setState(() {
+      _isMiniPlayerMode = false;
+      _dragOffset = 0;
+      _isDraggingDown = false;
+    });
+    // Quay lại landscape fullscreen
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    _enableWakelockWithRetry();
+    _showControlsWithAutoHide();
+  }
+
+  void _closeMiniPlayer() {
+    _saveProgressOnExit();
+    _player?.pause();
+    _webController?.evaluateJavascript(
+      source: "document.querySelector('video')?.pause();",
+    );
+    _restoreOrientations();
+    if (mounted) Navigator.pop(context);
   }
 
   // _setupPlayerSubscriptions() removed — replaced by _onBetterPlayerEvent in BetterPlayerConfiguration
@@ -1857,6 +1906,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    // ★ Mini-player mode
+    if (_isMiniPlayerMode) {
+      return _buildMiniPlayerScaffold();
+    }
+
     final orientation = MediaQuery.of(context).orientation;
     final isLandscape = orientation == Orientation.landscape;
 
@@ -1878,9 +1932,209 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         left: false,
         right: false,
         bottom: false,
-        child: Stack(children: [
-          Positioned.fill(child: _buildPlayer(expandToFill: true)),
-        ]),
+        child: WillPopScope(
+          onWillPop: () async {
+            // Back button → mini-player thay vì close
+            if (!_isMiniPlayerMode) {
+              _enterMiniPlayer();
+              return false;
+            }
+            return true;
+          },
+          child: Stack(children: [
+            // ★ Drag-to-minimize gesture wrapper
+            Positioned.fill(
+              child: GestureDetector(
+                onVerticalDragStart: _onMiniDragStart,
+                onVerticalDragUpdate: _onMiniDragUpdate,
+                onVerticalDragEnd: _onMiniDragEnd,
+                behavior: HitTestBehavior.translucent,
+                child: Transform.translate(
+                  offset: Offset(0, _isDraggingDown ? _dragOffset : 0),
+                  child: Opacity(
+                    opacity: (1.0 - (_dragOffset / 600)).clamp(0.3, 1.0),
+                    child: _buildPlayer(expandToFill: true),
+                  ),
+                ),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  // ── Drag-to-minimize gesture handlers ────────────────
+  void _onMiniDragStart(DragStartDetails details) {
+    _dragStartY = details.globalPosition.dy;
+  }
+
+  void _onMiniDragUpdate(DragUpdateDetails details) {
+    final delta = details.globalPosition.dy - _dragStartY;
+    if (delta > 0) {
+      setState(() {
+        _dragOffset = delta;
+        _isDraggingDown = true;
+      });
+    }
+  }
+
+  void _onMiniDragEnd(DragEndDetails details) {
+    final velocity = details.velocity.pixelsPerSecond.dy;
+    if (_dragOffset > 120 || velocity > 600) {
+      _enterMiniPlayer();
+    } else {
+      setState(() {
+        _dragOffset = 0;
+        _isDraggingDown = false;
+      });
+    }
+  }
+
+  // ── Mini-player scaffold ──────────────────────────────
+  Widget _buildMiniPlayerScaffold() {
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+    return Scaffold(
+      backgroundColor: AppTheme.bg,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.play_circle_fill_rounded, color: AppTheme.accent, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      widget.movieTitle ?? '',
+                      style: const TextStyle(color: AppTheme.textPrimary, fontSize: 15, fontWeight: FontWeight.w700),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: _closeMiniPlayer,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.close_rounded, color: AppTheme.textMuted, size: 18),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Divider
+            const Divider(color: AppTheme.border, height: 1, thickness: 0.5),
+            // Episode grid
+            Expanded(child: _buildEpisodeGrid()),
+            const SizedBox(height: 80), // Spacer cho mini-player bar + bottom
+          ],
+        ),
+      ),
+      // Mini-player bar at bottom
+      bottomSheet: _buildMiniPlayerBar(),
+    );
+  }
+
+  // ── Mini-player bar ───────────────────────────────────
+  Widget _buildMiniPlayerBar() {
+    final progress = _currentDur.inSeconds > 0
+        ? _currentPos.inSeconds / _currentDur.inSeconds
+        : 0.0;
+
+    return GestureDetector(
+      onTap: _exitMiniPlayer,
+      onVerticalDragEnd: (details) {
+        if (details.velocity.pixelsPerSecond.dy < -300) {
+          _exitMiniPlayer();
+        }
+      },
+      child: Container(
+        height: 80,
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1C21),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 12, offset: const Offset(0, -4)),
+          ],
+        ),
+        child: Column(
+          children: [
+            // Progress bar
+            SizedBox(
+              height: 2,
+              child: LinearProgressIndicator(
+                value: progress.clamp(0.0, 1.0),
+                backgroundColor: Colors.white.withValues(alpha: 0.15),
+                valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.accent),
+              ),
+            ),
+            // Content
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                child: Row(
+                  children: [
+                    // Play/Pause
+                    GestureDetector(
+                      onTap: () {
+                        if (_isPlaying) {
+                          _player?.pause();
+                          _webController?.evaluateJavascript(
+                            source: "document.querySelector('video')?.pause();",
+                          );
+                        } else {
+                          _player?.play();
+                          _webController?.evaluateJavascript(
+                            source: "document.querySelector('video')?.play();",
+                          );
+                        }
+                      },
+                      child: Icon(
+                        _isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
+                        color: Colors.white,
+                        size: 36,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    // Title + time
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${widget.movieTitle ?? ''} — Tập ${_currentEpName.replaceAll(RegExp(r'^[Tt]ậ?p?\s*', caseSensitive: false), '').trim()}',
+                            style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            '${_formatDuration(_currentPos)} / ${_formatDuration(_currentDur)}',
+                            style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Fullscreen
+                    GestureDetector(
+                      onTap: _exitMiniPlayer,
+                      child: const Padding(
+                        padding: EdgeInsets.all(4),
+                        child: Icon(Icons.fullscreen_rounded, color: Colors.white70, size: 24),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
