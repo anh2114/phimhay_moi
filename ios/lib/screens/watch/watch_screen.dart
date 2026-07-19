@@ -242,13 +242,22 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       _player = PlayerHolder.player;
       _videoController = PlayerHolder.videoController;
       _currentPosition = PlayerHolder.currentPosition;
-      // ★ FIX: Đọc duration trực tiếp từ player state — PlayerHolder có thể chưa update
+      // ★ FIX: Đọc duration trực tiếp từ player state
       try {
         final dur = _player!.state.duration;
-        _currentDuration = dur.inSeconds > 0 ? dur.inSeconds : PlayerHolder.currentDuration;
+        if (dur.inSeconds > 0) {
+          _currentDuration = dur.inSeconds;
+          _currentDur = dur; // ★ FIX: Set Duration object cho UI
+        } else {
+          _currentDuration = PlayerHolder.currentDuration;
+          _currentDur = Duration(seconds: PlayerHolder.currentDuration);
+        }
       } catch (_) {
         _currentDuration = PlayerHolder.currentDuration;
+        _currentDur = Duration(seconds: PlayerHolder.currentDuration);
       }
+      // ★ FIX: Set currentPos Duration object cho UI
+      _currentPos = Duration(seconds: _currentPosition);
       _isPlaying = PlayerHolder.isPlaying;
       _currentEpId = PlayerHolder.episodeId;
       _currentEpName = PlayerHolder.epName;
