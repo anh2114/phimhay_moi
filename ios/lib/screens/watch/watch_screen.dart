@@ -15,7 +15,7 @@ import 'package:phimhay_app/config/app_config.dart';
 import 'package:phimhay_app/config/theme.dart';
 import 'package:phimhay_app/config/responsive.dart';
 import 'package:phimhay_app/providers/auth_provider.dart';
-import 'package:phimhay_app/providers/player_provider.dart';
+import 'package:phimhay_app/services/player_holder.dart';
 import 'package:phimhay_app/services/api_client.dart';
 import 'package:provider/provider.dart';
 import 'package:phimhay_app/services/movie_service.dart';
@@ -233,27 +233,25 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       _currentPosition = widget.initialPosition;
     }
 
-    // ★ FIX: Check if there's an existing player from mini-player mode
-    // Nếu có player từ mini-player → reuse, không tạo mới
-    final pp = context.read<PlayerProvider>();
-    if (pp.hasActivePlayer && pp.player != null) {
-      // Reuse existing player
-      _player = pp.player;
-      _videoController = pp.videoController;
-      _currentPosition = pp.currentPosition;
-      _currentDuration = pp.currentDuration;
-      _isPlaying = pp.isPlaying;
-      _currentEpId = pp.episodeId;
-      _currentEpName = pp.epName;
-      _currentUrl = pp.currentUrl;
-      _selectedServer = pp.serverIdx;
+    // ★ Check if there's an existing player from mini-player mode
+    if (PlayerHolder.isActive && PlayerHolder.player != null) {
+      // ★ REUSE existing player — NO new player created
+      _player = PlayerHolder.player;
+      _videoController = PlayerHolder.videoController;
+      _currentPosition = PlayerHolder.currentPosition;
+      _currentDuration = PlayerHolder.currentDuration;
+      _isPlaying = PlayerHolder.isPlaying;
+      _currentEpId = PlayerHolder.episodeId;
+      _currentEpName = PlayerHolder.epName;
+      _currentUrl = PlayerHolder.currentUrl;
+      _selectedServer = PlayerHolder.serverIdx;
       _playerReady = true;
       _isLoading = false;
-      _playerTransferredToProvider = false; // WatchScreen now owns the player
+      _playerTransferredToProvider = false; // WatchScreen owns the player now
 
-      // Clear provider
-      pp.isMiniPlayerMode = false;
-      pp.hasActivePlayer = false;
+      // Clear holder
+      PlayerHolder.isMiniPlayerMode = false;
+      PlayerHolder.isActive = false;
 
       // Setup streams on existing player
       _initPlayerStreams();
@@ -272,7 +270,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
       setState(() {});
       _setupPiPListener();
-      return; // Don't fetch episodes — already have them
+      return; // ★ DON'T fetch episodes — already have them
     }
 
     // Normal flow — create new player
@@ -1311,35 +1309,28 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   // ── Mini-player methods ──────────────────────────────
   void _enterMiniPlayer() {
     _saveCurrentProgress();
-    // Transfer player to provider for mini-player overlay
-    final pp = context.read<PlayerProvider>();
-    pp.player = _player;
-    pp.videoController = _videoController;
-    pp.isPlaying = _isPlaying;
-    pp.currentPosition = _currentPosition;
-    pp.currentDuration = _currentDuration;
-    pp.movieId = widget.movieId;
-    pp.movieTitle = widget.movieTitle ?? '';
-    pp.movieSlug = widget.movieSlug ?? '';
-    pp.episodeId = _currentEpId;
-    pp.serverIdx = widget.serverIdx;
-    pp.epName = _currentEpName;
-    pp.currentUrl = _currentUrl;
-    pp.hasActivePlayer = true;
-    pp.isMiniPlayerMode = true;
-    pp.notifyListeners();
+    // ★ Transfer player to static holder
+    PlayerHolder.player = _player;
+    PlayerHolder.videoController = _videoController;
+    PlayerHolder.isPlaying = _isPlaying;
+    PlayerHolder.currentPosition = _currentPosition;
+    PlayerHolder.currentDuration = _currentDuration;
+    PlayerHolder.movieId = widget.movieId;
+    PlayerHolder.movieTitle = widget.movieTitle ?? '';
+    PlayerHolder.movieSlug = widget.movieSlug ?? '';
+    PlayerHolder.episodeId = _currentEpId;
+    PlayerHolder.serverIdx = widget.serverIdx;
+    PlayerHolder.epName = _currentEpName;
+    PlayerHolder.currentUrl = _currentUrl;
+    PlayerHolder.isActive = true;
+    PlayerHolder.isMiniPlayerMode = true;
 
-    // Mark player as transferred so dispose won't kill it
     _playerTransferredToProvider = true;
 
-    // Chuyển sang portrait
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-    ]);
+    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     try { WakelockPlus.disable(); } catch (_) {}
 
-    // Pop WatchScreen — mini-player overlay takes over
     Navigator.pop(context);
   }
 
