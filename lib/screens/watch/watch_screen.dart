@@ -236,9 +236,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     // Normal flow — create new player
     // ★ Check if there's an existing player from mini-player mode
     final hasExistingPlayer = PlayerHolder.isActive && PlayerHolder.player != null;
-    debugPrint('[WatchScreen initState] hasExistingPlayer=$hasExistingPlayer, isActive=${PlayerHolder.isActive}, player=${PlayerHolder.player != null}, isInWatch=${PlayerHolder.isInWatchScreen}');
+    debugPrint('[WatchScreen initState] hasExistingPlayer=$hasExistingPlayer, isActive=${PlayerHolder.isActive}, player=${PlayerHolder.player != null}');
     if (hasExistingPlayer) {
-      // ★ REUSE existing player — KHÔNG tạo mới
+      // ★ REUSE existing HLS player — KHÔNG tạo mới
       _player = PlayerHolder.player;
       _videoController = PlayerHolder.videoController;
       _currentPosition = PlayerHolder.currentPosition;
@@ -252,7 +252,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       _isLoading = false;
       _playerTransferred = false;
       PlayerHolder.isInWatchScreen = true;
-      // ★ Đánh dấu seek cần thực hiện sau khi player ready
       _seekCompleted = false;
       _seekTargetTime = _currentPosition;
 
@@ -265,7 +264,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             DeviceOrientation.landscapeRight,
           ]);
           SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-          // ★ FIX: Explicit seek — đảm bảo video chạy đúng vị trí
           if (_currentPosition > 5 && _player != null) {
             _player!.seek(Duration(seconds: _currentPosition));
             Future.delayed(const Duration(milliseconds: 500), () {
@@ -274,6 +272,44 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               }
             });
           }
+        }
+      });
+      setState(() {});
+      _setupPiPListener();
+      return;
+    }
+
+    // ★ FIX: Nếu coming từ mini-player nhưng player là embed (WebView) → tạo player trực tiếp với URL
+    if (PlayerHolder.isActive && PlayerHolder.currentUrl.isNotEmpty) {
+      debugPrint('[WatchScreen] Reusing embed URL: ${PlayerHolder.currentUrl}');
+      _currentUrl = PlayerHolder.currentUrl;
+      _currentPosition = PlayerHolder.currentPosition;
+      _currentDuration = PlayerHolder.currentDuration;
+      _isPlaying = PlayerHolder.isPlaying;
+      _currentEpId = PlayerHolder.episodeId;
+      _currentEpName = PlayerHolder.epName;
+      _selectedServer = PlayerHolder.serverIdx;
+      _playerTransferred = false;
+      PlayerHolder.isInWatchScreen = true;
+      _seekCompleted = false;
+      _seekTargetTime = _currentPosition;
+
+      // Tạo player mới với URL đã lưu (embed mode → HLS nếu URL là m3u8)
+      final isM3u8 = _currentUrl.contains('.m3u8');
+      if (isM3u8) {
+        _initPlayer(_currentUrl);
+        if (mounted) setState(() { _playerMode = _PlayerMode.hls; _isLoading = false; });
+      } else {
+        if (mounted) setState(() { _playerMode = _PlayerMode.embed; _isLoading = false; });
+      }
+      _forceFullscreen = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          SystemChrome.setPreferredOrientations([
+            DeviceOrientation.landscapeLeft,
+            DeviceOrientation.landscapeRight,
+          ]);
+          SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
         }
       });
       setState(() {});
