@@ -2046,6 +2046,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     final progress = _currentDur.inSeconds > 0
         ? _currentPos.inSeconds / _currentDur.inSeconds
         : 0.0;
+    final epClean = _currentEpName.replaceAll(RegExp(r'^[Tt]ậ?p?\s*', caseSensitive: false), '').trim();
 
     return GestureDetector(
       onTap: _exitMiniPlayer,
@@ -2073,64 +2074,107 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.accent),
               ),
             ),
-            // Content
+            // Content row
             Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                child: Row(
-                  children: [
-                    // Play/Pause
-                    GestureDetector(
-                      onTap: () {
-                        if (_isPlaying) {
-                          _player?.pause();
-                          _webController?.evaluateJavascript(
-                            source: "document.querySelector('video')?.pause();",
-                          );
-                        } else {
-                          _player?.play();
-                          _webController?.evaluateJavascript(
-                            source: "document.querySelector('video')?.play();",
-                          );
-                        }
-                      },
-                      child: Icon(
-                        _isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
-                        color: Colors.white,
-                        size: 36,
+              child: Row(
+                children: [
+                  // ★ Video thumbnail (live video đang phát)
+                  if (_videoController != null)
+                    SizedBox(
+                      width: 142, // 80 * 16/9
+                      height: 80,
+                      child: Video(
+                        controller: _videoController!,
+                        controls: NoVideoControls,
+                      ),
+                    )
+                  else
+                    Container(
+                      width: 142,
+                      height: 80,
+                      color: Colors.black,
+                      child: const Icon(Icons.play_circle_outline, color: Colors.white38, size: 32),
+                    ),
+                  // Gradient overlay trên video
+                  if (_videoController != null)
+                    SizedBox(
+                      width: 142,
+                      height: 80,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                            colors: [
+                              Colors.black.withValues(alpha: 0.3),
+                              Colors.transparent,
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    // Title + time
-                    Expanded(
+                  // Title + time + controls
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '${widget.movieTitle ?? ''} — Tập ${_currentEpName.replaceAll(RegExp(r'^[Tt]ậ?p?\s*', caseSensitive: false), '').trim()}',
+                            widget.movieTitle ?? '',
                             style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(height: 3),
+                          const SizedBox(height: 2),
                           Text(
-                            '${_formatDuration(_currentPos)} / ${_formatDuration(_currentDur)}',
-                            style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
+                            'Tập $epClean  •  ${_formatDuration(_currentPos)} / ${_formatDuration(_currentDur)}',
+                            style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 10),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          // Controls row
+                          Row(
+                            children: [
+                              GestureDetector(
+                                onTap: () {
+                                  if (_isPlaying) {
+                                    _player?.pause();
+                                    _webController?.evaluateJavascript(
+                                      source: "document.querySelector('video')?.pause();",
+                                    );
+                                  } else {
+                                    _player?.play();
+                                    _webController?.evaluateJavascript(
+                                      source: "document.querySelector('video')?.play();",
+                                    );
+                                  }
+                                },
+                                child: Icon(
+                                  _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                  color: Colors.white,
+                                  size: 24,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              GestureDetector(
+                                onTap: _exitMiniPlayer,
+                                child: const Icon(Icons.fullscreen_rounded, color: Colors.white70, size: 20),
+                              ),
+                              const Spacer(),
+                              GestureDetector(
+                                onTap: _closeMiniPlayer,
+                                child: const Icon(Icons.close_rounded, color: Colors.white38, size: 18),
+                              ),
+                            ],
                           ),
                         ],
                       ),
                     ),
-                    // Fullscreen
-                    GestureDetector(
-                      onTap: _exitMiniPlayer,
-                      child: const Padding(
-                        padding: EdgeInsets.all(4),
-                        child: Icon(Icons.fullscreen_rounded, color: Colors.white70, size: 24),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ],
