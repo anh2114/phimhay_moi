@@ -2028,7 +2028,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   if (_videoController != null)
                     SizedBox(
                       width: 142, height: 78,
-                      child: Video(controller: _videoController!, controls: NoVideoControls),
+                      child: Video(controller: _videoController!, key: const ValueKey('mini_player'), controls: NoVideoControls),
                     )
                   else
                     Container(width: 142, height: 78, color: Colors.black),
