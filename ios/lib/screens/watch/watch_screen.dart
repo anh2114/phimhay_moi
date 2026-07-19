@@ -248,6 +248,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       _currentEpName = PlayerHolder.epName;
       _currentUrl = PlayerHolder.currentUrl;
       _selectedServer = PlayerHolder.serverIdx;
+      _playerMode = _PlayerMode.hls; // ★ FIX: Phải set playerMode để render media_kit Video widget
       _playerReady = true;
       _isLoading = false;
       _playerTransferred = false;
