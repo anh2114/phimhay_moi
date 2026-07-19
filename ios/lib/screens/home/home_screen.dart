@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -26,6 +27,7 @@ import '../watch_party/watch_party_screen.dart';
 import '../notification/notification_screen.dart';
 import '../actors/actors_list_screen.dart';
 import '../../widgets/collection_carousel.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 class HomeScreen extends StatefulWidget {
   final int initialIndex;
@@ -86,9 +88,27 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onMovieTap(Movie movie) {
+    // ★ Smart link ad — mở link ads trước, sau đó mới vào phim chi tiết
+    _showSmartLinkAd(() {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => MovieDetailScreen(movie: movie)),
+      );
+    });
+  }
+
+  /// Hiển thị smart link ad overlay — mở link ads rồi đóng để vào phim chi tiết
+  void _showSmartLinkAd(VoidCallback onComplete) {
+    const smartLinkUrl = 'https://widthwidowzoology.com/ttkzjh3i57?key=dea4ef75a05c9984a67e833b38ac5695';
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => MovieDetailScreen(movie: movie)),
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => _SmartLinkAdScreen(
+          url: smartLinkUrl,
+          onComplete: onComplete,
+        ),
+      ),
     );
   }
 
@@ -551,6 +571,110 @@ class _ContinueWatchingCard extends StatelessWidget {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Smart link ad screen — mở link ads trước khi vào phim chi tiết
+class _SmartLinkAdScreen extends StatefulWidget {
+  final String url;
+  final VoidCallback onComplete;
+
+  const _SmartLinkAdScreen({required this.url, required this.onComplete});
+
+  @override
+  State<_SmartLinkAdScreen> createState() => _SmartLinkAdScreenState();
+}
+
+class _SmartLinkAdScreenState extends State<_SmartLinkAdScreen> {
+  int _countdown = 5;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() {
+          _countdown--;
+          if (_countdown <= 0) {
+            timer.cancel();
+            _goToMovie();
+          }
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _goToMovie() {
+    _timer?.cancel();
+    if (mounted) {
+      widget.onComplete();
+      Navigator.pop(context);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          // WebView hiển thị smart link
+          InAppWebView(
+            initialUrlRequest: URLRequest(url: WebUri(widget.url)),
+            initialSettings: InAppWebViewSettings(
+              javaScriptEnabled: true,
+              useWideViewPort: true,
+              loadWithOverviewMode: true,
+              supportZoom: false,
+              builtInZoomControls: false,
+              displayZoomControls: false,
+            ),
+            onLoadStart: (_, __) {},
+            onLoadStop: (_, __) {},
+          ),
+          // Nút đóng + countdown ở góc trên
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 8,
+            right: 12,
+            child: GestureDetector(
+              onTap: _goToMovie,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black87,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_countdown > 0)
+                      Text(
+                        'Bỏ qua $_countdown',
+                        style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600),
+                      )
+                    else
+                      const Text(
+                        'Bỏ qua',
+                        style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                      ),
+                    const SizedBox(width: 6),
+                    const Icon(Icons.close, color: Colors.white70, size: 16),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
