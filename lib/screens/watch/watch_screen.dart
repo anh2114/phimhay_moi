@@ -236,7 +236,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     // Normal flow — create new player
     // ★ Check if there's an existing player from mini-player mode
     if (PlayerHolder.isActive && PlayerHolder.player != null) {
-      // ★ REUSE existing player — không tạo mới
+      // ★ REUSE existing player — KHÔNG tạo mới
       _player = PlayerHolder.player;
       _videoController = PlayerHolder.videoController;
       _currentPosition = PlayerHolder.currentPosition;
@@ -250,6 +250,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       _isLoading = false;
       _playerTransferred = false;
       PlayerHolder.isInWatchScreen = true;
+      // ★ Đánh dấu seek cần thực hiện sau khi player ready
+      _seekCompleted = false;
+      _seekTargetTime = _currentPosition;
 
       _initPlayerStreams();
       _forceFullscreen = true;
@@ -260,6 +263,16 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             DeviceOrientation.landscapeRight,
           ]);
           SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+          // ★ FIX: Explicit seek sau 1 frame — đảm bảo video chạy đúng vị trí
+          if (_currentPosition > 5 && _player != null) {
+            _player!.seek(Duration(seconds: _currentPosition));
+            // ★ FIX: Đảm bảo play sau seek
+            Future.delayed(const Duration(milliseconds: 500), () {
+              if (mounted && _player != null && !_isPlaying) {
+                _player!.play();
+              }
+            });
+          }
         }
       });
       setState(() {});
