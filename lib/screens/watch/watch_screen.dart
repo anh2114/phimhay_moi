@@ -1278,6 +1278,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   void _exitMiniPlayer() {
     setState(() {
       _isMiniPlayerMode = false;
+      _dragOffset = 0;        // ★ Reset drag — video về đúng vị trí
+      _isDraggingDown = false;
     });
     _forceFullscreen = true;
     SystemChrome.setPreferredOrientations([
