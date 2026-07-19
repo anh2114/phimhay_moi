@@ -292,6 +292,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       });
       setState(() {});
       _setupPiPListener();
+      // ★ VẪN fetch episodes để có server/episode data cho UI
+      _fetchEpisodes().then((_) {
+        debugPrint('[WatchScreen] _fetchEpisodes done: servers=${_servers.length}, serverSources=${_serverSources.length}');
+        if (mounted) setState(() {});
+      });
+      _loadWatchProgress();
       return;
     }
 
