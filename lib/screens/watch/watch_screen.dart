@@ -1324,10 +1324,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (!_seekCompleted && _seekTargetTime > 0 && (pos.inSeconds - _seekTargetTime).abs() <= 3) {
         _seekCompleted = true;
         _seekRetryTimer?.cancel();
-        // Ensure playing after seek completes
-        if (!_isPlaying) {
-          _player?.play();
-        }
+        // ★ FIX: LUÔN play sau seek — không check _isPlaying (có thể stale)
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted && _player != null && !_isPlaying) {
+            _player!.play();
+          }
+        });
       }
 
       // ★ Subtitle cần update nhanh (mỗi frame) để ẩn đúng lúc khi cue kết thúc
@@ -1496,6 +1498,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (targetPosition > 0 && !_seekCompleted) {
         _seekTargetTime = targetPosition;
         _performSeekRetry(targetPosition);
+        // ★ FIX: Force play sau seek — đảm bảo video chạy
+        Future.delayed(const Duration(milliseconds: 1000), () {
+          if (mounted && _player != null) {
+            _player!.play();
+          }
+        });
       }
 
       // ★ FIX: Safety net — seek lại sau 1 frame nếu vẫn chưa seek xong
@@ -1507,6 +1515,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           }
         });
       }
+
+      // ★ FIX: Force play sau 2s — backup cho mọi trường hợp
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted && _player != null && !_isPlaying) {
+          _player!.play();
+        }
+      });
 
       // Pre-buffer PiP player trên iOS
       if (Platform.isIOS && _playerMode == _PlayerMode.hls) {
@@ -1599,10 +1614,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         }
       }
       _seekCompleted = true;
-      // ★ FIX: Đảm bảo play sau seek
-      if (!_isPlaying) {
-        _player!.play();
-      }
+      // ★ FIX: LUÔN force play sau seek — không check _isPlaying
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted && _player != null) {
+          _player!.play();
+        }
+      });
     });
   }
 
