@@ -23,6 +23,7 @@ class PlayerHolder {
 
   static Timer? _updateTimer;
   static VoidCallback? _onUpdate;
+  static VoidCallback? _onStateChange;
 
   static void startPolling(VoidCallback onUpdate) {
     _onUpdate = onUpdate;
@@ -37,6 +38,16 @@ class PlayerHolder {
       }
       _onUpdate?.call();
     });
+  }
+
+  /// Register callback for immediate state changes (not polling)
+  static void onStateChange(VoidCallback? callback) {
+    _onStateChange = callback;
+  }
+
+  /// Trigger immediate rebuild of MiniPlayerOverlay
+  static void notifyStateChange() {
+    _onStateChange?.call();
   }
 
   static void stopPolling() {

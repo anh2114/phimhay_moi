@@ -23,11 +23,16 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> {
     PlayerHolder.startPolling(() {
       if (mounted) setState(() {});
     });
+    // ★ Listen for immediate state changes (not polling)
+    PlayerHolder.onStateChange(() {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
   void dispose() {
     PlayerHolder.stopPolling();
+    PlayerHolder.onStateChange(null);
     super.dispose();
   }
 
@@ -53,27 +58,26 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> {
     // ★ Đánh dấu TRƯỚC: overlay KHÔNG render Video
     PlayerHolder.isMiniPlayerMode = false;
     PlayerHolder.isInWatchScreen = true;
+    // ★ Force rebuild ngay lập tức — xóa Video widget TRƯỚC khi push WatchScreen
+    PlayerHolder.notifyStateChange();
 
-    // ★ FIX: Delay push WatchScreen 1 frame
-    // Đảm bảo MiniPlayerOverlay rebuild → xóa Video widget TRƯỚC
-    // Nếu push ngay → 2 Video widget render cùng lúc = duplicate video/audio
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (context.mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => WatchScreen(
-              movieId: movieId,
-              episodeId: epId,
-              serverIdx: sIdx,
-              movieSlug: slug,
-              movieTitle: title,
-              initialPosition: pos,
-            ),
+    // ★ FIX: Push ngay — MiniPlayerOverlay đã rebuild (Video removed)
+    // Không cần addPostFrameCallback nữa vì notifyStateChange đã force rebuild
+    if (context.mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => WatchScreen(
+            movieId: movieId,
+            episodeId: epId,
+            serverIdx: sIdx,
+            movieSlug: slug,
+            movieTitle: title,
+            initialPosition: pos,
           ),
-        );
-      }
-    });
+        ),
+      );
+    }
   }
 
   /// Close mini-player entirely
