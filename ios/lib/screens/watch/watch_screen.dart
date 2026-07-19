@@ -235,7 +235,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     // Normal flow — create new player
     // ★ Check if there's an existing player from mini-player mode
-    if (PlayerHolder.isActive && PlayerHolder.player != null) {
+    final hasExistingPlayer = PlayerHolder.isActive && PlayerHolder.player != null;
+    debugPrint('[WatchScreen initState] hasExistingPlayer=$hasExistingPlayer, isActive=${PlayerHolder.isActive}, player=${PlayerHolder.player != null}, isInWatch=${PlayerHolder.isInWatchScreen}');
+    if (hasExistingPlayer) {
       // ★ REUSE existing player — KHÔNG tạo mới
       _player = PlayerHolder.player;
       _videoController = PlayerHolder.videoController;
@@ -263,10 +265,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             DeviceOrientation.landscapeRight,
           ]);
           SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-          // ★ FIX: Explicit seek sau 1 frame — đảm bảo video chạy đúng vị trí
+          // ★ FIX: Explicit seek — đảm bảo video chạy đúng vị trí
           if (_currentPosition > 5 && _player != null) {
             _player!.seek(Duration(seconds: _currentPosition));
-            // ★ FIX: Đảm bảo play sau seek
             Future.delayed(const Duration(milliseconds: 500), () {
               if (mounted && _player != null && !_isPlaying) {
                 _player!.play();
@@ -280,6 +281,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       return;
     }
 
+    debugPrint('[WatchScreen initState] CREATING NEW PLAYER — _fetchEpisodes');
     _fetchEpisodes();
     _loadWatchProgress();
     _setupPiPListener();
@@ -1315,6 +1317,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   // ── Mini-player methods ──────────────────────────────
   void _enterMiniPlayer() {
     _saveCurrentProgress();
+    debugPrint('[WatchScreen] _enterMiniPlayer: player=$_player, pos=$_currentPosition');
     // ★ Transfer player → PlayerHolder → pop WatchScreen
     // Player chạy tiếp trong MiniPlayerOverlay ở App level
     PlayerHolder.takeFromWatchScreen(
@@ -1331,6 +1334,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       ep: _currentEpName,
       url: _currentUrl,
     );
+    debugPrint('[WatchScreen] After transfer: PlayerHolder.player=${PlayerHolder.player}, isActive=${PlayerHolder.isActive}');
     _playerTransferred = true;
 
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
