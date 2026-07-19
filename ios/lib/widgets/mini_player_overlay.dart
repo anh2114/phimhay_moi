@@ -50,23 +50,30 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> {
     final title = PlayerHolder.movieTitle;
     final pos = PlayerHolder.currentPosition;
 
-    // Đánh dấu player đang trong WatchScreen → overlay KHÔNG render Video
+    // ★ Đánh dấu TRƯỚC: overlay KHÔNG render Video
     PlayerHolder.isMiniPlayerMode = false;
     PlayerHolder.isInWatchScreen = true;
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => WatchScreen(
-          movieId: movieId,
-          episodeId: epId,
-          serverIdx: sIdx,
-          movieSlug: slug,
-          movieTitle: title,
-          initialPosition: pos,
-        ),
-      ),
-    );
+    // ★ FIX: Delay push WatchScreen 1 frame
+    // Đảm bảo MiniPlayerOverlay rebuild → xóa Video widget TRƯỚC
+    // Nếu push ngay → 2 Video widget render cùng lúc = duplicate video/audio
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (context.mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => WatchScreen(
+              movieId: movieId,
+              episodeId: epId,
+              serverIdx: sIdx,
+              movieSlug: slug,
+              movieTitle: title,
+              initialPosition: pos,
+            ),
+          ),
+        );
+      }
+    });
   }
 
   /// Close mini-player entirely
