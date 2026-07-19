@@ -1324,9 +1324,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (!_seekCompleted && _seekTargetTime > 0 && (pos.inSeconds - _seekTargetTime).abs() <= 3) {
         _seekCompleted = true;
         _seekRetryTimer?.cancel();
-        // ★ FIX: LUÔN play sau seek — không check _isPlaying (có thể stale)
-        Future.delayed(const Duration(milliseconds: 300), () {
-          if (mounted && _player != null && !_isPlaying) {
+        // ★ FIX: Chỉ play nếu player đang PAUSED (không phải buffering)
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted && _player != null && !_isPlaying && !_isBuffering) {
             _player!.play();
           }
         });
@@ -1498,16 +1498,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (targetPosition > 0 && !_seekCompleted) {
         _seekTargetTime = targetPosition;
         _performSeekRetry(targetPosition);
-        // ★ FIX: Force play sau seek — đảm bảo video chạy
-        Future.delayed(const Duration(milliseconds: 1000), () {
-          if (mounted && _player != null) {
-            _player!.play();
-          }
-        });
       }
 
       // ★ FIX: Safety net — seek lại sau 1 frame nếu vẫn chưa seek xong
-      // Đảm bảo position từ history/server switch luôn được apply
       if (targetPosition > 15) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && !_seekCompleted && _player != null && _currentPosition < targetPosition - 5) {
@@ -1515,13 +1508,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           }
         });
       }
-
-      // ★ FIX: Force play sau 2s — backup cho mọi trường hợp
-      Future.delayed(const Duration(seconds: 2), () {
-        if (mounted && _player != null && !_isPlaying) {
-          _player!.play();
-        }
-      });
 
       // Pre-buffer PiP player trên iOS
       if (Platform.isIOS && _playerMode == _PlayerMode.hls) {
@@ -1602,10 +1588,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _seekRetryTimer?.cancel();
     if (_seekCompleted || !mounted || _player == null) return;
 
-    _seekRetryTimer = Timer(const Duration(seconds: 2), () {
+    _seekRetryTimer = Timer(const Duration(seconds: 3), () {
       if (!mounted || _player == null || _seekCompleted) return;
       final diff = (_currentPosition - targetSec).abs();
-      if (diff > 3) {
+      if (diff > 5) {
         _player!.seek(Duration(seconds: targetSec));
         _seekRetryCount++;
         if (_seekRetryCount < _maxSeekRetries) {
@@ -1614,9 +1600,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         }
       }
       _seekCompleted = true;
-      // ★ FIX: LUÔN force play sau seek — không check _isPlaying
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (mounted && _player != null) {
+      // ★ FIX: Chỉ play nếu player đang PAUSED (không phải buffering)
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (mounted && _player != null && !_isPlaying && !_isBuffering) {
           _player!.play();
         }
       });
