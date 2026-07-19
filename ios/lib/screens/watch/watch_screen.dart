@@ -1917,49 +1917,21 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       });
     }
 
-    // ★ MINI-PLAYER MODE — video vẫn chạy, chỉ đổi layout
+    // ★ MINI-PLAYER MODE — YouTube-style floating card góc phải dưới
     if (_isMiniPlayerMode) {
       return Scaffold(
         backgroundColor: AppTheme.bg,
         body: SafeArea(
-          child: Column(
+          child: Stack(
             children: [
-              // Header
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                child: Row(
-                  children: [
-                    const Icon(Icons.play_circle_fill_rounded, color: AppTheme.accent, size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        widget.movieTitle ?? '',
-                        style: const TextStyle(color: AppTheme.textPrimary, fontSize: 15, fontWeight: FontWeight.w700),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    GestureDetector(
-                      onTap: () {
-                        _saveProgressOnExit();
-                        _player?.pause();
-                        _restoreOrientations();
-                        Navigator.pop(context);
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.1), shape: BoxShape.circle),
-                        child: const Icon(Icons.close_rounded, color: AppTheme.textMuted, size: 18),
-                      ),
-                    ),
-                  ],
-                ),
+              // Nội dung chính —空白 để user có thể navigate
+              const SizedBox.expand(),
+              // ★ Mini-player card — góc phải dưới
+              Positioned(
+                right: 12,
+                bottom: 70,
+                child: _buildMiniPlayerCard(),
               ),
-              const Divider(color: AppTheme.border, height: 0.5, thickness: 0.5),
-              // Episode grid
-              Expanded(child: _buildEpisodeGrid()),
-              // ★ MINI PLAYER BAR — cùng 1 player instance, không tạo mới
-              _buildInlineMiniPlayer(),
             ],
           ),
         ),
@@ -1998,70 +1970,59 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     );
   }
 
-  // ── Inline mini player — dùng CÙNG player instance ──
-  Widget _buildInlineMiniPlayer() {
-    final progress = _currentDur.inSeconds > 0
-        ? _currentPos.inSeconds / _currentDur.inSeconds
-        : 0.0;
-    final epClean = _currentEpName.replaceAll(RegExp(r'^[Tt]ậ?p?\s*', caseSensitive: false), '').trim();
-
+  // ── Mini-player card — YouTube-style floating card góc phải dưới ──
+  Widget _buildMiniPlayerCard() {
     return GestureDetector(
       onTap: _exitMiniPlayer,
       onVerticalDragEnd: (details) {
         if (details.velocity.pixelsPerSecond.dy < -300) _exitMiniPlayer();
       },
       child: Container(
-        height: 80,
+        width: 200,
         decoration: BoxDecoration(
           color: const Color(0xFF1A1C21),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 12, offset: const Offset(0, -4))],
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.6), blurRadius: 16, offset: const Offset(0, 4))],
         ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox(
-              height: 2,
-              child: LinearProgressIndicator(
-                value: progress.clamp(0.0, 1.0),
-                backgroundColor: Colors.white.withValues(alpha: 0.15),
-                valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.accent),
+            // ★ Video thumbnail/live — 16:9
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              child: SizedBox(
+                width: 200,
+                height: 112, // 200 * 9/16 = 112
+                child: _videoController != null
+                    ? Video(controller: _videoController!, key: const ValueKey('mini_player_card'), controls: NoVideoControls)
+                    : Container(color: Colors.black),
               ),
             ),
-            Expanded(
+            // ★ Controls row: rewind, play, forward
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  // ★ Video live — CÙNG _videoController, không tạo mới
-                  if (_videoController != null)
-                    SizedBox(
-                      width: 142, height: 78,
-                      child: Video(controller: _videoController!, key: const ValueKey('mini_player'), controls: NoVideoControls),
-                    )
-                  else
-                    Container(width: 142, height: 78, color: Colors.black),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(widget.movieTitle ?? '', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
-                          const SizedBox(height: 2),
-                          Text('Tập $epClean  •  ${_formatDuration(_currentPos)} / ${_formatDuration(_currentDur)}', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis),
-                          const SizedBox(height: 4),
-                          Row(children: [
-                            GestureDetector(
-                              onTap: () { if (_isPlaying) _player?.pause(); else _player?.play(); },
-                              child: Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 24),
-                            ),
-                            const SizedBox(width: 12),
-                            GestureDetector(onTap: _exitMiniPlayer, child: const Icon(Icons.fullscreen_rounded, color: Colors.white70, size: 20)),
-                          ]),
-                        ],
-                      ),
-                    ),
+                  GestureDetector(
+                    onTap: () { final target = max(0, _currentPosition - 10); _player?.seek(Duration(seconds: target)); },
+                    child: const Icon(Icons.replay_10_rounded, color: Colors.white70, size: 22),
+                  ),
+                  GestureDetector(
+                    onTap: () { if (_isPlaying) _player?.pause(); else _player?.play(); },
+                    child: Icon(_isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled, color: Colors.white, size: 32),
+                  ),
+                  GestureDetector(
+                    onTap: () { final target = _currentPosition + 10; _player?.seek(Duration(seconds: target)); },
+                    child: const Icon(Icons.forward_10_rounded, color: Colors.white70, size: 22),
                   ),
                 ],
               ),
+            ),
+            // Close button
+            GestureDetector(
+              onTap: _closeMiniPlayer,
+              child: const Padding(padding: EdgeInsets.only(bottom: 4), child: Icon(Icons.close_rounded, color: Colors.white38, size: 16)),
             ),
           ],
         ),
