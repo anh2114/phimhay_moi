@@ -18,7 +18,6 @@ import 'providers/collection_provider.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/splash/splash_screen.dart';
 import 'services/push_service.dart';
-import 'widgets/mini_player_overlay.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -104,16 +103,7 @@ class XiaoPhimApp extends StatelessWidget {
       title: 'Xiao Phim',
       theme: AppTheme.darkTheme,
       debugShowCheckedModeBanner: false,
-      home: SplashScreen(
-        child: Scaffold(
-          body: Stack(
-            children: [
-              const HomeScreen(),
-              const MiniPlayerOverlay(),
-            ],
-          ),
-        ),
-      ),
+      home: SplashScreen(child: const HomeScreen()),
       routes: {},
     );
   }

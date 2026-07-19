@@ -15,7 +15,6 @@ import 'package:phimhay_app/config/app_config.dart';
 import 'package:phimhay_app/config/theme.dart';
 import 'package:phimhay_app/config/responsive.dart';
 import 'package:phimhay_app/providers/auth_provider.dart';
-import 'package:phimhay_app/services/player_holder.dart';
 import 'package:phimhay_app/services/api_client.dart';
 import 'package:provider/provider.dart';
 import 'package:phimhay_app/services/movie_service.dart';
@@ -231,46 +230,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     if (widget.initialPosition > 0) {
       _currentPosition = widget.initialPosition;
-    }
-
-    // ★ Check if there's an existing player from mini-player mode
-    if (PlayerHolder.isActive && PlayerHolder.player != null) {
-      // ★ REUSE existing player — NO new player created
-      _player = PlayerHolder.player;
-      _videoController = PlayerHolder.videoController;
-      _currentPosition = PlayerHolder.currentPosition;
-      _currentDuration = PlayerHolder.currentDuration;
-      _isPlaying = PlayerHolder.isPlaying;
-      _currentEpId = PlayerHolder.episodeId;
-      _currentEpName = PlayerHolder.epName;
-      _currentUrl = PlayerHolder.currentUrl;
-      _selectedServer = PlayerHolder.serverIdx;
-      _playerReady = true;
-      _isLoading = false;
-      _playerTransferredToProvider = false; // WatchScreen owns the player now
-
-      // Clear holder
-      PlayerHolder.isMiniPlayerMode = false;
-      PlayerHolder.isActive = false;
-
-      // Setup streams on existing player
-      _initPlayerStreams();
-
-      // Force landscape fullscreen
-      _forceFullscreen = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          SystemChrome.setPreferredOrientations([
-            DeviceOrientation.landscapeLeft,
-            DeviceOrientation.landscapeRight,
-          ]);
-          SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-        }
-      });
-
-      setState(() {});
-      _setupPiPListener();
-      return; // ★ DON'T fetch episodes — already have them
     }
 
     // Normal flow — create new player
@@ -819,11 +778,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _subPlaying?.cancel();
     _subDuration?.cancel();
     _subCompleted?.cancel();
-    // ★ FIX: Không dispose player nếu đã transfer sang provider (mini-player)
-    if (!_playerTransferredToProvider) {
-      _player?.dispose();
-      _webController?.dispose();
-    }
+    _player?.dispose();
+    _webController?.dispose();
     _pipChannel.setMethodCallHandler(null);
     super.dispose();
   }
@@ -1299,7 +1255,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   double _dragOffset = 0;
   bool _isDraggingDown = false;
   double _dragStartY = 0;
-  bool _playerTransferredToProvider = false; // Player đã chuyển sang provider chưa
 
   void _cycleAspectRatio() {
     _aspectRatioIndex = (_aspectRatioIndex + 1) % _aspectRatios.length;
@@ -1309,38 +1264,22 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   // ── Mini-player methods ──────────────────────────────
   void _enterMiniPlayer() {
     _saveCurrentProgress();
-    // ★ Transfer player to static holder
-    PlayerHolder.player = _player;
-    PlayerHolder.videoController = _videoController;
-    PlayerHolder.isPlaying = _isPlaying;
-    PlayerHolder.currentPosition = _currentPosition;
-    PlayerHolder.currentDuration = _currentDuration;
-    PlayerHolder.movieId = widget.movieId;
-    PlayerHolder.movieTitle = widget.movieTitle ?? '';
-    PlayerHolder.movieSlug = widget.movieSlug ?? '';
-    PlayerHolder.episodeId = _currentEpId;
-    PlayerHolder.serverIdx = widget.serverIdx;
-    PlayerHolder.epName = _currentEpName;
-    PlayerHolder.currentUrl = _currentUrl;
-    PlayerHolder.isActive = true;
-    PlayerHolder.isMiniPlayerMode = true;
-
-    _playerTransferredToProvider = true;
-
+    // ★ KHÔNG pop WatchScreen — chỉ đổi layout
+    // Player vẫn chạy, video vẫn render, không tạo mới gì cả
+    setState(() {
+      _isMiniPlayerMode = true;
+      _showControls = false;
+    });
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     try { WakelockPlus.disable(); } catch (_) {}
-
-    Navigator.pop(context);
   }
 
   void _exitMiniPlayer() {
     setState(() {
       _isMiniPlayerMode = false;
-      _dragOffset = 0;
-      _isDraggingDown = false;
     });
-    // Quay lại landscape fullscreen
+    _forceFullscreen = true;
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
@@ -1964,7 +1903,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     final orientation = MediaQuery.of(context).orientation;
     final isLandscape = orientation == Orientation.landscape;
 
-    // Auto fullscreen khi xoay ngang - LUÔN giữ fullscreen
     if (isLandscape != _isLandscape) {
       _isLandscape = isLandscape;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1974,21 +1912,66 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       });
     }
 
+    // ★ MINI-PLAYER MODE — video vẫn chạy, chỉ đổi layout
+    if (_isMiniPlayerMode) {
+      return Scaffold(
+        backgroundColor: AppTheme.bg,
+        body: SafeArea(
+          child: Column(
+            children: [
+              // Header
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.play_circle_fill_rounded, color: AppTheme.accent, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        widget.movieTitle ?? '',
+                        style: const TextStyle(color: AppTheme.textPrimary, fontSize: 15, fontWeight: FontWeight.w700),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () {
+                        _saveProgressOnExit();
+                        _player?.pause();
+                        _restoreOrientations();
+                        Navigator.pop(context);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.1), shape: BoxShape.circle),
+                        child: const Icon(Icons.close_rounded, color: AppTheme.textMuted, size: 18),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(color: AppTheme.border, height: 0.5, thickness: 0.5),
+              // Episode grid
+              Expanded(child: _buildEpisodeGrid()),
+              // ★ MINI PLAYER BAR — cùng 1 player instance, không tạo mới
+              _buildInlineMiniPlayer(),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // ★ FULLSCREEN MODE — bình thường
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
-        top: false,
-        left: false,
-        right: false,
-        bottom: false,
+        top: false, left: false, right: false, bottom: false,
         child: WillPopScope(
           onWillPop: () async {
-            // Back button → mini-player thay vì close
             _enterMiniPlayer();
             return false;
           },
           child: Stack(children: [
-            // ★ Drag-to-minimize gesture wrapper
             Positioned.fill(
               child: GestureDetector(
                 onVerticalDragStart: _onMiniDragStart,
@@ -2005,6 +1988,77 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               ),
             ),
           ]),
+        ),
+      ),
+    );
+  }
+
+  // ── Inline mini player — dùng CÙNG player instance ──
+  Widget _buildInlineMiniPlayer() {
+    final progress = _currentDur.inSeconds > 0
+        ? _currentPos.inSeconds / _currentDur.inSeconds
+        : 0.0;
+    final epClean = _currentEpName.replaceAll(RegExp(r'^[Tt]ậ?p?\s*', caseSensitive: false), '').trim();
+
+    return GestureDetector(
+      onTap: _exitMiniPlayer,
+      onVerticalDragEnd: (details) {
+        if (details.velocity.pixelsPerSecond.dy < -300) _exitMiniPlayer();
+      },
+      child: Container(
+        height: 80,
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1C21),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 12, offset: const Offset(0, -4))],
+        ),
+        child: Column(
+          children: [
+            SizedBox(
+              height: 2,
+              child: LinearProgressIndicator(
+                value: progress.clamp(0.0, 1.0),
+                backgroundColor: Colors.white.withValues(alpha: 0.15),
+                valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.accent),
+              ),
+            ),
+            Expanded(
+              child: Row(
+                children: [
+                  // ★ Video live — CÙNG _videoController, không tạo mới
+                  if (_videoController != null)
+                    SizedBox(
+                      width: 142, height: 78,
+                      child: Video(controller: _videoController!, controls: NoVideoControls),
+                    )
+                  else
+                    Container(width: 142, height: 78, color: Colors.black),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(widget.movieTitle ?? '', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+                          const SizedBox(height: 2),
+                          Text('Tập $epClean  •  ${_formatDuration(_currentPos)} / ${_formatDuration(_currentDur)}', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis),
+                          const SizedBox(height: 4),
+                          Row(children: [
+                            GestureDetector(
+                              onTap: () { if (_isPlaying) _player?.pause(); else _player?.play(); },
+                              child: Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 24),
+                            ),
+                            const SizedBox(width: 12),
+                            GestureDetector(onTap: _exitMiniPlayer, child: const Icon(Icons.fullscreen_rounded, color: Colors.white70, size: 20)),
+                          ]),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
