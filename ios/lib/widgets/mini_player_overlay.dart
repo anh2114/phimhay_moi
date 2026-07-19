@@ -40,39 +40,59 @@ class MiniPlayerOverlay extends StatelessWidget {
           right: 0,
           child: GestureDetector(
             onTap: () {
-              // Tap → fullscreen
+              // ★ FIX: Remove Video widget TRƯỚC khi push WatchScreen
+              //.exitMiniPlayer → rebuild → Video removed → then push
+              final movieId = player.movieId;
+              final epId = player.episodeId;
+              final serverIdx = player.serverIdx;
+              final slug = player.movieSlug;
+              final title = player.movieTitle;
+              final pos = player.currentPosition;
               player.exitMiniPlayer();
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => WatchScreen(
-                    movieId: player.movieId,
-                    episodeId: player.episodeId,
-                    serverIdx: player.serverIdx,
-                    movieSlug: player.movieSlug,
-                    movieTitle: player.movieTitle,
-                    initialPosition: player.currentPosition,
-                  ),
-                ),
-              );
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (context.mounted) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => WatchScreen(
+                        movieId: movieId,
+                        episodeId: epId,
+                        serverIdx: serverIdx,
+                        movieSlug: slug,
+                        movieTitle: title,
+                        initialPosition: pos,
+                      ),
+                    ),
+                  );
+                }
+              });
             },
             onVerticalDragEnd: (details) {
               if (details.velocity.pixelsPerSecond.dy < -300) {
-                // Swipe up → fullscreen
+                final movieId = player.movieId;
+                final epId = player.episodeId;
+                final serverIdx = player.serverIdx;
+                final slug = player.movieSlug;
+                final title = player.movieTitle;
+                final pos = player.currentPosition;
                 player.exitMiniPlayer();
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => WatchScreen(
-                      movieId: player.movieId,
-                      episodeId: player.episodeId,
-                      serverIdx: player.serverIdx,
-                      movieSlug: player.movieSlug,
-                      movieTitle: player.movieTitle,
-                      initialPosition: player.currentPosition,
-                    ),
-                  ),
-                );
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (context.mounted) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => WatchScreen(
+                          movieId: movieId,
+                          episodeId: epId,
+                          serverIdx: serverIdx,
+                          movieSlug: slug,
+                          movieTitle: title,
+                          initialPosition: pos,
+                        ),
+                      ),
+                    );
+                  }
+                });
               }
             },
             child: Container(
