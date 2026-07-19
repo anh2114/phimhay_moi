@@ -1895,9 +1895,17 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             ],
           ),
         ),
-        // Title + Chips — 3px dưới buttons
+        // ★ Xem tiếp button — hiển thị khi có watch progress
+        if (_watchProgress != null) ...[
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _buildResumeBanner(movie),
+          ),
+        ],
+        // Title + Chips — 10px dưới buttons/xem tiếp
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 3, 20, 0),
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,

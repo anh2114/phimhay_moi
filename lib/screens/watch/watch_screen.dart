@@ -1453,6 +1453,16 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         _performSeekRetry(targetPosition);
       }
 
+      // ★ FIX: Safety net — seek lại sau 1 frame nếu vẫn chưa seek xong
+      // Đảm bảo position từ history/server switch luôn được apply
+      if (targetPosition > 15) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && !_seekCompleted && _player != null && _currentPosition < targetPosition - 5) {
+            _player!.seek(Duration(seconds: targetPosition));
+          }
+        });
+      }
+
       // Pre-buffer PiP player trên iOS
       if (Platform.isIOS && _playerMode == _PlayerMode.hls) {
         final pipUrl = playUrl.contains('hls_proxy.php') ? playUrl : AppConfig.proxyHlsFullUrl(playUrl);
@@ -1504,10 +1514,15 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     return 0.0;
   }
 
-  /// ★ Seek — 1 lần ngay + 1 lần retry sau 2s nếu chưa tới target
+  /// ★ Seek — multiple retries until position is reached
+  int _seekRetryCount = 0;
+  static const _maxSeekRetries = 5;
+
   void _performSeekRetry(int targetSec) {
     _seekRetryTimer?.cancel();
     if (_seekCompleted || !mounted || _player == null) return;
+
+    _seekRetryCount = 0;
 
     // ★ FIX: Đảm bảo volume restored trước khi seek
     final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
@@ -1519,11 +1534,24 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     // ★ FIX: Store target for stream-based seek completion detection
     _seekTargetTime = targetSec;
 
-    // Retry 1 lần sau 2s — nếu player đã buffer đủ thì seek sẽ work
+    // ★ FIX: Retry nhiều lần thay vì chỉ 1 lần — đảm bảo seek thành công
+    _doSeekRetry(targetSec);
+  }
+
+  void _doSeekRetry(int targetSec) {
+    _seekRetryTimer?.cancel();
+    if (_seekCompleted || !mounted || _player == null) return;
+
     _seekRetryTimer = Timer(const Duration(seconds: 2), () {
       if (!mounted || _player == null || _seekCompleted) return;
-      if ((_currentPosition - targetSec).abs() > 5) {
+      final diff = (_currentPosition - targetSec).abs();
+      if (diff > 3) {
         _player!.seek(Duration(seconds: targetSec));
+        _seekRetryCount++;
+        if (_seekRetryCount < _maxSeekRetries) {
+          _doSeekRetry(targetSec);
+          return;
+        }
       }
       _seekCompleted = true;
       // ★ FIX: Đảm bảo play sau seek
@@ -2468,7 +2496,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     if (nextEp == null) return const SizedBox.shrink();
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => _switchEpisode(nextEp),
+      onTap: () => _switchEpisode(nextEp, keepPosition: true),
       child: const Padding(
         padding: EdgeInsets.symmetric(horizontal: 4),
         child: AppSvgIcon('skip-forward.svg', size: 20, color: Colors.white),
@@ -2511,7 +2539,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         },
         onEpisodeSelected: (ep) {
           Navigator.pop(context);
-          _switchEpisode(ep, keepPosition: _isLandscape);
+          // ★ FIX: Luôn giữ position khi chọn tập từ fullscreen sheet
+          // Sheet này chỉ mở từ landscape, nên LUÔN preserve position
+          _switchEpisode(ep, keepPosition: true);
         },
       ),
       transitionsBuilder: (_, a, __, child) {
@@ -2633,7 +2663,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               return GestureDetector(
                 onTap: () {
                   Navigator.pop(ctx);
-                  _switchEpisode(ep, keepPosition: _isLandscape);
+                  // ★ FIX: Luôn giữ position khi chọn tập
+                  _switchEpisode(ep, keepPosition: true);
                 },
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -3043,7 +3074,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         : _currentPos;
 
     return Container(
-      padding: const EdgeInsets.only(left: 14, right: 14, bottom: 12, top: 16),
+      padding: const EdgeInsets.only(left: 14, right: 14, bottom: 22, top: 16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -4551,156 +4582,138 @@ class _EpisodeFullscreenSheetState extends State<_EpisodeFullscreenSheet> {
                         ],
                       ),
                     ),
-                    // Server sources (Server#1, Server#2...)
+                    // Server sources + sub-servers — compact single area
                     if (_serverSources.isNotEmpty)
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: List.generate(_serverSources.length > 3 ? 3 : _serverSources.length, (index) {
-                            final isActive = index == _selectedSource;
-                            final sourceLabel = (_serverSources[index]['name'] ?? '').toString();
-                            final servers = _serverSources[index]['servers'] as List<dynamic>;
+                        padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Tier 1: Server sources (Server#1, Server#2...)
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: List.generate(_serverSources.length > 3 ? 3 : _serverSources.length, (index) {
+                                final isActive = index == _selectedSource;
+                                final sourceLabel = (_serverSources[index]['name'] ?? '').toString();
+                                final servers = _serverSources[index]['servers'] as List<dynamic>;
 
-                            // Build summary: TM.23 / PĐ.32
-                            final summaryParts = <String>[];
-                            for (final s in servers) {
-                              final sName = (s['server_name'] ?? '').toString();
-                              final epCount = (s['episodes'] as List<dynamic>?)?.length ?? 0;
-                              summaryParts.add('${_serverTypeLabel(sName)}.$epCount');
-                            }
-                            final summary = summaryParts.join(' / ');
+                                // Build summary: TM.20 / PĐ.20
+                                final summaryParts = <String>[];
+                                for (final s in servers) {
+                                  final sName = (s['server_name'] ?? '').toString();
+                                  final epCount = (s['episodes'] as List<dynamic>?)?.length ?? 0;
+                                  summaryParts.add('${_serverTypeLabel(sName)}.$epCount');
+                                }
+                                final summary = summaryParts.join(' / ');
 
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: GestureDetector(
-                                onTap: () {
-                                  setState(() {
-                                    _selectedSource = index;
-                                    _selectedSourceServer = 0;
-                                    _epPage = 1;
-                                    final srcServers = _serverSources[index]['servers'] as List<dynamic>;
-                                    if (srcServers.isNotEmpty) {
-                                      final newIdx = widget.servers.indexOf(srcServers.first);
-                                      if (newIdx >= 0) {
-                                        _selectedServer = newIdx;
-                                        widget.onServerChanged(newIdx);
-                                      }
-                                    }
-                                  });
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: isActive ? const Color(0xFFF5E6B8) : Colors.white.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: isActive ? const Color(0xFFF5E6B8) : Colors.white.withValues(alpha: 0.2),
-                                    ),
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      Text(
-                                        sourceLabel,
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      setState(() {
+                                        _selectedSource = index;
+                                        _selectedSourceServer = 0;
+                                        _epPage = 1;
+                                        final srcServers = _serverSources[index]['servers'] as List<dynamic>;
+                                        if (srcServers.isNotEmpty) {
+                                          final newIdx = widget.servers.indexOf(srcServers.first);
+                                          if (newIdx >= 0) {
+                                            _selectedServer = newIdx;
+                                            widget.onServerChanged(newIdx);
+                                          }
+                                        }
+                                      });
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: isActive ? const Color(0xFFF5E6B8) : Colors.white.withValues(alpha: 0.1),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                          color: isActive ? const Color(0xFFF5E6B8) : Colors.white.withValues(alpha: 0.2),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        '$sourceLabel  $summary',
                                         style: TextStyle(
                                           color: isActive ? const Color(0xFF1A1100) : Colors.white,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w700,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
                                         ),
                                       ),
-                                      const SizedBox(height: 1),
-                                      Text(
-                                        summary,
-                                        style: TextStyle(
-                                          color: isActive ? const Color(0xFF1A1100).withValues(alpha: 0.6) : Colors.white54,
-                                          fontSize: 10,
+                                    ),
+                                  ),
+                                );
+                              }),
+                            ),
+                            // Tier 2: Sub-servers (Thuyết Minh, Vietsub...)
+                            if (_selectedSource < _serverSources.length)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: List.generate(
+                                    (_serverSources[_selectedSource]['servers'] as List<dynamic>).length > 2
+                                        ? 2
+                                        : (_serverSources[_selectedSource]['servers'] as List<dynamic>).length,
+                                    (i) {
+                                      final servers = _serverSources[_selectedSource]['servers'] as List<dynamic>;
+                                      final server = servers[i];
+                                      final sName = (server['server_name'] ?? '').toString();
+                                      final serverSource = (server['source'] ?? '').toString();
+                                      final epCount = (server['episodes'] as List<dynamic>?)?.length ?? 0;
+
+                                      int serverIdx = -1;
+                                      for (int j = 0; j < widget.servers.length; j++) {
+                                        if (widget.servers[j]['server_name'] == sName && widget.servers[j]['source'] == serverSource) {
+                                          serverIdx = j;
+                                          break;
+                                        }
+                                      }
+                                      final isActive = serverIdx == _selectedServer;
+
+                                      return Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 3),
+                                        child: GestureDetector(
+                                          onTap: () {
+                                            if (serverIdx >= 0 && serverIdx != _selectedServer) {
+                                              setState(() {
+                                                _selectedServer = serverIdx;
+                                                _selectedSourceServer = i;
+                                                _epPage = 1;
+                                              });
+                                              widget.onServerChanged(serverIdx);
+                                            }
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                                            decoration: BoxDecoration(
+                                              color: isActive ? const Color(0xFFF5E6B8) : Colors.white.withValues(alpha: 0.1),
+                                              borderRadius: BorderRadius.circular(6),
+                                              border: Border.all(
+                                                color: isActive ? const Color(0xFFF5E6B8) : Colors.white.withValues(alpha: 0.2),
+                                              ),
+                                            ),
+                                            child: Text(
+                                              '$sName ($epCount tập)',
+                                              style: TextStyle(
+                                                color: isActive ? const Color(0xFF1A1100) : Colors.white,
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      );
+                                    },
                                   ),
                                 ),
                               ),
-                            );
-                          }),
-                        ),
-                      ),
-                    // Server names within source
-                    if (_serverSources.isNotEmpty && _selectedSource < _serverSources.length)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: List.generate(
-                            (_serverSources[_selectedSource]['servers'] as List<dynamic>).length > 2
-                                ? 2
-                                : (_serverSources[_selectedSource]['servers'] as List<dynamic>).length,
-                            (i) {
-                              final servers = _serverSources[_selectedSource]['servers'] as List<dynamic>;
-                              final server = servers[i];
-                              final sName = (server['server_name'] ?? '').toString();
-                              final serverSource = (server['source'] ?? '').toString();
-                              final epCount = (server['episodes'] as List<dynamic>?)?.length ?? 0;
-
-                              int serverIdx = -1;
-                              for (int j = 0; j < widget.servers.length; j++) {
-                                if (widget.servers[j]['server_name'] == sName && widget.servers[j]['source'] == serverSource) {
-                                  serverIdx = j;
-                                  break;
-                                }
-                              }
-                              final isActive = serverIdx == _selectedServer;
-
-                              return Padding(
-                                padding: const EdgeInsets.only(right: 8),
-                                child: GestureDetector(
-                                  onTap: () {
-                                    if (serverIdx >= 0 && serverIdx != _selectedServer) {
-                                      setState(() {
-                                        _selectedServer = serverIdx;
-                                        _selectedSourceServer = i;
-                                        _epPage = 1;
-                                      });
-                                      widget.onServerChanged(serverIdx);
-                                    }
-                                  },
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                    decoration: BoxDecoration(
-                                      color: isActive ? const Color(0xFFF5E6B8) : Colors.white.withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color: isActive ? const Color(0xFFF5E6B8) : Colors.white.withValues(alpha: 0.2),
-                                      ),
-                                    ),
-                                    child: Column(
-                                      children: [
-                                        Text(
-                                          sName,
-                                          style: TextStyle(
-                                            color: isActive ? const Color(0xFF1A1100) : Colors.white,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 1),
-                                        Text(
-                                          '($epCount tập)',
-                                          style: TextStyle(
-                                            color: isActive ? const Color(0xFF1A1100).withValues(alpha: 0.6) : Colors.white54,
-                                            fontSize: 10,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
+                          ],
                         ),
                       ),
                     const Padding(
-                      padding: EdgeInsets.fromLTRB(24, 14, 24, 0),
+                      padding: EdgeInsets.fromLTRB(24, 8, 24, 0),
                       child: Divider(color: Colors.white12, height: 1),
                     ),
                     // Page chips

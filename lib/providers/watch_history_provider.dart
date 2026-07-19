@@ -11,6 +11,7 @@ class WatchHistoryMovie {
   final String posterUrl;
   final String type;
   final int episodeTotal;
+  final int episodeId;
   final String epName;
   final String epSlug;
   final int serverIdx;
@@ -28,6 +29,7 @@ class WatchHistoryMovie {
     required this.posterUrl,
     required this.type,
     required this.episodeTotal,
+    required this.episodeId,
     required this.epName,
     required this.epSlug,
     required this.serverIdx,
@@ -47,6 +49,7 @@ class WatchHistoryMovie {
       posterUrl: json['poster_url'] ?? '',
       type: json['type'] ?? '',
       episodeTotal: json['episode_total'] ?? 0,
+      episodeId: json['episode_id'] ?? 0,
       epName: json['ep_name'] ?? '',
       epSlug: json['ep_slug'] ?? '',
       serverIdx: json['server_idx'] ?? 0,

@@ -18,6 +18,7 @@ import '../../widgets/bottom_nav.dart';
 import '../../widgets/shimmer_loading.dart';
 import '../movie_detail/movie_detail_screen.dart';
 import '../search/search_screen.dart';
+import '../watch/watch_screen.dart';
 import '../list/list_screen.dart';
 import '../schedule/schedule_screen.dart';
 import '../profile/profile_screen.dart';
@@ -402,11 +403,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   return _ContinueWatchingCard(
                     item: cw,
                     onTap: () {
-                      final movie = cw.toMovie();
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => MovieDetailScreen(movie: movie),
+                          builder: (_) => WatchScreen(
+                            movieId: cw.movieId,
+                            episodeId: cw.episodeId > 0 ? cw.episodeId : 1,
+                            serverIdx: cw.serverIdx,
+                            movieSlug: cw.slug,
+                            movieTitle: cw.name,
+                            initialPosition: cw.position,
+                          ),
                         ),
                       );
                     },
