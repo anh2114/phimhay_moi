@@ -1925,7 +1925,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           child: Column(
             children: [
               // ★ Nội dung chính — HomeScreen (browse phim, tìm kiếm...)
-              Expanded(child: HomeScreen()),
+              Expanded(child: HomeScreen(showBottomNav: false)),
               // ★ MINI PLAYER BAR — cùng 1 player instance
               _buildInlineMiniPlayer(),
             ],
