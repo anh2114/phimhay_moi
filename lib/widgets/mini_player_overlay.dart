@@ -1,9 +1,11 @@
 import 'dart:math';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:phimhay_app/config/theme.dart';
 import 'package:phimhay_app/services/player_holder.dart';
+import 'package:phimhay_app/services/movie_service.dart';
 import 'package:phimhay_app/screens/watch/watch_screen.dart';
 import 'package:phimhay_app/main.dart'; // appNavigatorKey
 
@@ -17,24 +19,56 @@ class MiniPlayerOverlay extends StatefulWidget {
   State<MiniPlayerOverlay> createState() => _MiniPlayerOverlayState();
 }
 
-class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> {
+class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> with WidgetsBindingObserver {
+  final MovieService _movieService = MovieService();
+  Timer? _saveTimer;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     PlayerHolder.startPolling(() {
       if (mounted) setState(() {});
     });
-    // ★ Listen for immediate state changes (not polling)
     PlayerHolder.onStateChange(() {
       if (mounted) setState(() {});
+    });
+    _saveTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      _saveMiniPlayerProgress();
     });
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // ★ FIX: Lưu progress khi kill app hoặc pause
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      _saveMiniPlayerProgress();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     PlayerHolder.stopPolling();
     PlayerHolder.onStateChange(null);
+    _saveTimer?.cancel();
     super.dispose();
+  }
+
+  void _saveMiniPlayerProgress() {
+    if (!PlayerHolder.isActive || PlayerHolder.movieId <= 0 || PlayerHolder.player == null) return;
+    try {
+      PlayerHolder.currentPosition = PlayerHolder.player!.state.position.inSeconds;
+    } catch (_) {}
+    _movieService.saveWatchProgress(
+      movieId: PlayerHolder.movieId,
+      episodeId: PlayerHolder.episodeId is int ? PlayerHolder.episodeId : null,
+      serverIdx: PlayerHolder.serverIdx,
+      position: PlayerHolder.currentPosition,
+      duration: PlayerHolder.currentDuration,
+      sourceType: 'hls',
+      sourceUrl: PlayerHolder.currentUrl,
+    );
   }
 
   String _formatDuration(Duration d) {

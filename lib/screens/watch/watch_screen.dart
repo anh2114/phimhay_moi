@@ -609,8 +609,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   // ── Save watch progress định kỳ ────────────────────
   void _startProgressTimer() {
     _saveProgressTimer?.cancel();
-    // Lưu mỗi 5 giây thay vì 10 giây — giảm mất dữ liệu khi kill app
-    _saveProgressTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    // ★ FIX: Lưu mỗi 2 giây — giảm mất dữ liệu khi kill app
+    _saveProgressTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       _saveCurrentProgress();
     });
   }
