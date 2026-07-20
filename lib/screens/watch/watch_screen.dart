@@ -1607,10 +1607,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     });
 
     // Open (play) URL
-    // ★ FIX: Mở play: false → seek trước → rồi play → mượt hơn
+    // ★ FIX: Phim mới (targetPosition=0) → play:true để chạy ngay
+    // Phim cũ (targetPosition>0) → play:false → seek → play để mượt
+    final needSeekFirst = targetPosition > 0 && !_seekCompleted;
     _player!.open(
       Media(playUrl, httpHeaders: headers),
-      play: false,
+      play: !needSeekFirst, // Phim mới: play ngay; Phim cũ: seek trước
     ).then((_) {
       if (!mounted) return;
 
@@ -1620,19 +1622,18 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         _player!.setRate(_playbackSpeed);
       }
 
-      // Seek TRƯỚC rồi play — đảm bảo mượt
-      if (targetPosition > 0 && !_seekCompleted) {
+      if (needSeekFirst) {
+        // Phim cũ — seek trước rồi play
         _seekTargetTime = targetPosition;
         _player!.seek(Duration(seconds: targetPosition));
-        // Đợi 1s cho seek rồi play
-        Future.delayed(const Duration(milliseconds: 800), () {
+        Future.delayed(const Duration(milliseconds: 500), () {
           if (mounted && _player != null) {
             _player!.play();
             setState(() { _playerReady = true; _isLoading = false; });
           }
         });
       } else {
-        // Không cần seek → play ngay
+        // Phim mới — play ngay, không đợi
         _player!.play();
         setState(() { _playerReady = true; _isLoading = false; });
       }
