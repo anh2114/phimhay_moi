@@ -44,9 +44,8 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> {
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
-  /// Tap card → fullscreen WatchScreen (reuse player từ PlayerHolder)
+  /// Tap card → fullscreen WatchScreen
   void _goToFullscreen() {
-    // ★ FIX: Cho phép cả embed mode (player null nhưng có URL)
     if (!PlayerHolder.isActive) return;
     if (PlayerHolder.player == null && PlayerHolder.currentUrl.isEmpty) return;
 
@@ -57,36 +56,25 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> {
     final title = PlayerHolder.movieTitle;
     final pos = PlayerHolder.currentPosition;
 
-    // ★ Đánh dấu TRƯỚC: overlay KHÔNG render Video
+    // ★ Đánh dấu TRƯỚC — overlay ẩn đi
     PlayerHolder.isMiniPlayerMode = false;
     PlayerHolder.isInWatchScreen = true;
-    // ★ Force rebuild ngay lập tức — xóa Video widget TRƯỚC khi push WatchScreen
-    PlayerHolder.notifyStateChange();
 
-    // ★ Force rebuild ngay → xóa Video widget
-    PlayerHolder.notifyStateChange();
-
-    // ★ FIX: Đợi 2 frames — frame 1: MiniPlayerOverlay rebuild (xóa Video)
-    // frame 2: push WatchScreen (chỉ có 1 Video widget)
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => WatchScreen(
-                movieId: movieId,
-                episodeId: epId,
-                serverIdx: sIdx,
-                movieSlug: slug,
-                movieTitle: title,
-                initialPosition: pos,
-              ),
-            ),
-          );
-        }
-      });
-    });
+    // ★ FIX: Push NGAY — không cần addPostFrameCallback
+    // Context vẫn mounted vì overlay đang render
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => WatchScreen(
+          movieId: movieId,
+          episodeId: epId,
+          serverIdx: sIdx,
+          movieSlug: slug,
+          movieTitle: title,
+          initialPosition: pos,
+        ),
+      ),
+    );
   }
 
   /// Close mini-player entirely
