@@ -625,56 +625,62 @@ class _SmartLinkAdScreenState extends State<_SmartLinkAdScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          // WebView hiển thị smart link
-          InAppWebView(
-            initialUrlRequest: URLRequest(url: WebUri(widget.url)),
-            initialSettings: InAppWebViewSettings(
-              javaScriptEnabled: true,
-              useWideViewPort: true,
-              loadWithOverviewMode: true,
-              supportZoom: false,
-              builtInZoomControls: false,
-              displayZoomControls: false,
-            ),
-            onLoadStart: (_, __) {},
-            onLoadStop: (_, __) {},
-          ),
-          // Nút đóng + countdown ở góc trên
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 8,
-            right: 12,
-            child: GestureDetector(
-              onTap: _goToMovie,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.black87,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white24),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (_countdown > 0)
+      body: SafeArea(
+        child: Column(
+          children: [
+            // ★ Header bar với countdown + nút đóng — PHẢI ở TRÊN WebView
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              color: Colors.black87,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Countdown
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.info_outline, color: Colors.white54, size: 16),
+                      const SizedBox(width: 6),
                       Text(
-                        'Bỏ qua $_countdown',
-                        style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600),
-                      )
-                    else
-                      const Text(
-                        'Bỏ qua',
-                        style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                        _countdown > 0 ? 'Nội dung quảng cáo ($_countdown)s' : 'Quảng cáo',
+                        style: const TextStyle(color: Colors.white70, fontSize: 13),
                       ),
-                    const SizedBox(width: 6),
-                    const Icon(Icons.close, color: Colors.white70, size: 16),
-                  ],
+                    ],
+                  ),
+                  // Nút Bỏ qua
+                  GestureDetector(
+                    onTap: _goToMovie,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF5C84C),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        _countdown > 0 ? 'Bỏ qua' : 'Vào xem',
+                        style: const TextStyle(color: Color(0xFF1A1100), fontSize: 13, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // WebView — Flex để chiếm phần còn lại
+            Expanded(
+              child: InAppWebView(
+                initialUrlRequest: URLRequest(url: WebUri(widget.url)),
+                initialSettings: InAppWebViewSettings(
+                  javaScriptEnabled: true,
+                  useWideViewPort: true,
+                  loadWithOverviewMode: true,
+                  supportZoom: false,
+                  builtInZoomControls: false,
+                  displayZoomControls: false,
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
