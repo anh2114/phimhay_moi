@@ -46,7 +46,9 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> {
 
   /// Tap card → fullscreen WatchScreen (reuse player từ PlayerHolder)
   void _goToFullscreen() {
-    if (!PlayerHolder.isActive || PlayerHolder.player == null) return;
+    // ★ FIX: Cho phép cả embed mode (player null nhưng có URL)
+    if (!PlayerHolder.isActive) return;
+    if (PlayerHolder.player == null && PlayerHolder.currentUrl.isEmpty) return;
 
     final movieId = PlayerHolder.movieId;
     final epId = PlayerHolder.episodeId;
