@@ -110,7 +110,7 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> {
 
     return Positioned(
       right: 12,
-      bottom: 70, // 10px trên BottomNav (BottomNav ~60px)
+      bottom: 82, // Nâng lên cách mép trên BottomNav ~22px
       child: Material(
         color: Colors.transparent,
         child: GestureDetector(
