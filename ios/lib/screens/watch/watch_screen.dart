@@ -1501,8 +1501,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             _isBuffering = false;
             _userPaused = false;
             _isSeeking = false;
-            // ★ FIX: Ẩn loading khi video thực sự chạy
-            if (_isLoading) _isLoading = false;
           });
         }
       }
@@ -1609,38 +1607,27 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     });
 
     // Open (play) URL
-    // ★ FIX: Phim mới (targetPosition=0) → play:true để chạy ngay
-    // Phim cũ (targetPosition>0) → play:false → seek → play để mượt
-    final needSeekFirst = targetPosition > 0 && !_seekCompleted;
     _player!.open(
       Media(playUrl, httpHeaders: headers),
-      play: !needSeekFirst, // Phim mới: play ngay; Phim cũ: seek trước
+      play: true,
     ).then((_) {
       if (!mounted) return;
+      setState(() {
+        _playerReady = true;
+        _isLoading = false;
+      });
 
       final userVol = _isMuted ? 0.0 : (_volume > 0 ? _volume : 100.0);
       _player!.setVolume(userVol);
+
       if (_playbackSpeed != 1.0) {
         _player!.setRate(_playbackSpeed);
       }
 
-      if (needSeekFirst) {
-        // Phim cũ — seek trước rồi play
+      // Seek nếu có saved position
+      if (targetPosition > 0 && !_seekCompleted) {
         _seekTargetTime = targetPosition;
-        _player!.seek(Duration(seconds: targetPosition));
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (mounted && _player != null) {
-            _player!.play();
-            setState(() { _playerReady = true; _isLoading = false; });
-          }
-        });
-      } else {
-        // Phim mới — play ngay
-        _player!.play();
-        _playerReady = true;
-        // ★ FIX: KHÔNG set _isLoading = false ở đây
-        // Để playing stream listener xử lý khi video thực sự chạy
-        // Tránh video đơ vì loading ẩn quá sớm
+        _performSeekRetry(targetPosition);
       }
 
       // Pre-buffer PiP player trên iOS
