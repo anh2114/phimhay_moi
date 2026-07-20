@@ -6,10 +6,17 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 /// Bấm "Xem ngay" / chuyển tập / chuyển tab → hiện ad 5s
 class SmartLinkAd {
   static const String smartLinkUrl = 'https://widthwidowzoology.com/ttkzjh3i57?key=dea4ef75a05c9984a67e833b38ac5695';
+  static DateTime? _lastShown;
+  static const Duration _cooldown = Duration(seconds: 30);
 
-  /// Hiển thị smart link ad dialog
-  /// [onComplete] callback được gọi khi ad đóng (bấm Bỏ qua hoặc countdown xong)
+  /// Hiển thị smart link ad — có cooldown 30s
   static void show(BuildContext context, {required VoidCallback onComplete}) {
+    // ★ FIX: Cooldown 30s — sau khi gọi thì 30s mới gọi lại
+    if (_lastShown != null && DateTime.now().difference(_lastShown!) < _cooldown) {
+      onComplete();
+      return;
+    }
+    _lastShown = DateTime.now();
     int countdown = 5;
     Timer? timer;
 

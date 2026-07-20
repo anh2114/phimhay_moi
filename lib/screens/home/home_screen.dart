@@ -410,19 +410,21 @@ class _HomeScreenState extends State<HomeScreen> {
                   return _ContinueWatchingCard(
                     item: cw,
                     onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => WatchScreen(
-                            movieId: cw.movieId,
-                            episodeId: cw.episodeId > 0 ? cw.episodeId : 1,
-                            serverIdx: cw.serverIdx,
-                            movieSlug: cw.slug,
-                            movieTitle: cw.name,
-                            initialPosition: cw.position,
+                      SmartLinkAd.show(context, onComplete: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => WatchScreen(
+                              movieId: cw.movieId,
+                              episodeId: cw.episodeId > 0 ? cw.episodeId : 1,
+                              serverIdx: cw.serverIdx,
+                              movieSlug: cw.slug,
+                              movieTitle: cw.name,
+                              initialPosition: cw.position,
+                            ),
                           ),
-                        ),
-                      );
+                        );
+                      });
                     },
                     onRemove: () => watchProvider.removeFromHistory(cw.movieId),
                   );
