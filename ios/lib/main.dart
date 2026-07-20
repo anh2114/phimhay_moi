@@ -95,6 +95,9 @@ void pipMain() {
   runApp(const XiaoPhimApp());
 }
 
+// ★ Global navigator key — để MiniPlayerOverlay push routes từ bất kỳ đâu
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
+
 class XiaoPhimApp extends StatelessWidget {
   const XiaoPhimApp({super.key});
 
@@ -104,7 +107,7 @@ class XiaoPhimApp extends StatelessWidget {
       title: 'Xiao Phim',
       theme: AppTheme.darkTheme,
       debugShowCheckedModeBanner: false,
-      // ★ FIX: MiniPlayerOverlay ở trên TOÀN BỘ navigation stack
+      navigatorKey: appNavigatorKey,
       builder: (context, child) {
         return Stack(
           children: [

@@ -5,6 +5,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:phimhay_app/config/theme.dart';
 import 'package:phimhay_app/services/player_holder.dart';
 import 'package:phimhay_app/screens/watch/watch_screen.dart';
+import 'package:phimhay_app/main.dart'; // appNavigatorKey
 
 /// Persistent mini-player overlay — floating card góc phải dưới
 /// Luôn nằm ở Layer 2 của Root Stack, trên cùng tất cả nội dung
@@ -70,8 +71,8 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> {
     PlayerHolder.isInWatchScreen = true;
 
     debugPrint('[MiniOverlay] Pushing WatchScreen: movieId=$movieId, epId=$epId, pos=$pos');
-    Navigator.push(
-      context,
+    // ★ FIX: Dùng appNavigatorKey thay vì context — context không phải descendant của Navigator
+    appNavigatorKey.currentState!.push(
       MaterialPageRoute(
         builder: (_) => WatchScreen(
           movieId: movieId,
