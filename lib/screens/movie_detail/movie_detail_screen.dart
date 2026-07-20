@@ -32,6 +32,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:phimhay_app/screens/home/home_screen.dart';
 import 'package:phimhay_app/screens/watch_party/watch_party_screen.dart';
 import 'package:phimhay_app/screens/actors/actors_list_screen.dart';
+import 'package:phimhay_app/widgets/smart_link_ad.dart';
 
 
 class MovieDetailScreen extends StatefulWidget {
@@ -2664,20 +2665,22 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         ? widget.movieId
         : (widget.movie?.id ?? (_movieData?['id'] as int? ?? 0));
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => WatchScreen(
-          movieId:    movieId,
-          episodeId:  epId,
-          serverIdx:  _selectedServer,
-          streamUrl:  url,
-          movieSlug:  slug,
-          movieTitle: title,
-          startFullscreen: true,
+    SmartLinkAd.show(context, onComplete: () {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => WatchScreen(
+            movieId:    movieId,
+            episodeId:  epId,
+            serverIdx:  _selectedServer,
+            streamUrl:  url,
+            movieSlug:  slug,
+            movieTitle: title,
+            startFullscreen: true,
+          ),
         ),
-      ),
-    );
+      );
+    });
   }
 
   /// Fetch comments from server

@@ -11,6 +11,7 @@ import 'package:phimhay_app/models/movie.dart';
 import 'package:phimhay_app/services/image_cache_manager.dart';
 import 'package:phimhay_app/screens/movie_detail/movie_detail_screen.dart';
 import 'package:phimhay_app/widgets/svg_icon.dart';
+import 'package:phimhay_app/widgets/smart_link_ad.dart';
 
 class SearchScreen extends StatefulWidget {
   final bool isTab;
@@ -663,7 +664,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
           if (i == _results.length) return const Center(child: CircularProgressIndicator(color: AppTheme.gold, strokeWidth: 2));
           final m = _results[i];
           return GestureDetector(
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MovieDetailScreen(movie: m))),
+            onTap: () => SmartLinkAd.show(context, onComplete: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MovieDetailScreen(movie: m)))),
             child: _buildMovieCard(m),
           );
         },

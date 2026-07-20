@@ -21,6 +21,7 @@ import 'package:phimhay_app/screens/schedule/schedule_screen.dart';
 import 'package:phimhay_app/screens/list/list_screen.dart';
 import 'package:phimhay_app/widgets/bottom_nav.dart';
 import 'package:phimhay_app/providers/favorite_provider.dart';
+import 'package:phimhay_app/widgets/smart_link_ad.dart';
 
 
 class ProfileScreen extends StatefulWidget {
@@ -605,7 +606,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           final m = items[i]; final slug = m['slug']?.toString() ?? ''; final name = m['name']?.toString() ?? '';
           final thumb = m['thumb_url']?.toString() ?? ''; final quality = m['quality']?.toString() ?? '';
           return _glassTap(
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MovieDetailScreen(slug: slug))),
+            onTap: () => SmartLinkAd.show(context, onComplete: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MovieDetailScreen(slug: slug))),),
             child: SizedBox(width: 110, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Expanded(child: Stack(children: [
                 ClipRRect(borderRadius: BorderRadius.circular(8),

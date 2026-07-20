@@ -27,6 +27,7 @@ import '../watch_party/watch_party_screen.dart';
 import '../notification/notification_screen.dart';
 import '../actors/actors_list_screen.dart';
 import '../../widgets/collection_carousel.dart';
+import '../../widgets/smart_link_ad.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -88,108 +89,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onMovieTap(Movie movie) {
-    // ★ Smart link ad — mở link ads trước, sau đó mới vào phim chi tiết
-    _showSmartLinkAd(() {
+    SmartLinkAd.show(context, onComplete: () {
       Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => MovieDetailScreen(movie: movie)),
       );
-    });
-  }
-
-  /// Hiển thị smart link ad — mở link ads rồi đóng để vào phim chi tiết
-  void _showSmartLinkAd(VoidCallback onComplete) {
-    const smartLinkUrl = 'https://widthwidowzoology.com/ttkzjh3i57?key=dea4ef75a05c9984a67e833b38ac5695';
-    int countdown = 5;
-    Timer? timer;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            // Start countdown
-            timer?.cancel();
-            timer = Timer.periodic(const Duration(seconds: 1), (t) {
-              if (Navigator.of(dialogContext).canPop()) {
-                setDialogState(() {
-                  countdown--;
-                  if (countdown <= 0) {
-                    t.cancel();
-                    Navigator.of(dialogContext).pop();
-                    onComplete();
-                  }
-                });
-              } else {
-                t.cancel();
-              }
-            });
-
-            return Dialog(
-              backgroundColor: Colors.transparent,
-              insetPadding: EdgeInsets.zero,
-              child: Container(
-                width: double.infinity,
-                height: double.infinity,
-                color: Colors.black,
-                child: Column(
-                  children: [
-                    // Header với nút bỏ qua
-                    Container(
-                      padding: EdgeInsets.only(
-                        top: MediaQuery.of(context).padding.top + 8,
-                        left: 12, right: 12, bottom: 8,
-                      ),
-                      color: Colors.black87,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Quảng cáo', style: TextStyle(color: Colors.white54, fontSize: 13)),
-                          GestureDetector(
-                            onTap: () {
-                              timer?.cancel();
-                              Navigator.of(dialogContext).pop();
-                              onComplete();
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF5C84C),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                countdown > 0 ? 'Bỏ qua' : 'Vào xem',
-                                style: const TextStyle(color: Color(0xFF1A1100), fontSize: 13, fontWeight: FontWeight.w700),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    // WebView
-                    Expanded(
-                      child: InAppWebView(
-                        initialUrlRequest: URLRequest(url: WebUri(smartLinkUrl)),
-                        initialSettings: InAppWebViewSettings(
-                          javaScriptEnabled: true,
-                          useWideViewPort: true,
-                          loadWithOverviewMode: true,
-                          supportZoom: false,
-                          builtInZoomControls: false,
-                          displayZoomControls: false,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    ).then((_) {
-      timer?.cancel();
     });
   }
 

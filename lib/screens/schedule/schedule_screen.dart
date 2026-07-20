@@ -6,6 +6,7 @@ import '../../config/app_config.dart';
 import '../../config/theme.dart';
 import '../movie_detail/movie_detail_screen.dart';
 import '../../services/image_cache_manager.dart';
+import '../../widgets/smart_link_ad.dart';
 
 class ScheduleScreen extends StatefulWidget {
   final bool isTab;
@@ -305,9 +306,11 @@ class _ScheduleScreenState extends State<ScheduleScreen> with AutomaticKeepAlive
     return GestureDetector(
       onTap: () {
         if (movieId == null) return;
-        Navigator.push(context, MaterialPageRoute(
-          builder: (_) => MovieDetailScreen(movieId: movieId, slug: slug),
-        ));
+        SmartLinkAd.show(context, onComplete: () {
+          Navigator.push(context, MaterialPageRoute(
+            builder: (_) => MovieDetailScreen(movieId: movieId, slug: slug),
+          ));
+        });
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
