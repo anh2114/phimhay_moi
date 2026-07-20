@@ -16,6 +16,7 @@ import 'package:phimhay_app/config/theme.dart';
 import 'package:phimhay_app/config/responsive.dart';
 import 'package:phimhay_app/providers/auth_provider.dart';
 import 'package:phimhay_app/services/player_holder.dart';
+import 'package:phimhay_app/widgets/smart_link_ad.dart';
 import 'package:phimhay_app/services/api_client.dart';
 import 'package:provider/provider.dart';
 import 'package:phimhay_app/services/movie_service.dart';
@@ -2945,9 +2946,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         },
         onEpisodeSelected: (ep) {
           Navigator.pop(context);
-          // ★ FIX: Luôn giữ position khi chọn tập từ fullscreen sheet
-          // Sheet này chỉ mở từ landscape, nên LUÔN preserve position
-          _switchEpisode(ep, keepPosition: true);
+          SmartLinkAd.show(context, onComplete: () {
+            _switchEpisode(ep, keepPosition: true);
+          });
         },
       ),
       transitionsBuilder: (_, a, __, child) {
