@@ -97,8 +97,8 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> {
 
   @override
   Widget build(BuildContext context) {
-    // Không hiện nếu: chưa active, không ở mini mode, không có player, hoặc player đang trong WatchScreen
-    if (!PlayerHolder.isActive || !PlayerHolder.isMiniPlayerMode || PlayerHolder.player == null) {
+    // Không hiện nếu: chưa active, không ở mini mode, hoặc player đang trong WatchScreen
+    if (!PlayerHolder.isActive || !PlayerHolder.isMiniPlayerMode) {
       return const SizedBox.shrink();
     }
     if (PlayerHolder.isInWatchScreen) return const SizedBox.shrink();
