@@ -91,6 +91,8 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> {
   void _closeMiniPlayer() {
     PlayerHolder.player?.dispose();
     PlayerHolder.clear();
+    // ★ FIX: Force rebuild ngay → overlay ẩn
+    if (mounted) setState(() {});
   }
 
   @override
