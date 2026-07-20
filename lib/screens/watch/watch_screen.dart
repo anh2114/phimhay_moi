@@ -1607,37 +1607,34 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     });
 
     // Open (play) URL
+    // ★ FIX: Mở play: false → seek trước → rồi play → mượt hơn
     _player!.open(
       Media(playUrl, httpHeaders: headers),
-      play: true,
+      play: false,
     ).then((_) {
       if (!mounted) return;
-      setState(() {
-        _playerReady = true;
-        _isLoading = false;
-      });
 
       final userVol = _isMuted ? 0.0 : (_volume > 0 ? _volume : 100.0);
       _player!.setVolume(userVol);
-
-      // Restore playback speed
       if (_playbackSpeed != 1.0) {
         _player!.setRate(_playbackSpeed);
       }
 
-      // Seek TRƯỚC, rồi mới play — dùng _performSeekRetry
+      // Seek TRƯỚC rồi play — đảm bảo mượt
       if (targetPosition > 0 && !_seekCompleted) {
         _seekTargetTime = targetPosition;
-        _performSeekRetry(targetPosition);
-      }
-
-      // ★ FIX: Safety net — seek lại sau 1 frame nếu vẫn chưa seek xong
-      if (targetPosition > 15) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && !_seekCompleted && _player != null && _currentPosition < targetPosition - 5) {
-            _player!.seek(Duration(seconds: targetPosition));
+        _player!.seek(Duration(seconds: targetPosition));
+        // Đợi 1s cho seek rồi play
+        Future.delayed(const Duration(milliseconds: 800), () {
+          if (mounted && _player != null) {
+            _player!.play();
+            setState(() { _playerReady = true; _isLoading = false; });
           }
         });
+      } else {
+        // Không cần seek → play ngay
+        _player!.play();
+        setState(() { _playerReady = true; _isLoading = false; });
       }
 
       // Pre-buffer PiP player trên iOS

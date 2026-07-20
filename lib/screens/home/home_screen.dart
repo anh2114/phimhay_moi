@@ -103,14 +103,16 @@ class _HomeScreenState extends State<HomeScreen> {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
       }
-      // Home tab thi reload
       if (index == 0) {
         context.read<HomeProvider>().invalidateCache();
         context.read<HomeProvider>().fetchHome(filter: _chipToFilter(_selectedChip), forceRefresh: true);
       }
       return;
     }
-    setState(() => _navIndex = index);
+    // ★ Smart link ad khi chuyển tab
+    SmartLinkAd.show(context, onComplete: () {
+      setState(() => _navIndex = index);
+    });
   }
 
   void _onMoreTap(String href, String title) {
