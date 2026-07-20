@@ -1,17 +1,34 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:provider/provider.dart';
+import 'package:phimhay_app/providers/auth_provider.dart';
 
-/// Smart link ad dialog — hiện đại, dùng chung cho mọi screen
-/// Bấm "Xem ngay" / chuyển tập / chuyển tab → hiện ad 5s
+/// Smart link ad dialog — dùng chung cho mọi screen
+/// Admin = skip ad, user thường = hiện ad 5s
 class SmartLinkAd {
   static const String smartLinkUrl = 'https://widthwidowzoology.com/ttkzjh3i57?key=dea4ef75a05c9984a67e833b38ac5695';
   static DateTime? _lastShown;
   static const Duration _cooldown = Duration(seconds: 30);
 
-  /// Hiển thị smart link ad — có cooldown 30s
+  /// Kiểm tra user có phải admin không
+  static bool _isAdmin(BuildContext context) {
+    try {
+      final user = context.read<AuthProvider>().user;
+      return user != null && user['role']?.toString() == 'admin';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Hiển thị smart link ad — admin skip, cooldown 30s
   static void show(BuildContext context, {required VoidCallback onComplete}) {
-    // ★ FIX: Cooldown 30s — sau khi gọi thì 30s mới gọi lại
+    // ★ FIX: Admin skip ad
+    if (_isAdmin(context)) {
+      onComplete();
+      return;
+    }
+    // ★ FIX: Cooldown 30s
     if (_lastShown != null && DateTime.now().difference(_lastShown!) < _cooldown) {
       onComplete();
       return;
