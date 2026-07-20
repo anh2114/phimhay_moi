@@ -104,16 +104,16 @@ class XiaoPhimApp extends StatelessWidget {
       title: 'Xiao Phim',
       theme: AppTheme.darkTheme,
       debugShowCheckedModeBanner: false,
-      home: SplashScreen(
-        child: Scaffold(
-          body: Stack(
-            children: [
-              const HomeScreen(),
-              const MiniPlayerOverlay(),
-            ],
-          ),
-        ),
-      ),
+      // ★ FIX: MiniPlayerOverlay ở trên TOÀN BỘ navigation stack
+      builder: (context, child) {
+        return Stack(
+          children: [
+            child ?? const SizedBox.shrink(),
+            const MiniPlayerOverlay(),
+          ],
+        );
+      },
+      home: SplashScreen(child: const HomeScreen()),
       routes: {},
     );
   }
