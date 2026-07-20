@@ -1501,6 +1501,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             _isBuffering = false;
             _userPaused = false;
             _isSeeking = false;
+            // ★ FIX: Ẩn loading khi video thực sự chạy
+            if (_isLoading) _isLoading = false;
           });
         }
       }
@@ -1633,9 +1635,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           }
         });
       } else {
-        // Phim mới — play ngay, không đợi
+        // Phim mới — play ngay
         _player!.play();
-        setState(() { _playerReady = true; _isLoading = false; });
+        _playerReady = true;
+        // ★ FIX: KHÔNG set _isLoading = false ở đây
+        // Để playing stream listener xử lý khi video thực sự chạy
+        // Tránh video đơ vì loading ẩn quá sớm
       }
 
       // Pre-buffer PiP player trên iOS
