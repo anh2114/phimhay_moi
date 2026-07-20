@@ -646,14 +646,14 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           final pos = (m['position'] as int?) ?? 0;
           final epName = m['ep_name']?.toString() ?? '';
           return _glassTap(
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => WatchScreen(
+            onTap: () => SmartLinkAd.show(context, onComplete: () => Navigator.push(context, MaterialPageRoute(builder: (_) => WatchScreen(
               movieId: movieId,
               episodeId: episodeId > 0 ? episodeId : 1,
               serverIdx: serverIdx,
               movieSlug: slug,
               movieTitle: name,
               initialPosition: pos,
-            ))),
+            )))),
             child: SizedBox(width: 110, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Expanded(child: Stack(children: [
                 ClipRRect(borderRadius: BorderRadius.circular(8),
@@ -702,7 +702,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       itemBuilder: (_, i) {
         final m = favProvider.favorites[i]; final slug = m.slug; final name = m.name;
         final thumb = m.thumbUrl ?? ''; final quality = m.quality ?? ''; final year = m.year;
-        return _glassTap(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MovieDetailScreen(slug: slug))),
+        return _glassTap(onTap: () => SmartLinkAd.show(context, onComplete: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MovieDetailScreen(slug: slug)))),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Expanded(child: Stack(children: [
               ClipRRect(borderRadius: BorderRadius.circular(8),
@@ -736,14 +736,14 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       final serverIdx = (m['server_idx'] as int?) ?? 0;
       final pos = (m['position'] as int?) ?? 0; final last = _timeAgo(m['last_watched']?.toString());
       return _glassTap(
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => WatchScreen(
+        onTap: () => SmartLinkAd.show(context, onComplete: () => Navigator.push(context, MaterialPageRoute(builder: (_) => WatchScreen(
           movieId: movieId,
           episodeId: episodeId > 0 ? episodeId : 1,
           serverIdx: serverIdx,
           movieSlug: slug,
           movieTitle: name,
           initialPosition: pos,
-        ))),
+        )))),
         child: Container(margin: const EdgeInsets.only(bottom: 10), padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(color: AppTheme.bgCard, border: Border.all(color: AppTheme.border), borderRadius: BorderRadius.circular(12)),
           child: Row(children: [
@@ -792,7 +792,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Expanded(child: _glassTap(
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MovieDetailScreen(slug: movieSlug))),
+              onTap: () => SmartLinkAd.show(context, onComplete: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MovieDetailScreen(slug: movieSlug)))),
               child: Row(children: [
                 const Text('🎬 ', style: TextStyle(fontSize: 14)),
                 Expanded(child: Text(movieName, maxLines: 1, overflow: TextOverflow.ellipsis,
