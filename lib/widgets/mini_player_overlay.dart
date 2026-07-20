@@ -56,18 +56,13 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> {
     final title = PlayerHolder.movieTitle;
     final pos = PlayerHolder.currentPosition;
 
-    // ★ Đánh dấu TRƯỚC — overlay ẩn đi
+    // ★ Đánh dấu — overlay ẩn đi
     PlayerHolder.isMiniPlayerMode = false;
     PlayerHolder.isInWatchScreen = true;
 
-    // ★ FIX: Pop MovieDetailScreen TRƯỚC (nếu có), rồi mới push WatchScreen
-    // Tránh conflict navigation stack
-    final nav = Navigator.of(context);
-    if (nav.canPop()) {
-      nav.pop(); // Pop MovieDetailScreen hoặc screen trước đó
-    }
-
-    // Push WatchScreen SAU KHI pop
+    // ★ FIX: KHÔNG pop screen nào — chỉ push WatchScreen
+    // MiniPlayerOverlay ở App level → luôn trên cùng navigation
+    // WatchScreen push lên trên MovieDetailScreen hoặc HomeScreen đều được
     Navigator.push(
       context,
       MaterialPageRoute(
