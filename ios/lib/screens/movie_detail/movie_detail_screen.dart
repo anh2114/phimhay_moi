@@ -33,6 +33,7 @@ import 'package:phimhay_app/screens/home/home_screen.dart';
 import 'package:phimhay_app/screens/watch_party/watch_party_screen.dart';
 import 'package:phimhay_app/screens/actors/actors_list_screen.dart';
 import 'package:phimhay_app/widgets/smart_link_ad.dart';
+import 'package:phimhay_app/widgets/download_dialog.dart';
 
 
 class MovieDetailScreen extends StatefulWidget {
@@ -1144,6 +1145,35 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             icon: SvgPicture.asset('assets/images/icon_add.svg', width: 24, height: 24,
               colorFilter: const ColorFilter.mode(AppTheme.textPrimary, BlendMode.srcIn)),
             label: 'Thêm vào', onTap: () {},
+          ),
+          // Tải về — download cloud SVG
+          _actionCircle(
+            icon: SvgPicture.asset('assets/svg_phimchitiet/download-cloud-svgrepo-com.svg', width: 24, height: 24,
+              colorFilter: const ColorFilter.mode(AppTheme.textPrimary, BlendMode.srcIn)),
+            label: 'Tải về',
+            onTap: () {
+              if (_servers.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Đang tải dữ liệu phim...'), backgroundColor: Colors.orange, duration: Duration(seconds: 2)),
+                );
+                return;
+              }
+              final slug = movie.slug ?? (_movieData?['slug'] ?? '');
+              final title = movie.name ?? (_movieData?['name'] ?? '');
+              final thumb = movie.thumbUrl ?? (_movieData?['thumb_url'] ?? '');
+              final epType = (_movieData?['type'] ?? '').toString().toLowerCase();
+              final isSeries = epType.contains('series') || epType.contains('hoạt hình');
+              showDownloadDialog(
+                context: context,
+                movieId: movie.id,
+                movieName: title,
+                movieSlug: slug,
+                movieThumb: thumb,
+                servers: _servers.cast<Map<String, dynamic>>(),
+                serverSources: _serverSources.cast<Map<String, dynamic>>(),
+                isSeries: isSeries,
+              );
+            },
           ),
           // Đánh giá — mood SVG + badge
           _actionCircle(

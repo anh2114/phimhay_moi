@@ -19,6 +19,7 @@ import 'screens/home/home_screen.dart';
 import 'screens/splash/splash_screen.dart';
 import 'services/push_service.dart';
 import 'widgets/mini_player_overlay.dart';
+import 'services/download/download_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -67,6 +68,9 @@ void main() async {
 
   // Initialize activity tracking
   ActivityService.init();
+
+  // Initialize download service — load queue & resume pending downloads
+  DownloadService().loadQueue();
 
   // Pre-init auth — ensure user data loaded BEFORE app starts
   final authProvider = AuthProvider();

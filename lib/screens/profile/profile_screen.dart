@@ -22,6 +22,7 @@ import 'package:phimhay_app/screens/list/list_screen.dart';
 import 'package:phimhay_app/widgets/bottom_nav.dart';
 import 'package:phimhay_app/providers/favorite_provider.dart';
 import 'package:phimhay_app/widgets/smart_link_ad.dart';
+import 'package:phimhay_app/screens/download/download_manager_screen.dart';
 
 
 class ProfileScreen extends StatefulWidget {
@@ -519,6 +520,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       _TabDef('Tổng quan', Icons.dashboard_rounded, 'overview'),
       _TabDef('Yêu thích', Icons.favorite_rounded, 'favorites'),
       _TabDef('Lịch sử', Icons.history_rounded, 'history'),
+      _TabDef('Tải xuống', Icons.download_rounded, 'downloads'),
       _TabDef('Bình luận', Icons.chat_bubble_rounded, 'comments'),
       _TabDef('Cài đặt', Icons.settings_rounded, 'settings'),
       _TabDef('Bảo mật', Icons.shield_rounded, 'security'),
@@ -534,8 +536,23 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
 
   Widget _tabBtn(String label, IconData icon, String tab) {
     final active = _currentTab == tab;
+    VoidCallback? onTap;
+    if (tab == 'admin') {
+      onTap = () => _openAdminWebView();
+    } else if (tab == 'logout_action') {
+      onTap = _confirmLogout;
+    } else if (tab == 'downloads') {
+      onTap = () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const DownloadManagerScreen()),
+        );
+      };
+    } else {
+      onTap = () => _switchTab(tab);
+    }
     return _glassBtn(
-      tab == 'admin' ? () => _openAdminWebView() : (tab == 'logout_action' ? _confirmLogout : () => _switchTab(tab)),
+      onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8), // Giảm vertical padding từ 12 xuống 8
         decoration: BoxDecoration(

@@ -1105,6 +1105,15 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   // ── Fetch episodes ────────────────────────────────
   Future<void> _fetchEpisodes() async {
+    // ★ FIX: Nếu là local file (downloaded) → skip API, play directly
+    final streamUrl = (widget.streamUrl ?? '').trim();
+    final isLocalFile = streamUrl.isNotEmpty && !streamUrl.startsWith('http') &&
+        (streamUrl.endsWith('.ts') || streamUrl.endsWith('.mp4'));
+    if (isLocalFile) {
+      _initFallbackPlayer();
+      return;
+    }
+
     if (widget.movieId <= 0) {
       _initFallbackPlayer();
       return;
@@ -1161,10 +1170,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     if (url.isNotEmpty) {
       _currentUrl = url;
       final isM3u8 = url.contains('.m3u8');
-      if (isM3u8) {
+      final isLocalFile = !url.startsWith('http') && (url.endsWith('.ts') || url.endsWith('.mp4') || url.contains('.segments'));
+      if (isM3u8 || isLocalFile) {
         _initPlayer(url);
+        // _isLoading sẽ được set false trong _initPlayer's .then() callback
+      } else {
+        if (mounted) setState(() { _playerMode = _PlayerMode.embed; _isLoading = false; });
       }
-      if (mounted) setState(() { _playerMode = isM3u8 ? _PlayerMode.hls : _PlayerMode.embed; _isLoading = false; });
     } else {
       // Không có tập + không có streamUrl → load trang web phim (giống browser)
       final movieUrl = '${AppConfig.baseUrl}/phim/${widget.movieSlug ?? ''}';
@@ -1575,13 +1587,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     String playUrl = url;
 
-    // ★ Proxy m3u8 — CORS proxy (mobile only)
-    if (!kIsWeb && url.contains('.m3u8')) {
+    // ★ Proxy m3u8 — CORS proxy (mobile only) — skip for local files
+    final isLocalFile = !url.startsWith('http');
+    if (!kIsWeb && !isLocalFile && url.contains('.m3u8')) {
       playUrl = AppConfig.proxyM3u8Url(url);
     }
 
     final headers = <String, String>{};
-    if (!kIsWeb) {
+    if (!kIsWeb && !isLocalFile) {
       headers['Referer'] = AppConfig.baseUrl;
       headers['User-Agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
     }
