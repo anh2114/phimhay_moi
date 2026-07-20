@@ -46,8 +46,18 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> {
 
   /// Tap card → fullscreen WatchScreen
   void _goToFullscreen() {
-    if (!PlayerHolder.isActive) return;
-    if (PlayerHolder.player == null && PlayerHolder.currentUrl.isEmpty) return;
+    debugPrint('[MiniOverlay] _goToFullscreen called');
+    debugPrint('[MiniOverlay] isActive=${PlayerHolder.isActive}, player=${PlayerHolder.player != null}, url=${PlayerHolder.currentUrl.isNotEmpty}');
+    debugPrint('[MiniOverlay] isMiniPlayerMode=${PlayerHolder.isMiniPlayerMode}, isInWatch=${PlayerHolder.isInWatchScreen}');
+    
+    if (!PlayerHolder.isActive) {
+      debugPrint('[MiniOverlay] SKIP: isActive=false');
+      return;
+    }
+    if (PlayerHolder.player == null && PlayerHolder.currentUrl.isEmpty) {
+      debugPrint('[MiniOverlay] SKIP: player=null AND url=empty');
+      return;
+    }
 
     final movieId = PlayerHolder.movieId;
     final epId = PlayerHolder.episodeId;
@@ -56,13 +66,10 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> {
     final title = PlayerHolder.movieTitle;
     final pos = PlayerHolder.currentPosition;
 
-    // ★ Đánh dấu — overlay ẩn đi
     PlayerHolder.isMiniPlayerMode = false;
     PlayerHolder.isInWatchScreen = true;
 
-    // ★ FIX: KHÔNG pop screen nào — chỉ push WatchScreen
-    // MiniPlayerOverlay ở App level → luôn trên cùng navigation
-    // WatchScreen push lên trên MovieDetailScreen hoặc HomeScreen đều được
+    debugPrint('[MiniOverlay] Pushing WatchScreen: movieId=$movieId, epId=$epId, pos=$pos');
     Navigator.push(
       context,
       MaterialPageRoute(
