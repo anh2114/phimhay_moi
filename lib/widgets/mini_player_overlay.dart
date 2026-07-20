@@ -60,8 +60,14 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> {
     PlayerHolder.isMiniPlayerMode = false;
     PlayerHolder.isInWatchScreen = true;
 
-    // ★ FIX: Push NGAY — không cần addPostFrameCallback
-    // Context vẫn mounted vì overlay đang render
+    // ★ FIX: Pop MovieDetailScreen TRƯỚC (nếu có), rồi mới push WatchScreen
+    // Tránh conflict navigation stack
+    final nav = Navigator.of(context);
+    if (nav.canPop()) {
+      nav.pop(); // Pop MovieDetailScreen hoặc screen trước đó
+    }
+
+    // Push WatchScreen SAU KHI pop
     Navigator.push(
       context,
       MaterialPageRoute(
