@@ -267,6 +267,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       _playerReady = true;
       _isLoading = false;
       _playerTransferred = false;
+      _isReusingPlayer = true; // ★ FIX: Đánh dấu đang reuse → skip _initPlayer trong _initPlayerFromEpisode
       PlayerHolder.isInWatchScreen = true;
       _seekCompleted = false;
       _seekTargetTime = _currentPosition;
