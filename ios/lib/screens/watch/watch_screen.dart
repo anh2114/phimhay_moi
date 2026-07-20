@@ -1381,13 +1381,16 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   // ── Mini-player methods ──────────────────────────────
   void _enterMiniPlayer() {
     _saveCurrentProgress();
-    debugPrint('[WatchScreen] _enterMiniPlayer: player=$_player, pos=$_currentPosition');
+    // ★ FIX: Pause player TRƯỚC khi transfer — tránh 2 player cùng chạy audio
+    _player?.pause();
+    _webController?.evaluateJavascript(
+      source: "document.querySelector('video')?.pause();",
+    );
     // ★ Transfer player → PlayerHolder → pop WatchScreen
-    // Player chạy tiếp trong MiniPlayerOverlay ở App level
     PlayerHolder.takeFromWatchScreen(
       p: _player,
       vc: _videoController,
-      playing: _isPlaying,
+      playing: false, // Đã pause rồi
       pos: _currentPosition,
       dur: _currentDuration,
       mId: widget.movieId,
@@ -1398,7 +1401,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       ep: _currentEpName,
       url: _currentUrl,
     );
-    debugPrint('[WatchScreen] After transfer: PlayerHolder.player=${PlayerHolder.player}, isActive=${PlayerHolder.isActive}');
     _playerTransferred = true;
 
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);

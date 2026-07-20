@@ -99,6 +99,18 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> {
     }
     if (PlayerHolder.isInWatchScreen) return const SizedBox.shrink();
 
+    // ★ FIX: Resume playback khi mini-player hiện
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (PlayerHolder.player != null && !PlayerHolder.isPlaying) {
+        PlayerHolder.player!.play();
+        PlayerHolder.isPlaying = true;
+      }
+      // Resume embed player
+      if (PlayerHolder.player == null && PlayerHolder.currentUrl.isNotEmpty) {
+        // Embed mode — player sẽ được tạo khi push WatchScreen
+      }
+    });
+
     final videoCtrl = PlayerHolder.videoController;
     final pos = Duration(seconds: PlayerHolder.currentPosition);
     final dur = Duration(seconds: PlayerHolder.currentDuration);
