@@ -7,6 +7,7 @@ import '../../config/responsive.dart';
 import '../../models/movie.dart';
 import '../../widgets/movie_card.dart';
 import '../movie_detail/movie_detail_screen.dart';
+import '../../widgets/smart_link_ad.dart';
 
 class ListScreen extends StatefulWidget {
   final String type;
@@ -295,10 +296,10 @@ class _ListScreenState extends State<ListScreen> with AutomaticKeepAliveClientMi
                           final movie = _movies[index];
                           return MovieCard(
                             movie: movie,
-                            onTap: () => Navigator.push(
+                            onTap: () => SmartLinkAd.show(context, onComplete: () => Navigator.push(
                               context,
                               MaterialPageRoute(builder: (_) => MovieDetailScreen(movie: movie)),
-                            ),
+                            )),
                           );
                         },
                       ),
