@@ -110,7 +110,7 @@ class _BottomNavState extends State<BottomNav> {
         spacing: 8,
         horizontalPadding: 16,
         verticalPadding: 14,
-        indicatorColor: AppTheme.accent,
+        indicatorColor: Colors.black.withValues(alpha: 0.35),
         indicatorPinchStrength: 0.2,
         glowBlurRadius: 16,
         glowSpreadRadius: 4,
@@ -122,7 +122,7 @@ class _BottomNavState extends State<BottomNav> {
         tabs: List.generate(_tabs.length, (i) {
           final tab = _tabs[i];
           return GlassBottomBarTab(
-            glowColor: AppTheme.accent,
+            glowColor: Colors.black.withValues(alpha: 0.3),
             icon: (i == 3 && widget.avatarUrl != null && widget.avatarUrl!.isNotEmpty)
                 ? ClipOval(
                     child: CachedNetworkImage(
