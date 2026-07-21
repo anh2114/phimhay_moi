@@ -1475,10 +1475,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     try {
       final res = await _dio.get(
         '${AppConfig.apiUrl}/movie_detail.php',
-        queryParameters: {'movie_id': widget.movieId},
+        queryParameters: {'id': widget.movieId},
       );
       final data = res.data as Map<String, dynamic>;
-      final imdbId = (data['imdb_id'] ?? '').toString().trim();
+      // API returns { "movie": { "imdb_id": "..." } }
+      final movieData = data['movie'] as Map<String, dynamic>?;
+      final imdbId = (movieData?['imdb_id'] ?? '').toString().trim();
+      debugPrint('[IntroDB] imdb_id=$imdbId for movieId=${widget.movieId}');
       if (imdbId.isEmpty || imdbId == 'tt0000000') return;
 
       // Parse season/episode from episode name (e.g., "Tập 5" → episode=5)
@@ -1499,15 +1502,19 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         season = int.tryParse(seasonMatch.group(1)!) ?? 1;
       }
 
+      debugPrint('[IntroDB] calling API: imdb=$imdbId season=$season episode=$episode');
       final intro = await IntroService().getIntro(
         imdbId: imdbId,
         season: season,
         episode: episode,
       );
+      debugPrint('[IntroDB] result: $intro');
       if (mounted && intro != null) {
         setState(() => _introData = intro);
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[IntroDB] error: $e');
+    }
   }
 
   void _initPlayerStreams() {
