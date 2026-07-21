@@ -1000,22 +1000,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   Future<void> _enterPiP() async {
     try {
-      // Save current position first
-      await _saveCurrentProgress();
+      // Save current position first (fire-and-forget cho nhanh)
+      _saveCurrentProgress();
 
-      int position = 0;
+      int position = _currentPosition;
       String url = _currentUrl;
-
-      if (_playerMode == _PlayerMode.hls && _player != null) {
-        position = _currentPosition;
-      } else if (_playerMode == _PlayerMode.embed && _webController != null) {
-        try {
-          final posResult = await _webController!.evaluateJavascript(
-            source: "document.querySelector('video')?.currentTime || 0",
-          );
-          if (posResult != null) position = (posResult as num).toInt();
-        } catch (_) {}
-      }
 
       if (url.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1024,13 +1013,16 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         return;
       }
 
-      // iOS PiP: dùng proxy URL (IP trực tiếp, bypass DNS)
+      // ★ iOS: dùng proxy URL, Android: dùng URL gốc (nhanh hơn)
       String pipUrl = url;
-      if (Platform.isIOS && !url.contains('hls_proxy.php')) {
-        pipUrl = AppConfig.proxyHlsFullUrl(url);
+      if (Platform.isIOS) {
+        if (!url.contains('hls_proxy.php')) {
+          pipUrl = AppConfig.proxyHlsFullUrl(url);
+        }
       }
+      // Android: giữ nguyên URL gốc, không proxy (tránh delay)
 
-      debugPrint('[PiP] Sending URL: $pipUrl');
+      debugPrint('[PiP] enterPiP: $pipUrl (pos=$position)');
 
       final result = await _pipChannel.invokeMethod('enterPiP', {
         'url': pipUrl,
@@ -1041,15 +1033,18 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         },
       });
 
-      if (result != true) {
+      if (result != true && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Không thể vào chế độ PiP'), backgroundColor: Colors.orange),
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Lỗi PiP: $e'), backgroundColor: Colors.red),
-      );
+      debugPrint('[PiP] error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi PiP: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -1661,6 +1656,19 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     // ★ FIX: Config hardware acceleration cho smoother playback
     // media_kit tự handle GPU decoder trên mobile
 
+    // ★ Pre-buffer PiP NGAY SAU KHI tạo player (iOS) — không đợi play xong
+    if (Platform.isIOS && _playerMode == _PlayerMode.hls) {
+      final pipUrl = playUrl.contains('hls_proxy.php') ? playUrl : AppConfig.proxyHlsFullUrl(playUrl);
+      _pipChannel.invokeMethod('preparePiP', {
+        'url': pipUrl,
+        'position': 0,
+        'headers': {
+          'Referer': AppConfig.baseUrl,
+          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+        },
+      }).catchError((_) {});
+    }
+
     // Lắng nghe state changes
     _initPlayerStreams();
 
@@ -1692,19 +1700,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (targetPosition > 0 && !_seekCompleted) {
         _seekTargetTime = targetPosition;
         _performSeekRetry(targetPosition);
-      }
-
-      // Pre-buffer PiP player trên iOS
-      if (Platform.isIOS && _playerMode == _PlayerMode.hls) {
-        final pipUrl = playUrl.contains('hls_proxy.php') ? playUrl : AppConfig.proxyHlsFullUrl(playUrl);
-        _pipChannel.invokeMethod('preparePiP', {
-          'url': pipUrl,
-          'position': _currentPosition,
-          'headers': {
-            'Referer': AppConfig.baseUrl,
-            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-          },
-        });
       }
     }).catchError((e) {
       // ★ Skip fallback cho local files
