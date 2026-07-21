@@ -290,6 +290,87 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     );
   }
 
+  /// Modern bottom sheet when movie is trailer only (not yet available)
+  void _showNotAvailableSheet() {
+    final title = widget.movie?.name ?? (_movieData?['name'] ?? '');
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E2026),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppTheme.border),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Icon
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: AppTheme.accent.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.movie_filter_rounded, color: AppTheme.accent, size: 28),
+            ),
+            const SizedBox(height: 16),
+            // Title
+            Text(
+              title,
+              style: const TextStyle(color: AppTheme.textPrimary, fontSize: 17, fontWeight: FontWeight.w700),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 8),
+            // Message
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline_rounded, color: Colors.orange, size: 18),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Phim hiện tại chỉ có Trailer. Phim sẽ sớm được cập nhật.',
+                      style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Close button
+            GestureDetector(
+              onTap: () => Navigator.pop(ctx),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppTheme.accent,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Center(
+                  child: Text('Đã hiểu', style: TextStyle(color: Color(0xFF1A1100), fontSize: 15, fontWeight: FontWeight.w700)),
+                ),
+              ),
+            ),
+            SizedBox(height: MediaQuery.of(ctx).padding.bottom),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1888,6 +1969,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
               Expanded(
                 child: GestureDetector(
                   onTap: () {
+                    if (_isTrailerMovie) {
+                      // Trailer movie — show "chưa có chiếu" notification
+                      _showNotAvailableSheet();
+                      return;
+                    }
                     dynamic firstEp;
                     if (_servers.isNotEmpty) {
                       final eps = _servers[_selectedServer]['episodes'] as List<dynamic>? ?? [];
@@ -1899,12 +1985,19 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     decoration: BoxDecoration(color: const Color(0xFFF5E6B8), borderRadius: BorderRadius.circular(12)),
-                    child: const Row(
+                    child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.play_arrow_rounded, color: Color(0xFF1A1100), size: 22),
-                        SizedBox(width: 8),
-                        Text('Xem phim', style: TextStyle(color: Color(0xFF1A1100), fontSize: 16, fontWeight: FontWeight.w800)),
+                        Icon(
+                          _isTrailerMovie ? Icons.info_outline_rounded : Icons.play_arrow_rounded,
+                          color: const Color(0xFF1A1100),
+                          size: 22,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _isTrailerMovie ? 'Trailer' : 'Xem phim',
+                          style: const TextStyle(color: Color(0xFF1A1100), fontSize: 16, fontWeight: FontWeight.w800),
+                        ),
                       ],
                     ),
                   ),
