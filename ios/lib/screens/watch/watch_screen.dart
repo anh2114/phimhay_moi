@@ -879,7 +879,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _autoHideControlsTimer?.cancel();
     _clockTimer?.cancel();
     _doubleTapTimer?.cancel();
-    _brightnessTimer?.cancel();
     _pendingServerSave?.cancel();
     _seekRetryTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
@@ -902,8 +901,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   // ── Brightness lock ─────────────────────────────────
   // Giữ nguyên brightness khi xem phim (giống YouTube)
-  // Không ép max — chỉ khóa để OS auto-brightness không thay đổi
-  Timer? _brightnessTimer;
+  // Không can thiệp — để user tự do chỉnh
 
   /// Enable wakelock với retry — tránh màn hình tối khi fail
   Future<void> _enableWakelockWithRetry() async {
@@ -925,34 +923,15 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   Future<void> _lockBrightness() async {
     try {
       _originalBrightness = await ScreenBrightness().current;
-      // Nếu brightness quá thấp (< 0.1) → set về 0.5 để tránh tối đen
-      if (_originalBrightness < 0.1) {
-        _originalBrightness = 0.5;
-        await ScreenBrightness().setScreenBrightness(0.5);
-      }
-      // Periodic timer chống OS auto-brightness override
-      _brightnessTimer?.cancel();
-      _brightnessTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
-        if (_brightnessLocked && mounted) {
-          try {
-            final current = await ScreenBrightness().current;
-            // Chỉ set lại nếu brightness bị thay đổi (OS auto-brightness)
-            if ((current - _originalBrightness).abs() > 0.05) {
-              await ScreenBrightness().setScreenBrightness(_originalBrightness);
-            }
-          } catch (_) {}
-        }
-      });
+      // Không can thiệp brightness — để user tự do chỉnh (giống YouTube)
       _brightnessLocked = true;
     } catch (_) {}
   }
 
   Future<void> _unlockBrightness() async {
     if (!_brightnessLocked) return;
-    _brightnessTimer?.cancel();
-    _brightnessTimer = null;
     try {
-      await ScreenBrightness().setScreenBrightness(_originalBrightness);
+      // Không restore brightness — giữ nguyên giá trị user đã set
       _brightnessLocked = false;
     } catch (_) {}
   }
