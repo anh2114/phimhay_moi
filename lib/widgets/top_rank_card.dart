@@ -147,9 +147,11 @@ class TopRankCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Poster with clip-path polygon
-            ClipPath(
-              clipper: _TopRankClipper(isEven: isEven),
-              child: AspectRatio(
+            Hero(
+              tag: 'movie_poster_${movie.id}',
+              child: ClipPath(
+                clipper: _TopRankClipper(isEven: isEven),
+                child: AspectRatio(
                 aspectRatio: 2 / 3,
                 child: Stack(
                   children: [
@@ -214,6 +216,7 @@ class TopRankCard extends StatelessWidget {
                   ],
                 ),
               ),
+            ),
             ),
             const SizedBox(height: 8),
             // Rank number + Title

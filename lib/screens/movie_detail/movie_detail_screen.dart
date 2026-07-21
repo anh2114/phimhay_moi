@@ -1848,34 +1848,37 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
       mainAxisSize: MainAxisSize.min,
       children: [
         // Banner — full width, fixed 16:9 aspect ratio
-        Stack(
-          children: [
-            AspectRatio(
-              aspectRatio: 16 / 9,
-              child: CachedNetworkImage(
-                imageUrl: backdropUrl,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                memCacheWidth: (MediaQuery.of(context).size.width * 2).toInt(),
-                cacheManager: AppImageCacheManager(),
-                fadeInDuration: const Duration(milliseconds: 250),
-                fadeOutDuration: Duration.zero,
-                placeholder: (_, __) => Container(color: AppTheme.bgCard),
-                errorWidget: (_, __, ___) => Container(color: AppTheme.bgCard),
-              ),
-            ),
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 8, left: 12,
-              child: GestureDetector(
-                onTap: () => Navigator.pop(context),
-                child: Container(
-                  width: 36, height: 36,
-                  decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0x80000000)),
-                  child: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
+        Hero(
+          tag: 'movie_poster_${_movieData?['id'] ?? 0}',
+          child: Stack(
+            children: [
+              AspectRatio(
+                aspectRatio: 16 / 9,
+                child: CachedNetworkImage(
+                  imageUrl: backdropUrl,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  memCacheWidth: (MediaQuery.of(context).size.width * 2).toInt(),
+                  cacheManager: AppImageCacheManager(),
+                  fadeInDuration: const Duration(milliseconds: 250),
+                  fadeOutDuration: Duration.zero,
+                  placeholder: (_, __) => Container(color: AppTheme.bgCard),
+                  errorWidget: (_, __, ___) => Container(color: AppTheme.bgCard),
                 ),
               ),
-            ),
-          ],
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 8, left: 12,
+                child: GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    width: 36, height: 36,
+                    decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0x80000000)),
+                    child: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
         // 2 buttons — 10px dưới banner
         Padding(

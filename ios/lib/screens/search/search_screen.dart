@@ -664,7 +664,20 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
           if (i == _results.length) return const Center(child: CircularProgressIndicator(color: AppTheme.gold, strokeWidth: 2));
           final m = _results[i];
           return GestureDetector(
-            onTap: () => SmartLinkAd.show(context, onComplete: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MovieDetailScreen(movie: m)))),
+            onTap: () => SmartLinkAd.show(context, onComplete: () => Navigator.push(
+              context,
+              PageRouteBuilder(
+                transitionDuration: const Duration(milliseconds: 400),
+                reverseTransitionDuration: const Duration(milliseconds: 300),
+                pageBuilder: (_, __, ___) => MovieDetailScreen(movie: m),
+                transitionsBuilder: (_, animation, __, child) {
+                  return FadeTransition(
+                    opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+                    child: child,
+                  );
+                },
+              ),
+            )),
             child: _buildMovieCard(m),
           );
         },
@@ -680,10 +693,12 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
         Expanded(
           child: ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                CachedNetworkImage(
+            child: Hero(
+              tag: 'movie_poster_${m.id}',
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  CachedNetworkImage(
                   imageUrl: thumbUrl,
                   fit: BoxFit.cover,
                   cacheManager: AppImageCacheManager(),
@@ -710,6 +725,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
                     child: Text(m.episodeCurrent!, style: const TextStyle(color: Color(0xFFF1F5F9), fontSize: 9.5, fontWeight: FontWeight.w800)),
                   )),
               ],
+            ),
             ),
           ),
         ),

@@ -76,7 +76,9 @@ class MovieCard extends StatelessWidget {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: Stack(
+                child: Hero(
+                  tag: 'movie_poster_${movie.id}',
+                  child: Stack(
                   children: [
                     // Poster image — aspect-ratio: 2/3
                     AspectRatio(
@@ -154,6 +156,7 @@ class MovieCard extends StatelessWidget {
                       ),
                     ),
                   ],
+                ),
                 ),
               ),
             ),
