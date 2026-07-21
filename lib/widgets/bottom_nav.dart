@@ -110,6 +110,7 @@ class _BottomNavState extends State<BottomNav> {
         spacing: 8,
         horizontalPadding: 16,
         verticalPadding: 14,
+        indicatorColor: AppTheme.accent,
         indicatorPinchStrength: 0.2,
         glowBlurRadius: 16,
         glowSpreadRadius: 4,
