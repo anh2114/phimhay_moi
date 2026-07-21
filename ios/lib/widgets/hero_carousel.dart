@@ -154,11 +154,9 @@ class _HeroCarouselState extends State<HeroCarousel> {
                           ),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(16),
-                            child: Hero(
-                              tag: 'movie_poster_${movie.id}',
-                              child: AspectRatio(
-                                aspectRatio: 2 / 3,
-                                child: CachedNetworkImage(
+                            child: AspectRatio(
+                              aspectRatio: 2 / 3,
+                              child: CachedNetworkImage(
                                 imageUrl: movie.thumbUrl ?? '',
                                 fit: BoxFit.cover,
                                 cacheManager: AppImageCacheManager(),
@@ -174,7 +172,6 @@ class _HeroCarouselState extends State<HeroCarousel> {
                                       color: AppTheme.textMuted),
                                 ),
                               ),
-                            ),
                             ),
                           ),
                         ),

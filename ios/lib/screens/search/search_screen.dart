@@ -693,12 +693,10 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
         Expanded(
           child: ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: Hero(
-              tag: 'movie_poster_${m.id}',
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  CachedNetworkImage(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                CachedNetworkImage(
                   imageUrl: thumbUrl,
                   fit: BoxFit.cover,
                   cacheManager: AppImageCacheManager(),
@@ -725,7 +723,6 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
                     child: Text(m.episodeCurrent!, style: const TextStyle(color: Color(0xFFF1F5F9), fontSize: 9.5, fontWeight: FontWeight.w800)),
                   )),
               ],
-            ),
             ),
           ),
         ),
