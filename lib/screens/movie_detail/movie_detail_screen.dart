@@ -1937,7 +1937,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                 imageUrl: backdropUrl,
                 width: double.infinity,
                 fit: BoxFit.cover,
-                memCacheWidth: (MediaQuery.of(context).size.width * 2).toInt(),
+                memCacheWidth: (MediaQuery.of(context).size.width * MediaQuery.of(context).devicePixelRatio).toInt(),
                 cacheManager: AppImageCacheManager(),
                 fadeInDuration: const Duration(milliseconds: 250),
                 fadeOutDuration: Duration.zero,
