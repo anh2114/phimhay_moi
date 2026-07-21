@@ -36,6 +36,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:phimhay_app/services/srt_parser.dart';
+import 'package:phimhay_app/services/intro_service.dart';
 
 /// Loại player hiện tại
 enum _PlayerMode { hls, embed }
@@ -152,6 +153,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   // Controls overlay
   bool _showControls = true;
   bool _showSkipIntro = false;
+  IntroData? _introData;
+  bool _introChecked = false;
   bool _playerReady = false;
 
   // Custom player controls
@@ -1318,6 +1321,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       } else {
         _initFallbackPlayer();
       }
+
+      // ★ Fetch intro timestamp from IntroDB
+      _introChecked = false;
+      _introData = null;
+      _fetchIntroData();
     } else {
       _initFallbackPlayer();
     }
@@ -1456,6 +1464,52 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   StreamSubscription? _subDuration;
   StreamSubscription? _subCompleted;
 
+  /// Fetch intro timestamp from IntroDB API
+  Future<void> _fetchIntroData() async {
+    if (_introChecked) return;
+    _introChecked = true;
+
+    // Need imdb_id from movie data — fetch from API
+    if (widget.movieId <= 0) return;
+
+    try {
+      final res = await _dio.get(
+        '${AppConfig.apiUrl}/movie_detail.php',
+        queryParameters: {'movie_id': widget.movieId},
+      );
+      final data = res.data as Map<String, dynamic>;
+      final imdbId = (data['imdb_id'] ?? '').toString().trim();
+      if (imdbId.isEmpty || imdbId == 'tt0000000') return;
+
+      // Parse season/episode from episode name (e.g., "Tập 5" → episode=5)
+      final epName = _currentEpName.toLowerCase();
+      int season = 1;
+      int episode = 1;
+
+      // Try to extract from episode name
+      final epMatch = RegExp(r'(\d+)').firstMatch(epName);
+      if (epMatch != null) {
+        episode = int.tryParse(epMatch.group(1)!) ?? 1;
+      }
+
+      // Try to extract season from server name or episode name
+      final seasonMatch = RegExp(r'season\s*(\d+)', caseSensitive: false)
+          .firstMatch(_currentEpName + _effectiveServerName);
+      if (seasonMatch != null) {
+        season = int.tryParse(seasonMatch.group(1)!) ?? 1;
+      }
+
+      final intro = await IntroService().getIntro(
+        imdbId: imdbId,
+        season: season,
+        episode: episode,
+      );
+      if (mounted && intro != null) {
+        setState(() => _introData = intro);
+      }
+    } catch (_) {}
+  }
+
   void _initPlayerStreams() {
     _subPosition?.cancel();
     _subPlaying?.cancel();
@@ -1501,7 +1555,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (_currentDuration > 0 && _currentPosition >= _currentDuration - 30) {
         _startPrefetch();
       }
-      _showSkipIntro = _currentPosition >= 10 && _currentPosition <= 120;
+      // ★ Skip intro logic — use IntroDB data if available, fallback to heuristic
+      if (_introData != null) {
+        _showSkipIntro = _introData!.isNearStart(_currentPosition);
+      } else {
+        // Fallback: show between 10-90 seconds (common intro length)
+        _showSkipIntro = _currentPosition >= 10 && _currentPosition <= 90;
+      }
     });
 
     _subPlaying = _player!.stream.playing.listen((playing) {
@@ -2891,15 +2951,24 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   Widget _skipIntroButton() {
+    // Determine seek target and label
+    final int seekTarget;
+    final String label;
+    if (_introData != null) {
+      seekTarget = _introData!.endSec;
+      label = 'Bỏ qua Intro';
+    } else {
+      seekTarget = _currentPosition + 90;
+      label = 'Bỏ qua 90 giây';
+    }
+
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
         if (_player == null) return;
-        final current = _currentPosition;
-        final target = current + 120;
-        _seekTargetTime = target;
-        if (mounted) setState(() => _currentPos = Duration(seconds: target));
-        _player!.seek(Duration(seconds: target));
+        _seekTargetTime = seekTarget;
+        if (mounted) setState(() => _currentPos = Duration(seconds: seekTarget));
+        _player!.seek(Duration(seconds: seekTarget));
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -2913,9 +2982,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           children: [
             AppSvgIcon('fast-forward.svg', size: 16, color: Colors.white),
             const SizedBox(width: 4),
-            const Text(
-              'Bỏ qua 2 phút',
-              style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+            Text(
+              label,
+              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
             ),
           ],
         ),
