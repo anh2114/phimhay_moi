@@ -188,22 +188,42 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> with WidgetsBindi
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // ★ Video thumbnail/live — 16:9
+                // ★ Video thumbnail/live — 16:9 + close button overlay
                 ClipRRect(
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
                   child: SizedBox(
                     width: 200,
                     height: 112, // 200 * 9/16 = 112
-                    child: videoCtrl != null
-                        ? Video(
-                            controller: videoCtrl,
-                            key: const ValueKey('mini_overlay_card'),
-                            controls: NoVideoControls,
-                          )
-                        : Container(
-                            color: Colors.black,
-                            child: const Icon(Icons.movie, color: Colors.white24, size: 32),
+                    child: Stack(
+                      children: [
+                        videoCtrl != null
+                            ? Video(
+                                controller: videoCtrl,
+                                key: const ValueKey('mini_overlay_card'),
+                                controls: NoVideoControls,
+                              )
+                            : Container(
+                                color: Colors.black,
+                                child: const Icon(Icons.movie, color: Colors.white24, size: 32),
+                              ),
+                        // ★ Close button — top-left corner
+                        Positioned(
+                          top: 4,
+                          left: 4,
+                          child: GestureDetector(
+                            onTap: _closeMiniPlayer,
+                            child: Container(
+                              padding: const EdgeInsets.all(2),
+                              decoration: BoxDecoration(
+                                color: Colors.black54,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.close_rounded, color: Colors.white70, size: 14),
+                            ),
                           ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 // ★ Controls row: rewind, play/pause, forward
@@ -243,14 +263,6 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> with WidgetsBindi
                         child: const Icon(Icons.forward_10_rounded, color: Colors.white70, size: 22),
                       ),
                     ],
-                  ),
-                ),
-                // ★ Close button
-                GestureDetector(
-                  onTap: _closeMiniPlayer,
-                  child: const Padding(
-                    padding: EdgeInsets.only(bottom: 4),
-                    child: Icon(Icons.close_rounded, color: Colors.white38, size: 16),
                   ),
                 ),
               ],
