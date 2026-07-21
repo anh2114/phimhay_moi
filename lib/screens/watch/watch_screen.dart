@@ -3262,6 +3262,22 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 size: 22,
               ),
             ),
+            const SizedBox(width: 12),
+            // Phone portrait mode — switch to portrait while watching
+            if (_isLandscape)
+              GestureDetector(
+                onTap: () {
+                  SystemChrome.setPreferredOrientations([
+                    DeviceOrientation.portraitUp,
+                  ]);
+                },
+                child: SvgPicture.asset(
+                  'assets/svg_phimchitiet/phone-portrait-svgrepo-com.svg',
+                  width: 20,
+                  height: 20,
+                  colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+                ),
+              ),
             // Center: Title + Episode
             Expanded(
               child: Center(
