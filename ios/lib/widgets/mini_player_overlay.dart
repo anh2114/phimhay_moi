@@ -122,6 +122,8 @@ class _MiniPlayerOverlayState extends State<MiniPlayerOverlay> with WidgetsBindi
 
   /// Close mini-player entirely
   void _closeMiniPlayer() {
+    // ★ SAVE progress trước khi dispose
+    _saveMiniPlayerProgress();
     PlayerHolder.player?.dispose();
     PlayerHolder.clear();
     // ★ FIX: Force rebuild ngay → overlay ẩn

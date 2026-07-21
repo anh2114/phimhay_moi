@@ -1661,17 +1661,22 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         });
       }
     }).catchError((e) {
+      // ★ Skip fallback cho local files
+      if (!url.startsWith('http')) return;
       _fallbackToEmbed();
     });
 
-    // Health check
-    _healthCheckTimer = Timer(const Duration(seconds: 8), () {
-      if (!mounted || _player == null) return;
-      if (_currentPosition == 0 && !_playerReady) {
+    // Health check — skip cho local files
+    final isLocalFileForHealth = !url.startsWith('http');
+    if (!isLocalFileForHealth) {
+      _healthCheckTimer = Timer(const Duration(seconds: 8), () {
+        if (!mounted || _player == null) return;
+        if (_currentPosition == 0 && !_playerReady) {
 
-        _fallbackToEmbed();
-      }
-    });
+          _fallbackToEmbed();
+        }
+      });
+    }
 
     _startProgressTimer();
   }
@@ -1799,6 +1804,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   void _fallbackToEmbed() {
     _healthCheckTimer?.cancel();
     if (!mounted) return;
+
+    // ★ Skip fallback cho local files
+    final isLocalFile = !_currentUrl.startsWith('http');
+    if (isLocalFile) return;
 
     // Fallback embed trước, nếu không có → thử server khác
     if (_currentEmbedUrl.isNotEmpty) {
