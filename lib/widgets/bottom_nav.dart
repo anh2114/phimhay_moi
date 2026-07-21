@@ -120,6 +120,7 @@ class _BottomNavState extends State<BottomNav> {
         tabs: List.generate(_tabs.length, (i) {
           final tab = _tabs[i];
           return GlassBottomBarTab(
+            glowColor: AppTheme.accent,
             icon: (i == 3 && widget.avatarUrl != null && widget.avatarUrl!.isNotEmpty)
                 ? ClipOval(
                     child: CachedNetworkImage(
