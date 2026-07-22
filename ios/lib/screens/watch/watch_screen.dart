@@ -813,6 +813,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         _positionBeforePause = _currentPos.inSeconds;
         _saveCurrentProgress();
       }
+      // ★ iOS: Auto PiP khi app vào background (như YouPiP)
+      if (Platform.isIOS && !_isPiPMode && _playerMode == _PlayerMode.hls && _currentUrl.isNotEmpty) {
+        debugPrint('[PiP] Auto PiP triggered — app entering background');
+        _enterPiP();
+      }
     } else if (state == AppLifecycleState.detached) {
       // iOS/Android: app đang bị kill — lưu progress lần cuối
       _saveCurrentProgress();
@@ -958,15 +963,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               _autoHideControlsTimer?.cancel();
               _saveCurrentProgress();
               if (Platform.isIOS) {
-                // iOS: exit fullscreen → PiP window appears as floating window
-                _restoreOrientations();
-                SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-                try { WakelockPlus.disable(); } catch (_) {}
-                // Pause Flutter player — native AVPlayer handles PiP
+                // ★ iOS: KHÔNG restore orientations — PiP window sẽ xuất hiện ngay
+                // Chỉ pause Flutter player, để native AVPlayer handle PiP
                 _player?.pause();
-                _webController?.evaluateJavascript(
-                  source: "document.querySelector('video')?.pause();",
-                );
+                if (_webController != null) {
+                  _webController!.evaluateJavascript(
+                    source: "document.querySelector('video')?.pause();",
+                  ).catchError((_) => null);
+                }
                 _stopPiPSync();
               }
               // Android: Flutter surface IS the PiP surface → player keeps playing
@@ -1045,7 +1049,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (_player != null && _playerMode == _PlayerMode.hls && !_isPiPMode) {
         _pipChannel.invokeMethod('syncPosition', {
           'position': _currentPosition,
-        }).catchError((_) {});
+        }).catchError((_) => null);
       }
     });
   }
@@ -1061,16 +1065,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     if (!Platform.isIOS || _isPiPMode || _playerMode != _PlayerMode.hls) return;
     _pipChannel.invokeMethod('syncPosition', {
       'position': _currentPosition,
-    }).catchError((_) {});
+    }).catchError((_) => null);
   }
 
   Future<void> _enterPiP() async {
     try {
-      // Save current position first (fire-and-forget cho nhanh)
       _saveCurrentProgress();
-
-      // ★ SYNC: Immediate sync before PiP — ensure native AVPlayer is at correct position
-      _syncPiPPositionImmediate();
 
       int position = _currentPosition;
       String url = _currentUrl;
@@ -1084,25 +1084,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         return;
       }
 
-      // ★ iOS: dùng proxy URL, Android: dùng URL gốc (nhanh hơn)
+      // iOS: proxy URL, Android: URL gốc
       String pipUrl = url;
-      if (Platform.isIOS) {
-        if (!url.contains('hls_proxy.php')) {
-          pipUrl = AppConfig.proxyHlsFullUrl(url);
-        }
-        // ★ FIX: Re-prepare PiP with current position before entering
-        _pipChannel.invokeMethod('preparePiP', {
-          'url': pipUrl,
-          'position': position,
-          'headers': {
-            'Referer': AppConfig.baseUrl,
-            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-          },
-        }).catchError((_) {});
-        // ★ Wait briefly for re-prepare to take effect
-        await Future.delayed(const Duration(milliseconds: 300));
+      if (Platform.isIOS && !url.contains('hls_proxy.php')) {
+        pipUrl = AppConfig.proxyHlsFullUrl(url);
       }
-      // Android: giữ nguyên URL gốc, không proxy (tránh delay)
 
       debugPrint('[PiP] enterPiP: $pipUrl (pos=$position)');
 
@@ -1745,19 +1731,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     // ★ FIX: Config hardware acceleration cho smoother playback
     // media_kit tự handle GPU decoder trên mobile
 
-    // ★ Pre-buffer PiP NGAY SAU KHI tạo player (iOS) — không đợi play xong
-    if (Platform.isIOS && _playerMode == _PlayerMode.hls) {
-      final pipUrl = playUrl.contains('hls_proxy.php') ? playUrl : AppConfig.proxyHlsFullUrl(playUrl);
-      _pipChannel.invokeMethod('preparePiP', {
-        'url': pipUrl,
-        'position': _currentPosition, // ★ FIX: Use actual position, not 0
-        'headers': {
-          'Referer': AppConfig.baseUrl,
-          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-        },
-      }).catchError((_) {});
-    }
-
     // Lắng nghe state changes
     _initPlayerStreams();
 
@@ -1797,8 +1770,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       }
     }).catchError((e) {
       // ★ Skip fallback cho local files
-      if (!url.startsWith('http')) return;
+      if (!url.startsWith('http')) return null;
       _fallbackToEmbed();
+      return null;
     });
 
     // Health check — skip cho local files
@@ -3001,6 +2975,51 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             ),
 
           // ── Subtitle overlay — moved to _buildSubtitleZone() ──
+
+          // ── PiP active overlay — nền đen + text khi PiP đang active ──
+          if (_isPiPMode && Platform.isIOS)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black,
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: AppTheme.accent.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.picture_in_picture_alt_rounded,
+                          color: AppTheme.accent,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Đang phát trong PiP',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Quay lại để tiếp tục xem',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.4),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
 
         ],
       );
