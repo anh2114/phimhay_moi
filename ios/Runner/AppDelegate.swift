@@ -261,14 +261,6 @@ import AVKit
             return
         }
 
-        // ★ iOS 15+ settings (như YouPiP)
-        if #available(iOS 15.0, *) {
-            // Auto PiP khi app vào background — như YouTube
-            pipController.canStartAutomaticallyWhenEnteringBackground = true
-            // Không auto PiP khi inline — chỉ khi user bấm nút hoặc background
-            pipController.canStartPictureInPictureAutomaticallyFromInline = false
-        }
-
         pipController.delegate = self
         self.pipController = pipController
         pipPrepared = true
