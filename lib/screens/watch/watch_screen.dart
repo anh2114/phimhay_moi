@@ -1045,7 +1045,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (_player != null && _playerMode == _PlayerMode.hls && !_isPiPMode) {
         _pipChannel.invokeMethod('syncPosition', {
           'position': _currentPosition,
-        }).catchError((_) {});
+        }).catchError((_) => null);
       }
     });
   }
@@ -1766,8 +1766,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       }
     }).catchError((e) {
       // ★ Skip fallback cho local files
-      if (!url.startsWith('http')) return;
+      if (!url.startsWith('http')) return null;
       _fallbackToEmbed();
+      return null;
     });
 
     // Health check — skip cho local files

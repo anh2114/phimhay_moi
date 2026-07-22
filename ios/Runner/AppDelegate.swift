@@ -188,8 +188,9 @@ import AVKit
             // Cleanup
             cleanupPiP()
 
-            // 1. Audio session
+            // 1. Audio session — QUAN TRỌNG: phải deactivate trước rồi activate lại
             let session = AVAudioSession.sharedInstance()
+            try session.setActive(false)
             try session.setCategory(.playback, mode: .moviePlayback,
                 options: [.allowBluetooth, .allowBluetoothA2DP, .allowAirPlay])
             try session.setActive(true)
@@ -219,17 +220,17 @@ import AVKit
             player.allowsExternalPlayback = true
             pipLog("AVPlayer created")
 
-            // 5. Create PlayerLayer (hidden)
+            // 5. Create PlayerLayer — phải visible trong view hierarchy để PiP hoạt động
             let playerLayer = AVPlayerLayer(player: player)
-            playerLayer.frame = CGRect(x: 0, y: 0, width: 1, height: 1)
+            playerLayer.frame = CGRect(x: -1000, y: -1000, width: 1, height: 1) // Off-screen
             playerLayer.videoGravity = .resizeAspect
-            if let window = self.window {
-                window.layer.addSublayer(playerLayer)
+            if let rootVC = self.window?.rootViewController {
+                rootVC.view.layer.addSublayer(playerLayer)
             }
             self.pipPlayerLayer = playerLayer
             self.pipPlayer = player
             self.pipRestorePosition = position
-            pipLog("PlayerLayer added to window")
+            pipLog("PlayerLayer added to rootVC.view")
 
             // 6. Seek to position if needed
             if position > 0 {
@@ -250,39 +251,40 @@ import AVKit
     }
 
     private func doStartPiP(player: AVPlayer, result: @escaping FlutterResult) {
-        do {
-            guard let playerLayer = self.pipPlayerLayer else {
-                pipLog("No playerLayer")
-                result(FlutterError(code: "NO_LAYER", message: "No player layer", details: nil))
-                return
-            }
-
-            // Create PiP controller
-            guard let pipController = AVPictureInPictureController(playerLayer: playerLayer) else {
-                pipLog("Cannot create PiP controller")
-                result(FlutterError(code: "NO_PIP", message: "PiP not available", details: nil))
-                return
-            }
-            pipController.delegate = self
-            self.pipController = pipController
-            pipLog("PiP controller created")
-
-            // Play
-            player.play()
-            pipLog("Player playing")
-
-            // Notify Flutter
-            pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
-
-            // Start PiP
-            let started = pipController.startPictureInPicture()
-            pipLog("startPictureInPicture: \(started)")
-
-            result(started)
-        } catch {
-            pipLog("ERROR in doStartPiP: \(error.localizedDescription)")
-            result(FlutterError(code: "ERROR", message: error.localizedDescription, details: nil))
+        guard let playerLayer = self.pipPlayerLayer else {
+            pipLog("No playerLayer")
+            result(FlutterError(code: "NO_LAYER", message: "No player layer", details: nil))
+            return
         }
+
+        // Create PiP controller
+        guard let pipController = AVPictureInPictureController(playerLayer: playerLayer) else {
+            pipLog("Cannot create PiP controller — PiP may not be available")
+            result(FlutterError(code: "NO_PIP", message: "PiP not available", details: nil))
+            return
+        }
+        pipController.delegate = self
+        self.pipController = pipController
+        pipLog("PiP controller created")
+
+        // Play — phải play TRƯỚC khi start PiP
+        player.play()
+        pipLog("Player playing, status: \(player.timeControlStatus.rawValue)")
+
+        // Notify Flutter
+        pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
+
+        // Start PiP — nếu fails thì cleanup
+        let started = pipController.startPictureInPicture()
+        pipLog("startPictureInPicture: \(started)")
+
+        if !started {
+            pipLog("PiP failed to start — cleaning up")
+            cleanupPiP()
+            pipChannel?.invokeMethod("onPiPModeChanged", arguments: false)
+        }
+
+        result(started)
     }
 
     private func cleanupPiP() {

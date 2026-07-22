@@ -1670,7 +1670,7 @@ class VoiceService {
           onStateChanged?.call();
           _syncPresenceWithSpeaking();
         }
-      }).catchError((_) {});
+      }).catchError((_) => null);
     });
   }
 

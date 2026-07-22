@@ -62,7 +62,7 @@ class ActivityService {
       data.addAll(watching);
     }
 
-    ApiClient.post('/activity_heartbeat.php', data: data).catchError((_) {});
+    ApiClient.post('/activity_heartbeat.php', data: data).catchError((_) => null);
   }
 
   static void reportWatching({
