@@ -958,7 +958,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               _autoHideControlsTimer?.cancel();
               _saveCurrentProgress();
               if (Platform.isIOS) {
-                // iOS: separate native AVPlayer handles PiP → pause Flutter player
+                // iOS: exit fullscreen → PiP window appears as floating window
+                _restoreOrientations();
+                SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+                try { WakelockPlus.disable(); } catch (_) {}
+                // Pause Flutter player — native AVPlayer handles PiP
                 _player?.pause();
                 _webController?.evaluateJavascript(
                   source: "document.querySelector('video')?.pause();",
@@ -1072,9 +1076,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       String url = _currentUrl;
 
       if (url.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No video to PiP'), backgroundColor: Colors.orange),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No video to PiP'), backgroundColor: Colors.orange),
+          );
+        }
         return;
       }
 
@@ -1084,6 +1090,17 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         if (!url.contains('hls_proxy.php')) {
           pipUrl = AppConfig.proxyHlsFullUrl(url);
         }
+        // ★ FIX: Re-prepare PiP with current position before entering
+        _pipChannel.invokeMethod('preparePiP', {
+          'url': pipUrl,
+          'position': position,
+          'headers': {
+            'Referer': AppConfig.baseUrl,
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+          },
+        }).catchError((_) {});
+        // ★ Wait briefly for re-prepare to take effect
+        await Future.delayed(const Duration(milliseconds: 300));
       }
       // Android: giữ nguyên URL gốc, không proxy (tránh delay)
 
@@ -1733,7 +1750,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       final pipUrl = playUrl.contains('hls_proxy.php') ? playUrl : AppConfig.proxyHlsFullUrl(playUrl);
       _pipChannel.invokeMethod('preparePiP', {
         'url': pipUrl,
-        'position': 0,
+        'position': _currentPosition, // ★ FIX: Use actual position, not 0
         'headers': {
           'Referer': AppConfig.baseUrl,
           'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
@@ -3390,10 +3407,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           children: [
             // Left: Back (bright white)
             GestureDetector(
-              onTap: () {
-                _restoreOrientations();
-                Navigator.pop(context);
-              },
+              onTap: _showExitConfirmation,
               child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 24),
             ),
             const SizedBox(width: 16),
@@ -4381,6 +4395,143 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       ]);
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     }
+  }
+
+  void _showExitConfirmation() {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black45,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 40),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E2026),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.6),
+                  blurRadius: 24,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Icon
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: AppTheme.accent.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.exit_to_app_rounded,
+                    color: AppTheme.accent,
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Title
+                const Text(
+                  'Thoát xem phim?',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // Subtitle
+                Text(
+                  'Tiến trình xem sẽ được lưu lại.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.5),
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                // Buttons
+                Row(
+                  children: [
+                    // Hủy
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => Navigator.of(dialogContext).pop(),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.15),
+                            ),
+                          ),
+                          child: const Center(
+                            child: Text(
+                              'Ở lại',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Thoát
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () async {
+                          Navigator.of(dialogContext).pop();
+                          await _saveProgressOnExit();
+                          _restoreOrientations();
+                          if (mounted) Navigator.pop(context);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFF5C84C), Color(0xFFE8B830)],
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppTheme.accent.withValues(alpha: 0.3),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Center(
+                            child: Text(
+                              'Thoát',
+                              style: TextStyle(
+                                color: Color(0xFF1A1100),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _showServerPopup() {

@@ -70,6 +70,7 @@ function afSyncSingleMovie(PDO $db, string $name): array {
     $sources = [
         'ophim'  => OPHIM_API,
         'kkphim' => KKPHIM_API,
+        'nguonc' => NGUONC_API,
     ];
     $queryNorm = afNormalizeTitle($name);
 
