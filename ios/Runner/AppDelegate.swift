@@ -230,10 +230,10 @@ import AVKit
             asset = AVURLAsset(url: streamURL, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
         }
         let playerItem = AVPlayerItem(asset: asset)
-        playerItem.preferredForwardBufferDuration = 15 // Buffer more for instant PiP
+        playerItem.preferredForwardBufferDuration = 30 // Buffer 30s for instant PiP
         let player = AVPlayer(playerItem: playerItem)
         player.allowsExternalPlayback = true
-        player.isMuted = true // Muted — only pre-buffer, no audio yet
+        player.isMuted = true // Muted — pre-buffer without audio
         let playerLayer = AVPlayerLayer(player: player)
         playerLayer.frame = overlayView.bounds
         playerLayer.videoGravity = .resizeAspect
@@ -243,13 +243,19 @@ import AVKit
         self.pipRestoreURL = url
         self.pipPreparedPosition = position
 
-        // Seek đến position ngay khi buffer xong
+        // Seek đến position TRƯỚC khi play
         if position > 0 {
             let targetTime = CMTime(seconds: Double(position), preferredTimescale: 600)
-            player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero)
+            player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+                // Seek xong → play muted để bắt đầu buffer
+                player.play()
+                NSLog("[PiP] Pre-buffer: seeked to \(position)s, now playing muted to buffer")
+            }
+        } else {
+            // Position = 0 → play muted ngay để buffer
+            player.play()
+            NSLog("[PiP] Pre-buffer: playing muted from start to buffer")
         }
-        // KHÔNG play() ở đây — chỉ pre-buffer. Play khi user bấm PiP.
-        // player.play() sẽ được gọi trong enterPiP()
 
         guard let pipController = AVPictureInPictureController(playerLayer: playerLayer) else {
             NSLog("[PiP] Failed to create PiP controller during prepare")
@@ -274,26 +280,27 @@ import AVKit
             // Use pre-buffered player if available → instant PiP
             if self.pipPrepared, let pipController = self.pipController, let player = self.pipPlayer {
                 self.pipLog("Using pre-buffered player — instant PiP")
-                self.pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
-                self.pipOverlayView?.isHidden = false
 
-                // Unmute + play TRƯỚC khi start PiP
-                player.isMuted = false
-                player.play()
-
-                // Chỉ seek nếu position khác significantly (> 3s)
+                // Sync position before starting PiP
                 let currentPos = Int(player.currentTime().seconds)
                 if abs(currentPos - position) > 3 {
                     let targetTime = CMTime(seconds: Double(position), preferredTimescale: 600)
                     player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
                         DispatchQueue.main.async {
+                            // Unmute + start PiP
+                            player.isMuted = false
+                            self.pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
+                            self.pipOverlayView?.isHidden = false
                             let started = pipController.startPictureInPicture()
                             self.pipLog("startPictureInPicture returned: \(started)")
                             result(true)
                         }
                     }
                 } else {
-                    // Đã ở đúng position → start PiP ngay
+                    // Already at correct position → unmute + start PiP immediately
+                    player.isMuted = false
+                    self.pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
+                    self.pipOverlayView?.isHidden = false
                     let started = pipController.startPictureInPicture()
                     self.pipLog("startPictureInPicture returned: \(started)")
                     result(true)

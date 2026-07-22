@@ -820,6 +820,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       // Skip resume logic if PiP is active — native player handles playback
       if (_isPiPMode) return;
 
+      // Skip if we just exited PiP (handled by onPiPModeChanged/onPiPRestore)
+      // Avoids double play/seek conflicts
+      if (_pipRebuildCounter > 0 && _isPlaying) return;
+
       _enableWakelockWithRetry();
       _lockBrightness();
 
@@ -960,33 +964,53 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               );
               _stopPiPSync();
             } else {
-              // PiP OFF (Android) — force rebuild Video widget to reattach surface
+              // PiP OFF (Android) — force full state reset
               _pipRebuildCounter++;
-              _isBuffering = false; // Reset buffering state
+              _isBuffering = false;
               _isLoading = false;
+              _userPaused = false;
+              _isSeeking = false;
+              // Force player out of any stuck state
+              if (_player != null && _playerMode == _PlayerMode.hls) {
+                // Reset volume to ensure audio works
+                final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
+                _player!.setVolume(restoreVol);
+                // Force play + seek to current position
+                final pos = _currentPosition;
+                if (pos > 0) {
+                  _player!.seek(Duration(seconds: pos)).then((_) {
+                    if (mounted && _player != null) {
+                      _player!.play();
+                    }
+                  });
+                } else {
+                  _player!.play();
+                }
+              }
               if (mounted) setState(() {});
             }
           }
           break;
         case 'onPiPRestore':
-          // PiP ended — restore Flutter player, resume sync
+          // PiP ended (iOS) — restore Flutter player, resume sync
           final args = call.arguments as Map<dynamic, dynamic>?;
           final position = args?['position'] as int? ?? 0;
           if (mounted) {
-            // Force rebuild Video widget to reattach to new surface (Android)
             _pipRebuildCounter++;
-            _isBuffering = false; // Reset buffering state
+            _isBuffering = false;
             _isLoading = false;
             setState(() => _isPiPMode = false);
-            // Resume player at position
             if (_playerMode == _PlayerMode.hls && _player != null) {
-              // Always restore audio session before playing
               if (Platform.isIOS) {
                 _audioChannel.invokeMethod('configureForPlayback').then((_) {}, onError: (_) {});
               }
               _currentPosition = position;
-              _performSeekRetry(position);
-              _player!.play();
+              // Force seek + play (bypass _performSeekRetry which might skip)
+              _player!.seek(Duration(seconds: position)).then((_) {
+                if (mounted && _player != null) {
+                  _player!.play();
+                }
+              });
               _startPiPSync();
             } else if (_playerMode == _PlayerMode.embed && _webController != null) {
               if (position > 0) {
