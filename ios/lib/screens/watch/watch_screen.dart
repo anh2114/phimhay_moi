@@ -813,10 +813,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         _positionBeforePause = _currentPos.inSeconds;
         _saveCurrentProgress();
       }
-      // ★ iOS: Auto PiP khi app vào background (như YouPiP)
-      if (Platform.isIOS && !_isPiPMode && _playerMode == _PlayerMode.hls && _currentUrl.isNotEmpty) {
-        debugPrint('[PiP] Auto PiP triggered — app entering background');
-        _enterPiP();
+      // ★ iOS: Auto PiP khi app vào background — CHỈ khi player đang play
+      if (Platform.isIOS && !_isPiPMode && _isPlaying && _currentUrl.isNotEmpty) {
+        debugPrint('[PiP] Auto PiP triggered');
+        _enterPiP().catchError((e) {
+          debugPrint('[PiP] Auto PiP failed (expected if no PiP available): $e');
+          return null;
+        });
       }
     } else if (state == AppLifecycleState.detached) {
       // iOS/Android: app đang bị kill — lưu progress lần cuối
@@ -1024,14 +1027,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           break;
         case 'onPiPError':
           if (mounted) {
+            // ★ Reset PiP mode — PiP failed, hide overlay
+            setState(() => _isPiPMode = false);
             final error = call.arguments?.toString() ?? 'Unknown error';
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('PiP failed: $error'),
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 3),
-              ),
-            );
+            // Không show snackbar nếu auto PiP fail (expected)
+            debugPrint('[PiP] Error: $error');
           }
           break;
         case 'onPiPLog':
