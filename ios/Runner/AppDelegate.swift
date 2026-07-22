@@ -6,12 +6,10 @@ import AVKit
 @main
 @objc class AppDelegate: FlutterAppDelegate, AVPictureInPictureControllerDelegate {
 
-    // MARK: - PiP State
     private var pipPlayer: AVPlayer?
     private var pipPlayerLayer: AVPlayerLayer?
     private var pipController: AVPictureInPictureController?
     private var pipChannel: FlutterMethodChannel?
-    private var pipRestoreURL: String?
     private var pipRestorePosition: Int = 0
 
     func pipLog(_ msg: String) {
@@ -32,8 +30,8 @@ import AVKit
         audioChannel.setMethodCallHandler { (call, result) in
             switch call.method {
             case "configureForPlayback":
-                let session = AVAudioSession.sharedInstance()
                 do {
+                    let session = AVAudioSession.sharedInstance()
                     try session.setCategory(.playback, mode: .moviePlayback,
                         options: [.allowBluetooth, .allowBluetoothA2DP, .allowAirPlay])
                     try session.setActive(true)
@@ -44,8 +42,8 @@ import AVKit
             case "setSpeaker":
                 let args = call.arguments as? [String: Any]
                 let on = args?["on"] as? Bool ?? true
-                let session = AVAudioSession.sharedInstance()
                 do {
+                    let session = AVAudioSession.sharedInstance()
                     if on {
                         try session.setCategory(.playAndRecord, mode: .default,
                             options: [.defaultToSpeaker, .allowBluetooth])
@@ -62,8 +60,8 @@ import AVKit
                     result(FlutterError(code: "ERROR", message: error.localizedDescription, details: nil))
                 }
             case "configAVSession":
-                let session = AVAudioSession.sharedInstance()
                 do {
+                    let session = AVAudioSession.sharedInstance()
                     try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
                     try session.setActive(true)
                     result(true)
@@ -71,8 +69,8 @@ import AVKit
                     result(FlutterError(code: "ERROR", message: error.localizedDescription, details: nil))
                 }
             case "activateAudioSession":
-                let session = AVAudioSession.sharedInstance()
                 do {
+                    let session = AVAudioSession.sharedInstance()
                     try session.setCategory(.playAndRecord, mode: .default, options: [.allowBluetooth])
                     try session.setActive(true)
                     result(true)
@@ -92,8 +90,8 @@ import AVKit
             switch call.method {
             case "showRoutePicker":
                 DispatchQueue.main.async {
-                    let session = AVAudioSession.sharedInstance()
                     do {
+                        let session = AVAudioSession.sharedInstance()
                         try session.setCategory(.playback, mode: .moviePlayback,
                             options: [.allowAirPlay, .allowBluetooth, .allowBluetoothA2DP])
                         try session.setActive(true)
@@ -153,19 +151,21 @@ import AVKit
                 let headers = args["headers"] as? [String: String] ?? [:]
                 self.enterPiP(url: url, position: position, headers: headers, result: result)
             case "preparePiP":
-                // No-op — we don't pre-buffer anymore (caused crashes)
                 result(true)
             case "isPiP":
                 result(self.pipController?.isPictureInPictureActive ?? false)
             case "exitPiP":
-                if self.pipController?.isPictureInPictureActive == true {
-                    self.pipController?.stopPictureInPicture()
-                    result(true)
-                } else {
+                do {
+                    if self.pipController?.isPictureInPictureActive == true {
+                        self.pipController?.stopPictureInPicture()
+                        result(true)
+                    } else {
+                        result(false)
+                    }
+                } catch {
                     result(false)
                 }
             case "syncPosition":
-                // No-op — position is managed by native AVPlayer
                 result(true)
             case "pauseSync":
                 self.pipPlayer?.pause()
@@ -179,44 +179,47 @@ import AVKit
         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
     }
 
-    // MARK: - PiP (Simple, no pre-buffer)
+    // MARK: - PiP
 
     private func enterPiP(url: String, position: Int, headers: [String: String], result: @escaping FlutterResult) {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else {
-                result(FlutterError(code: "DEALLOC", message: "AppDelegate deallocated", details: nil))
-                return
-            }
+        do {
+            pipLog("enterPiP start: pos=\(position)")
 
-            self.pipLog("enterPiP: pos=\(position)")
+            // Cleanup
+            cleanupPiP()
 
-            // Cleanup trước
-            self.cleanupPiP()
-
-            // 1. Setup audio session
-            self.configureAudioSession()
+            // 1. Audio session
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .moviePlayback,
+                options: [.allowBluetooth, .allowBluetoothA2DP, .allowAirPlay])
+            try session.setActive(true)
+            pipLog("Audio session OK")
 
             // 2. Validate URL
             guard let streamURL = URL(string: url) else {
-                result(FlutterError(code: "INVALID_URL", message: "Cannot create URL", details: nil))
+                pipLog("Invalid URL")
+                result(FlutterError(code: "INVALID_URL", message: "Invalid URL", details: nil))
                 return
             }
+            pipLog("URL OK: \(url.prefix(50))")
 
-            // 3. Create AVPlayer
+            // 3. Create AVPlayerItem
             let asset: AVURLAsset
             if headers.isEmpty {
                 asset = AVURLAsset(url: streamURL)
             } else {
                 asset = AVURLAsset(url: streamURL, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
             }
-
             let playerItem = AVPlayerItem(asset: asset)
             playerItem.preferredForwardBufferDuration = 10
+            pipLog("PlayerItem created")
 
+            // 4. Create AVPlayer
             let player = AVPlayer(playerItem: playerItem)
             player.allowsExternalPlayback = true
+            pipLog("AVPlayer created")
 
-            // 4. Create PlayerLayer (hidden, 1px)
+            // 5. Create PlayerLayer (hidden)
             let playerLayer = AVPlayerLayer(player: player)
             playerLayer.frame = CGRect(x: 0, y: 0, width: 1, height: 1)
             playerLayer.videoGravity = .resizeAspect
@@ -225,59 +228,60 @@ import AVKit
             }
             self.pipPlayerLayer = playerLayer
             self.pipPlayer = player
-            self.pipRestoreURL = url
             self.pipRestorePosition = position
+            pipLog("PlayerLayer added to window")
 
-            // 5. Seek to position
+            // 6. Seek to position if needed
             if position > 0 {
                 let targetTime = CMTime(seconds: Double(position), preferredTimescale: 600)
                 player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
                     guard let self = self else { return }
                     DispatchQueue.main.async {
-                        self.startPiP(player: player, result: result)
+                        self.doStartPiP(player: player, result: result)
                     }
                 }
             } else {
-                self.startPiP(player: player, result: result)
+                doStartPiP(player: player, result: result)
             }
-        }
-    }
-
-    private func startPiP(player: AVPlayer, result: @escaping FlutterResult) {
-        // Create PiP controller
-        guard let playerLayer = self.pipPlayerLayer else {
-            result(FlutterError(code: "NO_LAYER", message: "No player layer", details: nil))
-            return
-        }
-
-        guard let pipController = AVPictureInPictureController(playerLayer: playerLayer) else {
-            result(FlutterError(code: "NO_PIP", message: "PiP not available", details: nil))
-            return
-        }
-
-        pipController.delegate = self
-        self.pipController = pipController
-
-        // Play + start PiP
-        player.play()
-
-        // Notify Flutter
-        pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
-
-        let started = pipController.startPictureInPicture()
-        pipLog("startPictureInPicture: \(started)")
-
-        result(started)
-    }
-
-    private func configureAudioSession() {
-        let session = AVAudioSession.sharedInstance()
-        do {
-            try session.setCategory(.playback, mode: .moviePlayback,
-                options: [.allowBluetooth, .allowBluetoothA2DP, .allowAirPlay])
-            try session.setActive(true)
         } catch {
-            pipLog("Audio session error: \(error.localizedDescription)")
+            pipLog("ERROR in enterPiP: \(error.localizedDescription)")
+            result(FlutterError(code: "ERROR", message: error.localizedDescription, details: nil))
+        }
+    }
+
+    private func doStartPiP(player: AVPlayer, result: @escaping FlutterResult) {
+        do {
+            guard let playerLayer = self.pipPlayerLayer else {
+                pipLog("No playerLayer")
+                result(FlutterError(code: "NO_LAYER", message: "No player layer", details: nil))
+                return
+            }
+
+            // Create PiP controller
+            guard let pipController = AVPictureInPictureController(playerLayer: playerLayer) else {
+                pipLog("Cannot create PiP controller")
+                result(FlutterError(code: "NO_PIP", message: "PiP not available", details: nil))
+                return
+            }
+            pipController.delegate = self
+            self.pipController = pipController
+            pipLog("PiP controller created")
+
+            // Play
+            player.play()
+            pipLog("Player playing")
+
+            // Notify Flutter
+            pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
+
+            // Start PiP
+            let started = pipController.startPictureInPicture()
+            pipLog("startPictureInPicture: \(started)")
+
+            result(started)
+        } catch {
+            pipLog("ERROR in doStartPiP: \(error.localizedDescription)")
+            result(FlutterError(code: "ERROR", message: error.localizedDescription, details: nil))
         }
     }
 
@@ -314,11 +318,7 @@ import AVKit
     func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
         pipLog("Did stop")
         let position = Int(pipPlayer?.currentTime().seconds ?? 0)
-
-        // Cleanup sau khi PiP stop
         cleanupPiP()
-
-        // Notify Flutter restore
         pipChannel?.invokeMethod("onPiPRestore", arguments: ["position": position])
     }
 
