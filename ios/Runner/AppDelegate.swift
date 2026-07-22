@@ -188,12 +188,16 @@ import AVKit
             // Cleanup
             cleanupPiP()
 
-            // 1. Audio session — QUAN TRỌNG: phải deactivate trước rồi activate lại
+            // 1. Audio session — set category mà KHÔNG deactivate (tránh conflict với Flutter)
             let session = AVAudioSession.sharedInstance()
-            try session.setActive(false)
-            try session.setCategory(.playback, mode: .moviePlayback,
-                options: [.allowBluetooth, .allowBluetoothA2DP, .allowAirPlay])
-            try session.setActive(true)
+            do {
+                try session.setCategory(.playback, mode: .moviePlayback,
+                    options: [.allowBluetooth, .allowBluetoothA2DP, .allowAirPlay])
+                try session.setActive(true, options: .notifyOthersOnDeactivation)
+            } catch {
+                pipLog("Audio session warning: \(error.localizedDescription)")
+                // Tiếp tục dù audio session fail — PiP vẫn có thể hoạt động
+            }
             pipLog("Audio session OK")
 
             // 2. Validate URL
@@ -220,17 +224,20 @@ import AVKit
             player.allowsExternalPlayback = true
             pipLog("AVPlayer created")
 
-            // 5. Create PlayerLayer — phải visible trong view hierarchy để PiP hoạt động
+            // 5. Create PlayerLayer — PHẢI visible trong view hierarchy
             let playerLayer = AVPlayerLayer(player: player)
-            playerLayer.frame = CGRect(x: -1000, y: -1000, width: 1, height: 1) // Off-screen
+            // Frame phải đủ lớn để PiP detect được video
+            let screenBounds = UIScreen.main.bounds
+            playerLayer.frame = CGRect(x: 0, y: 0, width: screenBounds.width, height: screenBounds.height)
             playerLayer.videoGravity = .resizeAspect
+            playerLayer.isHidden = true // Ẩn nhưng vẫn trong hierarchy
             if let rootVC = self.window?.rootViewController {
                 rootVC.view.layer.addSublayer(playerLayer)
             }
             self.pipPlayerLayer = playerLayer
             self.pipPlayer = player
             self.pipRestorePosition = position
-            pipLog("PlayerLayer added to rootVC.view")
+            pipLog("PlayerLayer added (hidden, full screen size)")
 
             // 6. Seek to position if needed
             if position > 0 {

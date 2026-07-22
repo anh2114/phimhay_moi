@@ -1061,7 +1061,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     if (!Platform.isIOS || _isPiPMode || _playerMode != _PlayerMode.hls) return;
     _pipChannel.invokeMethod('syncPosition', {
       'position': _currentPosition,
-    }).catchError((_) {});
+    }).catchError((_) => null);
   }
 
   Future<void> _enterPiP() async {
