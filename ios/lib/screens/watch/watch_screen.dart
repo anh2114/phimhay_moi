@@ -820,9 +820,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       // Skip resume logic if PiP is active — native player handles playback
       if (_isPiPMode) return;
 
-      // Skip if we just exited PiP (handled by onPiPModeChanged/onPiPRestore)
-      // Avoids double play/seek conflicts
-      if (_pipRebuildCounter > 0 && _isPlaying) return;
+      // Android: player was playing during PiP → skip resume (already running)
+      if (Platform.isAndroid && _player != null && _isPlaying) return;
 
       _enableWakelockWithRetry();
       _lockBrightness();
@@ -954,36 +953,31 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           if (mounted) {
             setState(() => _isPiPMode = isPiP);
             if (isPiP) {
-              // PiP ON — save position, hide controls, pause Flutter player
+              // PiP ON — hide controls, save progress
               _showControls = false;
               _autoHideControlsTimer?.cancel();
-              _saveCurrentProgress(); // Save position before PiP
-              _player?.pause();
-              _webController?.evaluateJavascript(
-                source: "document.querySelector('video')?.pause();",
-              );
-              _stopPiPSync();
+              _saveCurrentProgress();
+              if (Platform.isIOS) {
+                // iOS: separate native AVPlayer handles PiP → pause Flutter player
+                _player?.pause();
+                _webController?.evaluateJavascript(
+                  source: "document.querySelector('video')?.pause();",
+                );
+                _stopPiPSync();
+              }
+              // Android: Flutter surface IS the PiP surface → player keeps playing
+              // Just hide controls, don't pause
             } else {
-              // PiP OFF (Android) — force full state reset
+              // PiP OFF
               _pipRebuildCounter++;
               _isBuffering = false;
               _isLoading = false;
               _userPaused = false;
               _isSeeking = false;
-              // Force player out of any stuck state
-              if (_player != null && _playerMode == _PlayerMode.hls) {
-                // Reset volume to ensure audio works
-                final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
-                _player!.setVolume(restoreVol);
-                // Force play + seek to current position
-                final pos = _currentPosition;
-                if (pos > 0) {
-                  _player!.seek(Duration(seconds: pos)).then((_) {
-                    if (mounted && _player != null) {
-                      _player!.play();
-                    }
-                  });
-                } else {
+              if (Platform.isAndroid && _player != null && _playerMode == _PlayerMode.hls) {
+                // Android: player was playing during PiP, just restore UI state
+                // Force ensure player is playing (in case it got stuck)
+                if (!_isPlaying) {
                   _player!.play();
                 }
               }
@@ -992,7 +986,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           }
           break;
         case 'onPiPRestore':
-          // PiP ended (iOS) — restore Flutter player, resume sync
+          // PiP ended (iOS only) — restore Flutter player
           final args = call.arguments as Map<dynamic, dynamic>?;
           final position = args?['position'] as int? ?? 0;
           if (mounted) {
@@ -1005,7 +999,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 _audioChannel.invokeMethod('configureForPlayback').then((_) {}, onError: (_) {});
               }
               _currentPosition = position;
-              // Force seek + play (bypass _performSeekRetry which might skip)
               _player!.seek(Duration(seconds: position)).then((_) {
                 if (mounted && _player != null) {
                   _player!.play();
