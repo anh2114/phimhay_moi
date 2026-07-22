@@ -950,14 +950,21 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           if (mounted) {
             setState(() => _isPiPMode = isPiP);
             if (isPiP) {
-              // PiP ON — hide controls, pause Flutter player, stop sync
+              // PiP ON — save position, hide controls, pause Flutter player
               _showControls = false;
               _autoHideControlsTimer?.cancel();
+              _saveCurrentProgress(); // Save position before PiP
               _player?.pause();
               _webController?.evaluateJavascript(
                 source: "document.querySelector('video')?.pause();",
               );
-              _stopPiPSync(); // Stop sync — native player is in control
+              _stopPiPSync();
+            } else {
+              // PiP OFF (Android) — force rebuild Video widget to reattach surface
+              _pipRebuildCounter++;
+              _isBuffering = false; // Reset buffering state
+              _isLoading = false;
+              if (mounted) setState(() {});
             }
           }
           break;
@@ -966,6 +973,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           final args = call.arguments as Map<dynamic, dynamic>?;
           final position = args?['position'] as int? ?? 0;
           if (mounted) {
+            // Force rebuild Video widget to reattach to new surface (Android)
+            _pipRebuildCounter++;
+            _isBuffering = false; // Reset buffering state
+            _isLoading = false;
             setState(() => _isPiPMode = false);
             // Resume player at position
             if (_playerMode == _PlayerMode.hls && _player != null) {
@@ -976,7 +987,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               _currentPosition = position;
               _performSeekRetry(position);
               _player!.play();
-              _startPiPSync(); // Resume sync
+              _startPiPSync();
             } else if (_playerMode == _PlayerMode.embed && _webController != null) {
               if (position > 0) {
                 _webController!.evaluateJavascript(
@@ -1378,6 +1389,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   static const _pipChannel = MethodChannel('phimhay/pip');
   bool _isPiPMode = false;
   Timer? _pipSyncTimer; // Position sync timer for smooth iOS PiP
+  int _pipRebuildCounter = 0; // Force Video widget rebuild after PiP (Android surface recreation)
 
   // ── Double-click visual feedback ──
   bool _showDoubleTapLeft = false;
@@ -2683,10 +2695,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   ? Center(
                       child: AspectRatio(
                         aspectRatio: _aspectRatios[_aspectRatioIndex]!,
-                        child: Video(controller: _videoController!, key: ValueKey('hls_$_currentEpId'), controls: NoVideoControls),
+                        child: Video(controller: _videoController!, key: ValueKey('hls_$_currentEpId=$_pipRebuildCounter'), controls: NoVideoControls),
                       ),
                     )
-                  : Video(controller: _videoController!, key: ValueKey('hls_$_currentEpId'), controls: NoVideoControls),
+                  : Video(controller: _videoController!, key: ValueKey('hls_$_currentEpId=$_pipRebuildCounter'), controls: NoVideoControls),
             ),
 
           // ── Subtitle overlay — đặt TRONG player stack ──
