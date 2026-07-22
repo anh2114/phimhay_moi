@@ -1066,11 +1066,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   Future<void> _enterPiP() async {
     try {
-      // Save current position first (fire-and-forget cho nhanh)
       _saveCurrentProgress();
-
-      // ★ SYNC: Immediate sync before PiP — ensure native AVPlayer is at correct position
-      _syncPiPPositionImmediate();
 
       int position = _currentPosition;
       String url = _currentUrl;
@@ -1084,25 +1080,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         return;
       }
 
-      // ★ iOS: dùng proxy URL, Android: dùng URL gốc (nhanh hơn)
+      // iOS: proxy URL, Android: URL gốc
       String pipUrl = url;
-      if (Platform.isIOS) {
-        if (!url.contains('hls_proxy.php')) {
-          pipUrl = AppConfig.proxyHlsFullUrl(url);
-        }
-        // ★ FIX: Re-prepare PiP with current position before entering
-        _pipChannel.invokeMethod('preparePiP', {
-          'url': pipUrl,
-          'position': position,
-          'headers': {
-            'Referer': AppConfig.baseUrl,
-            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-          },
-        }).catchError((_) {});
-        // ★ Wait briefly for re-prepare to take effect
-        await Future.delayed(const Duration(milliseconds: 300));
+      if (Platform.isIOS && !url.contains('hls_proxy.php')) {
+        pipUrl = AppConfig.proxyHlsFullUrl(url);
       }
-      // Android: giữ nguyên URL gốc, không proxy (tránh delay)
 
       debugPrint('[PiP] enterPiP: $pipUrl (pos=$position)');
 
@@ -1744,19 +1726,6 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     // ★ FIX: Config hardware acceleration cho smoother playback
     // media_kit tự handle GPU decoder trên mobile
-
-    // ★ Pre-buffer PiP NGAY SAU KHI tạo player (iOS) — không đợi play xong
-    if (Platform.isIOS && _playerMode == _PlayerMode.hls) {
-      final pipUrl = playUrl.contains('hls_proxy.php') ? playUrl : AppConfig.proxyHlsFullUrl(playUrl);
-      _pipChannel.invokeMethod('preparePiP', {
-        'url': pipUrl,
-        'position': _currentPosition, // ★ FIX: Use actual position, not 0
-        'headers': {
-          'Referer': AppConfig.baseUrl,
-          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-        },
-      }).catchError((_) {});
-    }
 
     // Lắng nghe state changes
     _initPlayerStreams();
