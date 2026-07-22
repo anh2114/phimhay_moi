@@ -170,6 +170,17 @@ import AVKit
                 } else {
                     result(false)
                 }
+            case "syncPosition":
+                guard let args = call.arguments as? [String: Any],
+                      let position = args["position"] as? Int else {
+                    result(false)
+                    return
+                }
+                self.syncPosition(position)
+                result(true)
+            case "pauseSync":
+                self.pipPlayer?.pause()
+                result(true)
             default:
                 result(FlutterMethodNotImplemented)
             }
@@ -219,9 +230,10 @@ import AVKit
             asset = AVURLAsset(url: streamURL, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
         }
         let playerItem = AVPlayerItem(asset: asset)
-        playerItem.preferredForwardBufferDuration = 10
+        playerItem.preferredForwardBufferDuration = 15 // Buffer more for instant PiP
         let player = AVPlayer(playerItem: playerItem)
         player.allowsExternalPlayback = true
+        player.isMuted = true // Muted — only pre-buffer, no audio yet
         let playerLayer = AVPlayerLayer(player: player)
         playerLayer.frame = overlayView.bounds
         playerLayer.videoGravity = .resizeAspect
@@ -265,7 +277,8 @@ import AVKit
                 self.pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
                 self.pipOverlayView?.isHidden = false
 
-                // Play TRƯỚC khi start PiP
+                // Unmute + play TRƯỚC khi start PiP
+                player.isMuted = false
                 player.play()
 
                 // Chỉ seek nếu position khác significantly (> 3s)
@@ -391,6 +404,25 @@ import AVKit
         pipOverlayView = nil
     }
 
+    /// Sync AVPlayer position with Flutter player — called every 2s from Flutter
+    private func syncPosition(_ flutterPosition: Int) {
+        guard let player = pipPlayer, pipPrepared else { return }
+
+        // Don't sync while PiP is active — native player is in control
+        if pipController?.isPictureInPictureActive == true { return }
+
+        let avPosition = Int(player.currentTime().seconds)
+        let offset = abs(avPosition - flutterPosition)
+
+        // If offset > 3s → seek AVPlayer to Flutter position
+        if offset > 3 {
+            let targetTime = CMTime(seconds: Double(flutterPosition), preferredTimescale: 600)
+            player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero)
+            pipPreparedPosition = flutterPosition
+            pipLog("Synced AVPlayer to \(flutterPosition)s (was \(avPosition)s, offset=\(offset)s)")
+        }
+    }
+
     // MARK: - AVPictureInPictureControllerDelegate
 
     func pictureInPictureControllerWillStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
@@ -420,9 +452,10 @@ import AVKit
         self.pipLog("Stopping — position=\(position)")
 
         // Giữ player + overlay → lần PiP tiếp theo instant
-        // Pause pipPlayer khi PiP stop để tránh 2 âm thanh chạy cùng lúc
+        // Mute + pause để giữ pre-buffer, tránh 2 âm thanh chạy cùng lúc
         DispatchQueue.main.async {
             self.pipOverlayView?.isHidden = true
+            self.pipPlayer?.isMuted = true
             self.pipPlayer?.pause()
         }
 

@@ -279,6 +279,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
       _initPlayerStreams();
       _forceFullscreen = true;
+      // ★ Start PiP sync for reused player (iOS)
+      if (Platform.isIOS) {
+        _startPiPSync();
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           SystemChrome.setPreferredOrientations([
@@ -881,6 +885,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _doubleTapTimer?.cancel();
     _pendingServerSave?.cancel();
     _seekRetryTimer?.cancel();
+    _pipSyncTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _saveProgressOnExit();
     ActivityService.stopWatching();
@@ -945,18 +950,19 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           if (mounted) {
             setState(() => _isPiPMode = isPiP);
             if (isPiP) {
-              // PiP ON — hide controls, pause Flutter player
+              // PiP ON — hide controls, pause Flutter player, stop sync
               _showControls = false;
               _autoHideControlsTimer?.cancel();
               _player?.pause();
               _webController?.evaluateJavascript(
                 source: "document.querySelector('video')?.pause();",
               );
+              _stopPiPSync(); // Stop sync — native player is in control
             }
           }
           break;
         case 'onPiPRestore':
-          // PiP ended — restore Flutter player
+          // PiP ended — restore Flutter player, resume sync
           final args = call.arguments as Map<dynamic, dynamic>?;
           final position = args?['position'] as int? ?? 0;
           if (mounted) {
@@ -970,6 +976,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               _currentPosition = position;
               _performSeekRetry(position);
               _player!.play();
+              _startPiPSync(); // Resume sync
             } else if (_playerMode == _PlayerMode.embed && _webController != null) {
               if (position > 0) {
                 _webController!.evaluateJavascript(
@@ -998,10 +1005,40 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     });
   }
 
+  /// Start periodic sync of Flutter player position → native AVPlayer (iOS only)
+  void _startPiPSync() {
+    if (!Platform.isIOS) return;
+    _pipSyncTimer?.cancel();
+    _pipSyncTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (_player != null && _playerMode == _PlayerMode.hls && !_isPiPMode) {
+        _pipChannel.invokeMethod('syncPosition', {
+          'position': _currentPosition,
+        }).catchError((_) {});
+      }
+    });
+  }
+
+  /// Stop position sync timer
+  void _stopPiPSync() {
+    _pipSyncTimer?.cancel();
+    _pipSyncTimer = null;
+  }
+
+  /// Sync position immediately (on seek, not waiting for timer)
+  void _syncPiPPositionImmediate() {
+    if (!Platform.isIOS || _isPiPMode || _playerMode != _PlayerMode.hls) return;
+    _pipChannel.invokeMethod('syncPosition', {
+      'position': _currentPosition,
+    }).catchError((_) {});
+  }
+
   Future<void> _enterPiP() async {
     try {
       // Save current position first (fire-and-forget cho nhanh)
       _saveCurrentProgress();
+
+      // ★ SYNC: Immediate sync before PiP — ensure native AVPlayer is at correct position
+      _syncPiPPositionImmediate();
 
       int position = _currentPosition;
       String url = _currentUrl;
@@ -1340,6 +1377,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   // iOS PiP暂不支持 (AVPlayer proxy issues with m3u8 streams)
   static const _pipChannel = MethodChannel('phimhay/pip');
   bool _isPiPMode = false;
+  Timer? _pipSyncTimer; // Position sync timer for smooth iOS PiP
 
   // ── Double-click visual feedback ──
   bool _showDoubleTapLeft = false;
@@ -1376,6 +1414,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   // ── Mini-player methods ──────────────────────────────
   void _enterMiniPlayer() {
     _saveCurrentProgress();
+    _stopPiPSync(); // Stop sync — player will be in PlayerHolder
     // ★ FIX: Pause player TRƯỚC khi transfer — tránh 2 player cùng chạy audio
     _player?.pause();
     _webController?.evaluateJavascript(
@@ -1412,6 +1451,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       _isDraggingDown = false;
     });
     _forceFullscreen = true;
+    // ★ Resume PiP sync when returning to fullscreen
+    if (Platform.isIOS && _playerMode == _PlayerMode.hls) {
+      _startPiPSync();
+    }
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
@@ -1696,6 +1739,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         _player!.setRate(_playbackSpeed);
       }
 
+      // Start iOS PiP position sync after player is ready
+      if (Platform.isIOS) {
+        _startPiPSync();
+      }
+
       // Seek nếu có saved position
       if (targetPosition > 0 && !_seekCompleted) {
         _seekTargetTime = targetPosition;
@@ -1761,6 +1809,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     // Seek lần đầu
     _player!.seek(Duration(seconds: targetSec));
+
+    // ★ SYNC: Immediately sync position to native AVPlayer for smooth iOS PiP
+    _syncPiPPositionImmediate();
 
     // ★ FIX: Store target for stream-based seek completion detection
     _seekTargetTime = targetSec;
@@ -2063,6 +2114,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (!_tryUsePrefetched(ep)) {
         _initPlayer(url);
       }
+    } else {
+      // For embed mode, stop PiP sync (not supported)
+      _stopPiPSync();
     }
 
     Future.delayed(const Duration(seconds: 3), () {
@@ -2713,6 +2767,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
                             });
                           });
+                          _syncPiPPositionImmediate();
                           _showDoubleTapFeedback(false);
                         },
                         onLongPressStart: (_) => _onLongPressStart(),
@@ -2760,9 +2815,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                           _player?.seek(Duration(seconds: target)).then((_) {
                             if (mounted) setState(() {
                               _isSeeking = false;
-                              
+
                             });
                           });
+                          _syncPiPPositionImmediate();
                           _showDoubleTapFeedback(true);
                         },
                         onLongPressStart: (_) => _onLongPressStart(),
@@ -2950,6 +3006,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         _seekTargetTime = seekTarget;
         if (mounted) setState(() => _currentPos = Duration(seconds: seekTarget));
         _player!.seek(Duration(seconds: seekTarget));
+        _syncPiPPositionImmediate();
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -3412,6 +3469,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   
                 });
               });
+              _syncPiPPositionImmediate();
               _showDoubleTapFeedback(false);
             },
             onLongPressStart: (_) => _onLongPressStart(),
@@ -3549,6 +3607,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   
                 });
               });
+              _syncPiPPositionImmediate();
               _showDoubleTapFeedback(true);
             },
             onLongPressStart: (_) => _onLongPressStart(),
@@ -3627,6 +3686,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                           _isSeeking = false;
                           
                         });
+                        _syncPiPPositionImmediate();
                         Future.delayed(const Duration(milliseconds: 200), () {
                           if (mounted && !_isPlaying) {
                             _player?.play();
