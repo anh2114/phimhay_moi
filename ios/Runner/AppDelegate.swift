@@ -265,7 +265,7 @@ import AVKit
 
         // Create PiP controller
         guard let pipController = AVPictureInPictureController(playerLayer: playerLayer) else {
-            pipLog("Cannot create PiP controller — PiP may not be available")
+            pipLog("Cannot create PiP controller")
             result(FlutterError(code: "NO_PIP", message: "PiP not available", details: nil))
             return
         }
@@ -273,21 +273,40 @@ import AVKit
         self.pipController = pipController
         pipLog("PiP controller created")
 
-        // Play — phải play TRƯỚC khi start PiP
+        // Play
         player.play()
-        pipLog("Player playing, status: \(player.timeControlStatus.rawValue)")
+        pipLog("Player playing")
 
-        // Notify Flutter
-        pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
+        // ★ Chờ player ready + check pictureInPicturePossible (như YouPiP)
+        self.waitForPiPReady(player: player, pipController: pipController, result: result, attempts: 0)
+    }
 
-        // Start PiP
-        pipController.startPictureInPicture()
-        pipLog("startPictureInPicture called")
+    private func waitForPiPReady(player: AVPlayer, pipController: AVPictureInPictureController, result: @escaping FlutterResult, attempts: Int) {
+        let isReady = player.status == .readyToPlay
+        let isPiPPossible = pipController.isPictureInPicturePossible
 
-        // Notify Flutter PiP starting
-        pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
+        pipLog("Check #\(attempts): ready=\(isReady), possible=\(isPiPPossible)")
 
-        result(true)
+        if isReady && isPiPPossible {
+            pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
+            pipController.startPictureInPicture()
+            pipLog("startPictureInPicture ✓")
+            result(true)
+            return
+        }
+
+        if attempts >= 20 {
+            // Timeout 10s → force start
+            pipLog("Timeout — force PiP")
+            pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
+            pipController.startPictureInPicture()
+            result(true)
+            return
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.waitForPiPReady(player: player, pipController: pipController, result: result, attempts: attempts + 1)
+        }
     }
 
     private func cleanupPiP() {
