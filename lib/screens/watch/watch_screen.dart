@@ -958,15 +958,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               _autoHideControlsTimer?.cancel();
               _saveCurrentProgress();
               if (Platform.isIOS) {
-                // iOS: exit fullscreen → PiP window appears as floating window
-                _restoreOrientations();
-                SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-                try { WakelockPlus.disable(); } catch (_) {}
-                // Pause Flutter player — native AVPlayer handles PiP
+                // ★ iOS: KHÔNG restore orientations — PiP window sẽ xuất hiện ngay
+                // Chỉ pause Flutter player, để native AVPlayer handle PiP
                 _player?.pause();
-                _webController?.evaluateJavascript(
-                  source: "document.querySelector('video')?.pause();",
-                );
+                if (_webController != null) {
+                  _webController!.evaluateJavascript(
+                    source: "document.querySelector('video')?.pause();",
+                  ).catchError((_) => null);
+                }
                 _stopPiPSync();
               }
               // Android: Flutter surface IS the PiP surface → player keeps playing
