@@ -274,17 +274,14 @@ import AVKit
         // Notify Flutter
         pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
 
-        // Start PiP — nếu fails thì cleanup
-        let started = pipController.startPictureInPicture()
-        pipLog("startPictureInPicture: \(started)")
+        // Start PiP
+        pipController.startPictureInPicture()
+        pipLog("startPictureInPicture called")
 
-        if !started {
-            pipLog("PiP failed to start — cleaning up")
-            cleanupPiP()
-            pipChannel?.invokeMethod("onPiPModeChanged", arguments: false)
-        }
+        // Notify Flutter PiP starting
+        pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
 
-        result(started)
+        result(true)
     }
 
     private func cleanupPiP() {
