@@ -224,13 +224,12 @@ import AVKit
             player.allowsExternalPlayback = true
             pipLog("AVPlayer created")
 
-            // 5. Create PlayerLayer — PHẢI visible trong view hierarchy
+            // 5. Create PlayerLayer — PHẢI visible và trong view hierarchy để PiP hoạt động
             let playerLayer = AVPlayerLayer(player: player)
-            // Frame phải đủ lớn để PiP detect được video
-            let screenBounds = UIScreen.main.bounds
-            playerLayer.frame = CGRect(x: 0, y: 0, width: screenBounds.width, height: screenBounds.height)
+            // Frame nhỏ, ở góc màn hình — PiP cần layer visible
+            playerLayer.frame = CGRect(x: 0, y: 0, width: 1, height: 1)
             playerLayer.videoGravity = .resizeAspect
-            playerLayer.isHidden = true // Ẩn nhưng vẫn trong hierarchy
+            playerLayer.opacity = 0.01 // Gần như invisible nhưng VISIBLE (không hidden)
             if let rootVC = self.window?.rootViewController {
                 rootVC.view.layer.addSublayer(playerLayer)
             }
