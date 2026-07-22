@@ -1016,6 +1016,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 }
               });
               _startPiPSync();
+              // ★ Re-prepare native PiP for next time (instant)
+              _prepareNativePiP();
             } else if (_playerMode == _PlayerMode.embed && _webController != null) {
               if (position > 0) {
                 _webController!.evaluateJavascript(
@@ -1039,6 +1041,24 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           break;
       }
     });
+  }
+
+  /// Pre-buffer native PiP player (như YouPiP) — tạo AVPlayer ẩn + PiP controller sẵn
+  void _prepareNativePiP() {
+    if (!Platform.isIOS || _currentUrl.isEmpty) return;
+    String pipUrl = _currentUrl;
+    if (!pipUrl.contains('hls_proxy.php')) {
+      pipUrl = AppConfig.proxyHlsFullUrl(pipUrl);
+    }
+    debugPrint('[PiP] prepareNativePiP: $pipUrl (pos=$_currentPosition)');
+    _pipChannel.invokeMethod('preparePiP', {
+      'url': pipUrl,
+      'position': _currentPosition,
+      'headers': {
+        'Referer': AppConfig.baseUrl,
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+      },
+    }).catchError((_) => null);
   }
 
   /// Start periodic sync of Flutter player position → native AVPlayer (iOS only)
@@ -1072,47 +1092,35 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     try {
       _saveCurrentProgress();
 
-      int position = _currentPosition;
-      String url = _currentUrl;
+      if (_currentUrl.isEmpty) return;
 
-      if (url.isEmpty) {
-        if (mounted) {
+      debugPrint('[PiP] enterPiP (pos=$_currentPosition)');
+
+      // ★ iOS: dùng pre-buffered player → instant PiP
+      // ★ Android: tạo mới on-demand
+      if (Platform.isIOS) {
+        final result = await _pipChannel.invokeMethod('enterPiP');
+        if (result != true) {
+          debugPrint('[PiP] enterPiP returned false');
+        }
+      } else {
+        // Android: URL gốc, không proxy
+        final result = await _pipChannel.invokeMethod('enterPiP', {
+          'url': _currentUrl,
+          'position': _currentPosition,
+          'headers': {
+            'Referer': AppConfig.baseUrl,
+            'User-Agent': 'Mozilla/5.0',
+          },
+        });
+        if (result != true && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No video to PiP'), backgroundColor: Colors.orange),
+            const SnackBar(content: Text('Không thể vào chế độ PiP'), backgroundColor: Colors.orange),
           );
         }
-        return;
-      }
-
-      // iOS: proxy URL, Android: URL gốc
-      String pipUrl = url;
-      if (Platform.isIOS && !url.contains('hls_proxy.php')) {
-        pipUrl = AppConfig.proxyHlsFullUrl(url);
-      }
-
-      debugPrint('[PiP] enterPiP: $pipUrl (pos=$position)');
-
-      final result = await _pipChannel.invokeMethod('enterPiP', {
-        'url': pipUrl,
-        'position': position,
-        'headers': {
-          'Referer': AppConfig.baseUrl,
-          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-        },
-      });
-
-      if (result != true && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Không thể vào chế độ PiP'), backgroundColor: Colors.orange),
-        );
       }
     } catch (e) {
       debugPrint('[PiP] error: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi PiP: $e'), backgroundColor: Colors.red),
-        );
-      }
     }
   }
 
@@ -1761,6 +1769,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       // Start iOS PiP position sync after player is ready
       if (Platform.isIOS) {
         _startPiPSync();
+        // ★ Pre-buffer PiP native player (như YouPiP)
+        _prepareNativePiP();
       }
 
       // Seek nếu có saved position

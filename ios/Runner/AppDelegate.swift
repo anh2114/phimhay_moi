@@ -6,11 +6,14 @@ import AVKit
 @main
 @objc class AppDelegate: FlutterAppDelegate, AVPictureInPictureControllerDelegate {
 
+    // MARK: - PiP Pre-buffer State (like YouPiP)
     private var pipPlayer: AVPlayer?
     private var pipPlayerLayer: AVPlayerLayer?
     private var pipController: AVPictureInPictureController?
     private var pipChannel: FlutterMethodChannel?
     private var pipRestorePosition: Int = 0
+    private var pipPrepared = false
+    private var pipUrl: String = ""
 
     func pipLog(_ msg: String) {
         NSLog("[PiP] \(msg)")
@@ -141,34 +144,34 @@ import AVKit
         pipChannel?.setMethodCallHandler { [weak self] (call, result) in
             guard let self = self else { return }
             switch call.method {
-            case "enterPiP":
+            case "preparePiP":
                 guard let args = call.arguments as? [String: Any],
-                      let url = args["url"] as? String,
-                      let position = args["position"] as? Int else {
-                    result(FlutterError(code: "INVALID_ARGS", message: "Missing url or position", details: nil))
+                      let url = args["url"] as? String else {
+                    result(false)
                     return
                 }
+                let position = args["position"] as? Int ?? 0
                 let headers = args["headers"] as? [String: String] ?? [:]
-                self.enterPiP(url: url, position: position, headers: headers, result: result)
-            case "preparePiP":
+                self.preparePiP(url: url, position: position, headers: headers)
                 result(true)
+            case "enterPiP":
+                self.enterPiP(result: result)
             case "isPiP":
                 result(self.pipController?.isPictureInPictureActive ?? false)
             case "exitPiP":
-                do {
-                    if self.pipController?.isPictureInPictureActive == true {
-                        self.pipController?.stopPictureInPicture()
-                        result(true)
-                    } else {
-                        result(false)
-                    }
-                } catch {
+                if self.pipController?.isPictureInPictureActive == true {
+                    self.pipController?.stopPictureInPicture()
+                    result(true)
+                } else {
                     result(false)
                 }
             case "syncPosition":
-                result(true)
-            case "pauseSync":
-                self.pipPlayer?.pause()
+                guard let args = call.arguments as? [String: Any],
+                      let position = args["position"] as? Int else {
+                    result(false)
+                    return
+                }
+                self.syncPosition(position)
                 result(true)
             default:
                 result(FlutterMethodNotImplemented)
@@ -179,133 +182,130 @@ import AVKit
         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
     }
 
-    // MARK: - PiP
+    // MARK: - PiP Pre-buffer (như YouPiP)
 
-    private func enterPiP(url: String, position: Int, headers: [String: String], result: @escaping FlutterResult) {
-        do {
-            pipLog("enterPiP start: pos=\(position)")
-
-            // Cleanup
-            cleanupPiP()
-
-            // 1. Audio session — set category mà KHÔNG deactivate (tránh conflict với Flutter)
-            let session = AVAudioSession.sharedInstance()
-            do {
-                try session.setCategory(.playback, mode: .moviePlayback,
-                    options: [.allowBluetooth, .allowBluetoothA2DP, .allowAirPlay])
-                try session.setActive(true, options: .notifyOthersOnDeactivation)
-            } catch {
-                pipLog("Audio session warning: \(error.localizedDescription)")
-                // Tiếp tục dù audio session fail — PiP vẫn có thể hoạt động
-            }
-            pipLog("Audio session OK")
-
-            // 2. Validate URL
-            guard let streamURL = URL(string: url) else {
-                pipLog("Invalid URL")
-                result(FlutterError(code: "INVALID_URL", message: "Invalid URL", details: nil))
-                return
-            }
-            pipLog("URL OK: \(url.prefix(50))")
-
-            // 3. Create AVPlayerItem
-            let asset: AVURLAsset
-            if headers.isEmpty {
-                asset = AVURLAsset(url: streamURL)
-            } else {
-                asset = AVURLAsset(url: streamURL, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
-            }
-            let playerItem = AVPlayerItem(asset: asset)
-            playerItem.preferredForwardBufferDuration = 10
-            pipLog("PlayerItem created")
-
-            // 4. Create AVPlayer
-            let player = AVPlayer(playerItem: playerItem)
-            player.allowsExternalPlayback = true
-            pipLog("AVPlayer created")
-
-            // 5. Create PlayerLayer — ẩn, PiP cần layer trong hierarchy
-            let playerLayer = AVPlayerLayer(player: player)
-            playerLayer.frame = CGRect(x: -1000, y: -1000, width: 1, height: 1)
-            playerLayer.videoGravity = .resizeAspect
-            if let rootVC = self.window?.rootViewController {
-                rootVC.view.layer.addSublayer(playerLayer)
-            }
-            self.pipPlayerLayer = playerLayer
-            self.pipPlayer = player
-            self.pipRestorePosition = position
-            pipLog("PlayerLayer added (hidden, full screen size)")
-
-            // 6. Seek to position if needed
-            if position > 0 {
-                let targetTime = CMTime(seconds: Double(position), preferredTimescale: 600)
-                player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-                    guard let self = self else { return }
-                    DispatchQueue.main.async {
-                        self.doStartPiP(player: player, result: result)
-                    }
-                }
-            } else {
-                doStartPiP(player: player, result: result)
-            }
-        } catch {
-            pipLog("ERROR in enterPiP: \(error.localizedDescription)")
-            result(FlutterError(code: "ERROR", message: error.localizedDescription, details: nil))
-        }
-    }
-
-    private func doStartPiP(player: AVPlayer, result: @escaping FlutterResult) {
-        guard let playerLayer = self.pipPlayerLayer else {
-            pipLog("No playerLayer")
-            result(FlutterError(code: "NO_LAYER", message: "No player layer", details: nil))
+    /// Tạo AVPlayer ẩn + PiP controller SẴN, muted, đang play để buffer
+    /// Khi cần PiP → chỉ startPictureInPicture() → instant
+    private func preparePiP(url: String, position: Int, headers: [String: String]) {
+        // Nếu URL giống và đã prepare → skip
+        if pipPrepared && pipUrl == url {
+            pipLog("preparePiP: already prepared for this URL")
             return
         }
 
-        // Create PiP controller
+        // Cleanup cũ
+        cleanupPiP()
+
+        guard let streamURL = URL(string: url) else {
+            pipLog("preparePiP: invalid URL")
+            return
+        }
+
+        pipLog("preparePiP: \(url.prefix(50))... pos=\(position)")
+
+        // 1. Audio session
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .moviePlayback,
+                options: [.allowBluetooth, .allowBluetoothA2DP, .allowAirPlay])
+            try session.setActive(true)
+        } catch {
+            pipLog("Audio session warning: \(error.localizedDescription)")
+        }
+
+        // 2. Create AVPlayer (muted, pre-buffer)
+        let asset: AVURLAsset
+        if headers.isEmpty {
+            asset = AVURLAsset(url: streamURL)
+        } else {
+            asset = AVURLAsset(url: streamURL, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
+        }
+
+        let playerItem = AVPlayerItem(asset: asset)
+        playerItem.preferredForwardBufferDuration = 30
+
+        let player = AVPlayer(playerItem: playerItem)
+        player.allowsExternalPlayback = true
+        player.isMuted = true // Muted — pre-buffer không phát âm thanh
+
+        // 3. Create PlayerLayer (hidden, off-screen)
+        let playerLayer = AVPlayerLayer(player: player)
+        playerLayer.frame = CGRect(x: -1000, y: -1000, width: 1, height: 1)
+        playerLayer.videoGravity = .resizeAspect
+        if let rootVC = self.window?.rootViewController {
+            rootVC.view.layer.addSublayer(playerLayer)
+        }
+
+        self.pipPlayer = player
+        self.pipPlayerLayer = playerLayer
+        self.pipUrl = url
+
+        // 4. Seek + play muted để buffer
+        if position > 0 {
+            let targetTime = CMTime(seconds: Double(position), preferredTimescale: 600)
+            player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+                player.play()
+            }
+        } else {
+            player.play()
+        }
+
+        // 5. Create PiP controller
         guard let pipController = AVPictureInPictureController(playerLayer: playerLayer) else {
-            pipLog("Cannot create PiP controller")
-            result(FlutterError(code: "NO_PIP", message: "PiP not available", details: nil))
+            pipLog("preparePiP: cannot create PiP controller")
+            cleanupPiP()
             return
         }
         pipController.delegate = self
         self.pipController = pipController
-        pipLog("PiP controller created")
+        self.pipPrepared = true
+        self.pipRestorePosition = position
 
-        // Play
-        player.play()
-        pipLog("Player playing")
-
-        // ★ Chờ player ready + check pictureInPicturePossible (như YouPiP)
-        self.waitForPiPReady(player: player, pipController: pipController, result: result, attempts: 0)
+        pipLog("preparePiP done — ready at \(position)s")
     }
 
-    private func waitForPiPReady(player: AVPlayer, pipController: AVPictureInPictureController, result: @escaping FlutterResult, attempts: Int) {
-        let isReady = player.status == .readyToPlay
-        let isPiPPossible = pipController.isPictureInPicturePossible
+    /// Sync Flutter player position → native AVPlayer
+    private func syncPosition(_ position: Int) {
+        guard let player = pipPlayer, pipPrepared else { return }
+        if pipController?.isPictureInPictureActive == true { return }
 
-        pipLog("Check #\(attempts): ready=\(isReady), possible=\(isPiPPossible)")
-
-        if isReady && isPiPPossible {
-            pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
-            pipController.startPictureInPicture()
-            pipLog("startPictureInPicture ✓")
-            result(true)
-            return
-        }
-
-        if attempts >= 20 {
-            pipLog("Timeout — force PiP")
-            pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
-            pipController.startPictureInPicture()
-            result(true)
-            return
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.waitForPiPReady(player: player, pipController: pipController, result: result, attempts: attempts + 1)
+        let current = Int(player.currentTime().seconds)
+        let offset = abs(current - position)
+        if offset > 3 {
+            let targetTime = CMTime(seconds: Double(position), preferredTimescale: 600)
+            player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero)
+            pipRestorePosition = position
+            pipLog("Sync: \(position)s (was \(current)s)")
         }
     }
 
+    /// Enter PiP — chỉ startPictureInPicture() trên controller CÓ SẴN (instant!)
+    private func enterPiP(result: @escaping FlutterResult) {
+        guard pipPrepared, let pipController = self.pipController, let player = self.pipPlayer else {
+            pipLog("enterPiP: not prepared")
+            result(FlutterError(code: "NOT_PREPARED", message: "PiP not prepared", details: nil))
+            return
+        }
+
+        pipLog("enterPiP: starting...")
+
+        // Unmute + play
+        player.isMuted = false
+        if player.timeControlStatus != .playing {
+            player.play()
+        }
+
+        // Notify Flutter
+        pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
+
+        // Start PiP — instant because player is already buffered!
+        pipController.startPictureInPicture()
+        pipLog("enterPiP: startPictureInPicture called")
+
+        result(true)
+    }
+
+    /// Cleanup
     private func cleanupPiP() {
         pipPlayerLayer?.removeFromSuperlayer()
         pipPlayerLayer = nil
@@ -313,6 +313,8 @@ import AVKit
         pipPlayer = nil
         pipController?.delegate = nil
         pipController = nil
+        pipPrepared = false
+        pipUrl = ""
     }
 
     // MARK: - AVPictureInPictureControllerDelegate
@@ -339,7 +341,13 @@ import AVKit
     func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
         pipLog("Did stop")
         let position = Int(pipPlayer?.currentTime().seconds ?? 0)
-        cleanupPiP()
+
+        // Giữ player + controller → lần PiP tiếp theo instant
+        DispatchQueue.main.async { [weak self] in
+            self?.pipPlayer?.isMuted = true
+            self?.pipPlayer?.pause()
+        }
+
         pipChannel?.invokeMethod("onPiPRestore", arguments: ["position": position])
     }
 
