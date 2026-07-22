@@ -2971,6 +2971,51 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
           // ── Subtitle overlay — moved to _buildSubtitleZone() ──
 
+          // ── PiP active overlay — nền đen + text khi PiP đang active ──
+          if (_isPiPMode && Platform.isIOS)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black,
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: AppTheme.accent.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.picture_in_picture_alt_rounded,
+                          color: AppTheme.accent,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Đang phát trong PiP',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Quay lại để tiếp tục xem',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.4),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
         ],
       );
   }
