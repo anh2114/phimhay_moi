@@ -813,6 +813,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         _positionBeforePause = _currentPos.inSeconds;
         _saveCurrentProgress();
       }
+      // ★ iOS: Auto PiP khi app vào background (như YouPiP)
+      if (Platform.isIOS && !_isPiPMode && _playerMode == _PlayerMode.hls && _currentUrl.isNotEmpty) {
+        debugPrint('[PiP] Auto PiP triggered — app entering background');
+        _enterPiP();
+      }
     } else if (state == AppLifecycleState.detached) {
       // iOS/Android: app đang bị kill — lưu progress lần cuối
       _saveCurrentProgress();
