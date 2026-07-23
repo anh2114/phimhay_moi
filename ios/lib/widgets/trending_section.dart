@@ -113,18 +113,18 @@ class _TrendingCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Poster with white border
+            // Poster with white border (giống hero carousel)
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(18),
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.2),
-                    width: 1,
+                    color: Colors.white.withValues(alpha: 0.92),
+                    width: 2,
                   ),
                 ),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(16),
                   child: Stack(
                     children: [
                       // Poster image
