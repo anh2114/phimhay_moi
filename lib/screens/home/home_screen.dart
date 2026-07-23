@@ -28,6 +28,7 @@ import '../notification/notification_screen.dart';
 import '../actors/actors_list_screen.dart';
 import '../../widgets/collection_carousel.dart';
 import '../../widgets/smart_link_ad.dart';
+import '../../widgets/trending_section.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -481,6 +482,12 @@ class _HomeScreenState extends State<HomeScreen> {
             _buildContinueWatching(),
             // Collection carousel
             const CollectionCarousel(),
+            // Trending Daily - Top 10 phim hot theo ngày
+            const TrendingSection(
+              title: 'Top 10 phim lẻ hot trong ngày',
+              timeWindow: 'day',
+              limit: 10,
+            ),
             ...provider.sections.map((s) => MovieRail(
               title: s.title,
               moreHref: s.moreHref,
@@ -489,6 +496,12 @@ class _HomeScreenState extends State<HomeScreen> {
               onMovieTap: _onMovieTap,
               onMoreTap: (href) => _onMoreTap(href, s.title),
             )),
+            // Trending Weekly - Top 10 phim hot theo tuần
+            const TrendingSection(
+              title: 'Top 10 phim lẻ hot trong tuần',
+              timeWindow: 'week',
+              limit: 10,
+            ),
             const SizedBox(height: 80), // Spacer cho BottomNav
           ],
         ),
