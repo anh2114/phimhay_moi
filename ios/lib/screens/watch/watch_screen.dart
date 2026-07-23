@@ -812,16 +812,15 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (_player != null) {
         _positionBeforePause = _currentPos.inSeconds;
         _saveCurrentProgress();
-      }
-      // ★ iOS: Auto PiP khi app vào background — delay 0.5s cho app transition xong
-      if (Platform.isIOS && !_isPiPMode && _isPlaying && _currentUrl.isNotEmpty) {
-        debugPrint('[PiP] Auto PiP scheduled (paused)');
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (!_isPiPMode && mounted) {
-            debugPrint('[PiP] Auto PiP triggered (delayed)');
-            _enterPiP().catchError((_) => null);
+        // ★ Stop player khi app vào background (tránh audio tiếp tục phát)
+        if (!_isPiPMode) {
+          _player?.pause();
+          if (_webController != null) {
+            _webController!.evaluateJavascript(
+              source: "document.querySelector('video')?.pause();",
+            ).catchError((_) => null);
           }
-        });
+        }
       }
     } else if (state == AppLifecycleState.detached) {
       // iOS/Android: app đang bị kill — lưu progress lần cuối
@@ -1002,6 +1001,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           // PiP ended (iOS only) — restore Flutter player
           final args = call.arguments as Map<dynamic, dynamic>?;
           final position = args?['position'] as int? ?? 0;
+          final dismissed = args?['dismissed'] as bool? ?? false;
           if (mounted) {
             _pipRebuildCounter++;
             _isBuffering = false;
@@ -1012,13 +1012,15 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 _audioChannel.invokeMethod('configureForPlayback').then((_) {}, onError: (_) {});
               }
               _currentPosition = position;
-              _player!.seek(Duration(seconds: position)).then((_) {
-                if (mounted && _player != null) {
-                  _player!.play();
-                }
-              });
+              // ★ Nếu PiP dismissed (bấm X) → KHÔNG play lại, giữ nguyên paused
+              if (!dismissed) {
+                _player!.seek(Duration(seconds: position)).then((_) {
+                  if (mounted && _player != null) {
+                    _player!.play();
+                  }
+                });
+              }
               _startPiPSync();
-              // ★ Re-prepare native PiP for next time (instant)
               _prepareNativePiP();
             } else if (_playerMode == _PlayerMode.embed && _webController != null) {
               if (position > 0) {

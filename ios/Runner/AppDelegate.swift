@@ -14,6 +14,7 @@ import AVKit
     private var pipRestorePosition: Int = 0
     private var pipPrepared = false
     private var pipUrl: String = ""
+    private var pipWasDismissed = false // true = user tapped X to dismiss PiP
 
     func pipLog(_ msg: String) {
         NSLog("[PiP] \(msg)")
@@ -335,23 +336,30 @@ import AVKit
 
     func pictureInPictureControllerWillStopPictureInPicture(_ controller: AVPictureInPictureController) {
         pipLog("Will stop")
+        pipWasDismissed = true // Mặc định là dismiss, restore sẽ set lại false
         pipChannel?.invokeMethod("onPiPModeChanged", arguments: false)
     }
 
     func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
-        pipLog("Did stop")
+        pipLog("Did stop — dismissed=\(pipWasDismissed)")
         let position = Int(pipPlayer?.currentTime().seconds ?? 0)
 
-        // Giữ player + controller → lần PiP tiếp theo instant
+        // Pause native player
         DispatchQueue.main.async { [weak self] in
             self?.pipPlayer?.isMuted = true
             self?.pipPlayer?.pause()
         }
 
-        pipChannel?.invokeMethod("onPiPRestore", arguments: ["position": position])
+        // Notify Flutter: PiP ended + whether it was dismissed or restored
+        pipChannel?.invokeMethod("onPiPRestore", arguments: [
+            "position": position,
+            "dismissed": pipWasDismissed
+        ])
     }
 
     func pictureInPictureController(_ controller: AVPictureInPictureController, restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
+        pipLog("Restore — returning to app")
+        pipWasDismissed = false // PiP restored, NOT dismissed
         completionHandler(true)
     }
 
