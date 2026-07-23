@@ -571,21 +571,15 @@ class _HomeScreenState extends State<HomeScreen> {
             _buildContinueWatching(),
             // Collection carousel
             const CollectionCarousel(),
-            // Trending Daily - Top 10 phim hot theo ngày
+            // Trending Daily - Top 10 phim lẻ hot theo ngày
             TrendingSection(
               title: 'Top 10 phim lẻ hot trong ngày',
               timeWindow: 'day',
               limit: 10,
               onMovieTap: _onTrendingTap,
             ),
-            ...provider.sections.map((s) => MovieRail(
-              title: s.title,
-              moreHref: s.moreHref,
-              movies: s.movies,
-              showRank: true,
-              onMovieTap: _onMovieTap,
-              onMoreTap: (href) => _onMoreTap(href, s.title),
-            )),
+            // Render sections + insert TV trending after "Phim Trung Quốc mới"
+            ..._buildSectionsWithTvTrending(provider),
             // Trending Weekly - Top 10 phim hot theo tuần
             TrendingSection(
               title: 'Top 10 phim lẻ hot trong tuần',
@@ -698,6 +692,48 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ],
     );
+  }
+
+  /// Build sections + insert TV trending after "Phim Trung Quốc mới"
+  List<Widget> _buildSectionsWithTvTrending(HomeProvider provider) {
+    final widgets = <Widget>[];
+    bool tvInserted = false;
+
+    for (final s in provider.sections) {
+      widgets.add(MovieRail(
+        title: s.title,
+        moreHref: s.moreHref,
+        movies: s.movies,
+        showRank: true,
+        onMovieTap: _onMovieTap,
+        onMoreTap: (href) => _onMoreTap(href, s.title),
+      ));
+
+      // Insert TV trending after "Phim Trung Quốc mới"
+      if (!tvInserted && s.title.toLowerCase().contains('trung quốc')) {
+        tvInserted = true;
+        widgets.add(TrendingSection(
+          title: 'Top 10 phim bộ hot trong ngày',
+          timeWindow: 'day',
+          limit: 10,
+          mediaType: 'tv',
+          onMovieTap: _onTrendingTap,
+        ));
+      }
+    }
+
+    // Nếu không tìm thấy "Trung Quốc" → thêm cuối danh sách sections
+    if (!tvInserted) {
+      widgets.add(TrendingSection(
+        title: 'Top 10 phim bộ hot trong ngày',
+        timeWindow: 'day',
+        limit: 10,
+        mediaType: 'tv',
+        onMovieTap: _onTrendingTap,
+      ));
+    }
+
+    return widgets;
   }
 
   Widget _buildContinueWatching() {

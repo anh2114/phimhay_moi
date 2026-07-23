@@ -128,30 +128,7 @@ class MovieCard extends StatelessWidget {
                           ),
                         ),
                       ),
-                    // TM badge — Thuyết Minh (top-right khi có rank, top-left khi không)
-                    if (_isThuyetMinh(movie.lang))
-                      Positioned(
-                        top: 6,
-                        left: rank > 0 ? null : 6,
-                        right: 6,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF5E6B8),
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                          child: const Text(
-                            'TM',
-                            style: TextStyle(
-                              color: Color(0xFF1A1100),
-                              fontSize: 8,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.5,
-                            ),
-                          ),
-                        ),
-                      ),
-                    // Quality (white) + Episode (green) badges
+                    // Quality + TM + Episode badges — bottom left
                     Positioned(
                       bottom: 7, left: 7,
                       child: Row(
@@ -165,7 +142,17 @@ class MovieCard extends StatelessWidget {
                               textColor: const Color(0xFF1A1100),
                               borderColor: Colors.transparent,
                             ),
-                          if (_qualityBadge(movie.quality).isNotEmpty && _shortEp(movie.episodeCurrent).isNotEmpty)
+                          if (_qualityBadge(movie.quality).isNotEmpty)
+                            const SizedBox(width: 4),
+                          // TM — golden gradient (same as Xem phim button)
+                          if (_isThuyetMinh(movie.lang))
+                            _BadgeChip(
+                              label: 'TM',
+                              bgColor: const Color(0xFFFECF59),
+                              textColor: const Color(0xFF1A1100),
+                              borderColor: Colors.transparent,
+                            ),
+                          if (_isThuyetMinh(movie.lang) && _shortEp(movie.episodeCurrent).isNotEmpty)
                             const SizedBox(width: 4),
                           // Episode — green bg, white text
                           if (_shortEp(movie.episodeCurrent).isNotEmpty)

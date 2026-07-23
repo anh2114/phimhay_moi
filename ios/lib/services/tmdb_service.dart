@@ -54,12 +54,12 @@ class TmdbMovie {
 class TmdbService {
   final Dio _dio = Dio();
 
-  /// Fetch trending movies từ server API (cached trong MySQL)
-  Future<List<TmdbMovie>> fetchTrending({String timeWindow = 'day', int limit = 10}) async {
+  /// Fetch trending từ server API (cached trong MySQL)
+  Future<List<TmdbMovie>> fetchTrending({String timeWindow = 'day', int limit = 10, String mediaType = 'movie'}) async {
     try {
       final response = await _dio.get(
         '${AppConfig.apiUrl}/tmdb_trending.php',
-        queryParameters: {'window': timeWindow, 'limit': limit},
+        queryParameters: {'window': timeWindow, 'limit': limit, 'media_type': mediaType},
         options: Options(receiveTimeout: const Duration(seconds: 10)),
       );
 

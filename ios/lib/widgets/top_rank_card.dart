@@ -183,7 +183,7 @@ class TopRankCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    // Quality + Episode badges — bottom center
+                    // Quality + TM + Episode badges — bottom center
                     Positioned(
                       bottom: 10, left: 0, right: 0,
                       child: Row(
@@ -198,7 +198,17 @@ class TopRankCard extends StatelessWidget {
                               textColor: const Color(0xFF1A1100),
                               borderColor: Colors.transparent,
                             ),
-                          if (_qualityBadge(movie.quality).isNotEmpty && _shortEp(movie.episodeCurrent).isNotEmpty)
+                          if (_qualityBadge(movie.quality).isNotEmpty)
+                            const SizedBox(width: 4),
+                          // TM — golden gradient
+                          if (_isThuyetMinh(movie.lang))
+                            _RankBadge(
+                              label: 'TM',
+                              bgColor: const Color(0xFFFECF59),
+                              textColor: const Color(0xFF1A1100),
+                              borderColor: Colors.transparent,
+                            ),
+                          if (_isThuyetMinh(movie.lang) && _shortEp(movie.episodeCurrent).isNotEmpty)
                             const SizedBox(width: 4),
                           // Episode — green bg, white text
                           if (_shortEp(movie.episodeCurrent).isNotEmpty)

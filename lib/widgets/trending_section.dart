@@ -8,6 +8,7 @@ class TrendingSection extends StatefulWidget {
   final String title;
   final String timeWindow;
   final int limit;
+  final String mediaType;
   final Function(TmdbMovie)? onMovieTap;
 
   const TrendingSection({
@@ -15,6 +16,7 @@ class TrendingSection extends StatefulWidget {
     required this.title,
     this.timeWindow = 'day',
     this.limit = 10,
+    this.mediaType = 'movie',
     this.onMovieTap,
   });
 
@@ -37,6 +39,7 @@ class _TrendingSectionState extends State<TrendingSection> {
     final movies = await _tmdbService.fetchTrending(
       timeWindow: widget.timeWindow,
       limit: widget.limit,
+      mediaType: widget.mediaType,
     );
     if (mounted) {
       setState(() {
