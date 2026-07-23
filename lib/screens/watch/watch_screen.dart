@@ -1037,20 +1037,19 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 _currentPosition = position;
                 _currentPos = Duration(seconds: position);
               }
-              // ★ FIX: Seek + play NGAY — không đợi seek completion
+              // ★ FIX: Play TRƯỚC rồi seek SAU — media_kit chỉ render frame khi playing
+              // Nếu seek khi paused → frame không update → video hiển thị ảnh cũ
               if (!dismissed) {
                 _seekCompleted = false;
                 _seekTargetTime = position;
-                _player!.seek(Duration(seconds: position)).then((_) {
-                  _seekCompleted = true;
+                // Play ngay để player bắt đầu render frame
+                _player!.play();
+                // Seek sau 100ms — player đã play, frame sẽ update đúng
+                Future.delayed(const Duration(milliseconds: 100), () {
                   if (mounted && _player != null) {
-                    _player!.play();
-                  }
-                });
-                // ★ FIX: Backup — force play sau 500ms nếu seek callback chậm
-                Future.delayed(const Duration(milliseconds: 500), () {
-                  if (mounted && _player != null && !_isPlaying) {
-                    _player!.play();
+                    _player!.seek(Duration(seconds: position)).then((_) {
+                      _seekCompleted = true;
+                    });
                   }
                 });
               }
