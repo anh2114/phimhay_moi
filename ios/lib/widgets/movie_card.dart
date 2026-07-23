@@ -135,17 +135,18 @@ class MovieCard extends StatelessWidget {
                         left: rank > 0 ? null : 6,
                         right: 6,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                           decoration: BoxDecoration(
                             color: const Color(0xFFF5E6B8),
-                            borderRadius: BorderRadius.circular(2),
+                            borderRadius: BorderRadius.circular(3),
                           ),
                           child: const Text(
                             'TM',
                             style: TextStyle(
                               color: Color(0xFF1A1100),
-                              fontSize: 7,
+                              fontSize: 8,
                               fontWeight: FontWeight.w800,
+                              letterSpacing: -0.5,
                             ),
                           ),
                         ),
