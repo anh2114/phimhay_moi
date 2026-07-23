@@ -128,7 +128,17 @@ class _HomeScreenState extends State<HomeScreen> {
             final movie = Movie.fromJson(movieData as Map<String, dynamic>);
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => MovieDetailScreen(movie: movie)),
+              PageRouteBuilder(
+                transitionDuration: const Duration(milliseconds: 400),
+                reverseTransitionDuration: const Duration(milliseconds: 300),
+                pageBuilder: (_, __, ___) => MovieDetailScreen(movie: movie),
+                transitionsBuilder: (_, animation, __, child) {
+                  return FadeTransition(
+                    opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+                    child: child,
+                  );
+                },
+              ),
             );
             return;
           }
@@ -329,8 +339,16 @@ class _HomeScreenState extends State<HomeScreen> {
                             Navigator.of(dialogContext).pop();
                             Navigator.push(
                               context,
-                              MaterialPageRoute(
-                                builder: (_) => MovieDetailScreen(movie: cw.toMovie()),
+                              PageRouteBuilder(
+                                transitionDuration: const Duration(milliseconds: 400),
+                                reverseTransitionDuration: const Duration(milliseconds: 300),
+                                pageBuilder: (_, __, ___) => MovieDetailScreen(movie: cw.toMovie()),
+                                transitionsBuilder: (_, animation, __, child) {
+                                  return FadeTransition(
+                                    opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+                                    child: child,
+                                  );
+                                },
                               ),
                             );
                           },
