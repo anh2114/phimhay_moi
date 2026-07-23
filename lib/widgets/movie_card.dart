@@ -128,12 +128,12 @@ class MovieCard extends StatelessWidget {
                           ),
                         ),
                       ),
-                    // TM badge — Thuyết Minh (top-left/top-right alternate)
+                    // TM badge — Thuyết Minh (top-right khi có rank, top-left khi không)
                     if (_isThuyetMinh(movie.lang))
                       Positioned(
                         top: 6,
-                        left: (index % 2 == 0) ? 6 : null,
-                        right: (index % 2 == 1) ? 6 : null,
+                        left: rank > 0 ? null : 6,
+                        right: 6,
                         child: _BadgeChip(
                           label: 'TM',
                           bgColor: const Color(0xFF10B981),

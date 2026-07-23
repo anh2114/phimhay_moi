@@ -722,6 +722,16 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
                     ),
                     child: Text(m.episodeCurrent!, style: const TextStyle(color: Color(0xFFF1F5F9), fontSize: 9.5, fontWeight: FontWeight.w800)),
                   )),
+                // TM badge — Thuyết Minh
+                if (_isThuyetMinh(m.lang))
+                  Positioned(top: 6, left: 6, child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text('TM', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
+                  )),
               ],
             ),
           ),
@@ -741,6 +751,12 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
           ),
       ],
     );
+  }
+
+  static bool _isThuyetMinh(String? raw) {
+    if (raw == null) return false;
+    final s = raw.toLowerCase();
+    return s.contains('thuyết minh') || s.contains('lồng tiếng') || s.contains('tm') || s.contains('lt');
   }
 
   Widget _buildSkeletonLoading() {
