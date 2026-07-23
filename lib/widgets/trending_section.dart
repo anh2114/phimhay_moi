@@ -59,9 +59,9 @@ class _TrendingSectionState extends State<TrendingSection> {
     return Container(
       margin: const EdgeInsets.only(top: 10, bottom: 10),
       padding: const EdgeInsets.only(top: 16, bottom: 16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A2235),
-        borderRadius: BorderRadius.circular(0),
+      decoration: const BoxDecoration(
+        color: Color(0xFF1A2235),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
