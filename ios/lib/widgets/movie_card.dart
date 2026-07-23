@@ -134,11 +134,20 @@ class MovieCard extends StatelessWidget {
                         top: 6,
                         left: rank > 0 ? null : 6,
                         right: 6,
-                        child: _BadgeChip(
-                          label: 'TM',
-                          bgColor: const Color(0xFF10B981),
-                          textColor: Colors.white,
-                          borderColor: Colors.transparent,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF5E6B8),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'TM',
+                            style: TextStyle(
+                              color: Color(0xFF1A1100),
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
                         ),
                       ),
                     // Quality (white) + Episode (green) badges

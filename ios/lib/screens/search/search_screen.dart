@@ -725,12 +725,12 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
                 // TM badge — Thuyết Minh
                 if (_isThuyetMinh(m.lang))
                   Positioned(top: 6, left: 6, child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF10B981),
+                      color: const Color(0xFFF5E6B8),
                       borderRadius: BorderRadius.circular(4),
                     ),
-                    child: const Text('TM', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
+                    child: const Text('TM', style: TextStyle(color: Color(0xFF1A1100), fontSize: 9, fontWeight: FontWeight.w800)),
                   )),
               ],
             ),
