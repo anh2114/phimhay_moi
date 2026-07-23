@@ -306,7 +306,7 @@ import AVKit
         }
     }
 
-    /// Enter PiP — chỉ startPictureInPicture() trên controller CÓ SẴN (instant!)
+    /// Enter PiP — seek to latest position trước khi unmute + play
     private func enterPiP(result: @escaping FlutterResult) {
         guard pipPrepared, let pipController = self.pipController, let player = self.pipPlayer else {
             pipLog("enterPiP: not prepared")
@@ -314,20 +314,25 @@ import AVKit
             return
         }
 
-        pipLog("enterPiP: starting...")
+        pipLog("enterPiP: starting... pos=\(pipRestorePosition)")
 
-        // Unmute + play
-        player.isMuted = false
-        if player.timeControlStatus != .playing {
-            player.play()
+        // ★ FIX: Seek đến pipRestorePosition TRƯỚC khi unmute — đảm bảo position chính xác
+        let targetTime = CMTime(seconds: Double(pipRestorePosition), preferredTimescale: 600)
+        player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            guard let self = self else { return }
+            // Unmute + play SAU khi seek xong
+            player.isMuted = false
+            if player.timeControlStatus != .playing {
+                player.play()
+            }
+
+            // Notify Flutter
+            self.pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
+
+            // Start PiP — instant because player is already buffered!
+            pipController.startPictureInPicture()
+            self.pipLog("enterPiP: startPictureInPicture called (pos=\(self.pipRestorePosition))")
         }
-
-        // Notify Flutter
-        pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
-
-        // Start PiP — instant because player is already buffered!
-        pipController.startPictureInPicture()
-        pipLog("enterPiP: startPictureInPicture called")
 
         result(true)
     }

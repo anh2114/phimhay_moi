@@ -817,9 +817,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (_player != null) {
         _positionBeforePause = _currentPos.inSeconds;
         _saveCurrentProgress();
-        // ★ Stop player khi app vào background (tránh audio tiếp tục phát)
+        // ★ FIX: Track if PiP caused the pause — prevents resumed handler from playing old position
         if (!_isPiPMode) {
           _player?.pause();
+          _pausedByPiP = false;
+        } else {
+          _pausedByPiP = true;
+        }
           if (_webController != null) {
             _webController!.evaluateJavascript(
               source: "document.querySelector('video')?.pause();",
@@ -833,8 +837,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     } else if (state == AppLifecycleState.resumed) {
       // Skip resume logic if PiP is active — native player handles playback
       if (_isPiPMode) return;
-      // ★ FIX: Skip resume nếu PiP vừa kết thúc — onPiPRestore sẽ handle
-      if (_pipJustEnded) return;
+      // ★ FIX: Skip resume nếu PiP caused the pause — onPiPRestore sẽ handle
+      if (_pausedByPiP) {
+        _pausedByPiP = false;
+        return;
+      }
 
       // Android: player was playing during PiP → skip resume (already running)
       if (Platform.isAndroid && _player != null && _isPlaying) return;
@@ -987,6 +994,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               // Android: Flutter surface IS the PiP surface → player keeps playing
               // Just hide controls, don't pause
             } else {
+              // ★ FIX: PiP OFF — _pausedByPiP đã set trong paused handler
+              // Không cần set flag ở đây nữa
               // PiP OFF
               _pipRebuildCounter++;
               _isBuffering = false;
@@ -1013,9 +1022,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             _pipRebuildCounter++;
             _isBuffering = false;
             _isLoading = false;
-            // ★ FIX: Set flag để skip resumed handler — tránh play từ vị trí cũ
-            _pipJustEnded = true;
-            Future.delayed(const Duration(seconds: 2), () { _pipJustEnded = false; });
+            _pausedByPiP = false; // Clear flag — restore sẽ handle play
             setState(() => _isPiPMode = false);
             if (_playerMode == _PlayerMode.hls && _player != null) {
               if (Platform.isIOS) {
@@ -1126,14 +1133,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
       debugPrint('[PiP] enterPiP (pos=$_currentPosition)');
 
-      // ★ FIX: Sync position NGAY LẬP TỨC trước khi enter PiP — tránh stale 2s
+      // ★ FIX: Sync position NGAY LẬP TỨC trước khi enter PiP
+      // Native side sẽ seek đến pipRestorePosition trước khi unmute
       _syncPiPPositionImmediate();
 
-      // ★ FIX: Đợi 200ms để native AVPlayer cập nhật position rồi mới enter
-      await Future.delayed(const Duration(milliseconds: 200));
-
-      // ★ iOS: dùng pre-buffered player → instant PiP
-      // ★ Android: tạo mới on-demand
+      // ★ iOS: dùng pre-buffered player → seek + enter PiP (native handles timing)
       if (Platform.isIOS) {
         final result = await _pipChannel.invokeMethod('enterPiP');
         if (result != true) {
@@ -1510,7 +1514,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   int _seekTargetTime = 0;
   bool _isSaving = false; // Dedup concurrent save requests
   DateTime? _lastSaveTime; // Minimum interval between saves
-  bool _pipJustEnded = false; // ★ FIX: Flag to skip resumed handler after PiP restore
+  bool _pausedByPiP = false; // ★ FIX: Track if PiP caused the pause — prevents race condition
 
   int _lastSeekByUser = 0;
   bool _isSeeking = false; // Đang seek → hiện buffering
