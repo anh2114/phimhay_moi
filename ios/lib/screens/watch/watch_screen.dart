@@ -821,14 +821,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         if (!_isPiPMode) {
           _player?.pause();
           _pausedByPiP = false;
-        } else {
-          _pausedByPiP = true;
-        }
           if (_webController != null) {
             _webController!.evaluateJavascript(
               source: "document.querySelector('video')?.pause();",
             ).catchError((_) => null);
           }
+        } else {
+          _pausedByPiP = true;
         }
       }
     } else if (state == AppLifecycleState.detached) {
