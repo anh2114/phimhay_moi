@@ -110,125 +110,130 @@ class _TrendingCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: SizedBox(
+      child: Container(
         width: 140,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.2),
+            width: 1,
+          ),
+        ),
         child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Poster container
-          Expanded(
-            child: Stack(
-              children: [
-                // Poster image
-                Positioned.fill(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: CachedNetworkImage(
-                      imageUrl: movie.posterUrl,
-                      fit: BoxFit.cover,
-                      cacheManager: AppImageCacheManager(),
-                      fadeInDuration: const Duration(milliseconds: 200),
-                      placeholder: (_, __) => Container(
-                        color: AppTheme.bgSurface,
-                        child: const Icon(Icons.movie, color: AppTheme.textMuted, size: 32),
-                      ),
-                      errorWidget: (_, __, ___) => Container(
-                        color: AppTheme.bgSurface,
-                        child: const Icon(Icons.movie, color: AppTheme.textMuted, size: 32),
-                      ),
-                    ),
-                  ),
-                ),
-                // Gradient overlay at bottom
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  height: 60,
-                  child: Container(
-                    decoration: const BoxDecoration(
-                      borderRadius: BorderRadius.vertical(bottom: Radius.circular(10)),
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Colors.transparent, Color(0xCC000000)],
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Poster container
+            Expanded(
+              child: Stack(
+                children: [
+                  // Poster image
+                  Positioned.fill(
+                    child: ClipRRect(
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+                      child: CachedNetworkImage(
+                        imageUrl: movie.posterUrl,
+                        fit: BoxFit.cover,
+                        cacheManager: AppImageCacheManager(),
+                        fadeInDuration: const Duration(milliseconds: 200),
+                        placeholder: (_, __) => Container(
+                          color: AppTheme.bgSurface,
+                          child: const Icon(Icons.movie, color: AppTheme.textMuted, size: 32),
+                        ),
+                        errorWidget: (_, __, ___) => Container(
+                          color: AppTheme.bgSurface,
+                          child: const Icon(Icons.movie, color: AppTheme.textMuted, size: 32),
+                        ),
                       ),
                     ),
                   ),
-                ),
-                // Rank number (large, bottom-left)
-                Positioned(
-                  bottom: 4,
-                  left: 8,
-                  child: Text(
-                    '$rank',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 32,
-                      fontWeight: FontWeight.w900,
-                      height: 1,
-                      shadows: [
-                        Shadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 2)),
-                      ],
-                    ),
-                  ),
-                ),
-                // Rating badge (top-right)
-                if (movie.voteAverage > 0)
+                  // Gradient overlay at bottom
                   Positioned(
-                    top: 6,
-                    right: 6,
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    height: 60,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.7),
-                        borderRadius: BorderRadius.circular(6),
+                      decoration: const BoxDecoration(
+                        borderRadius: BorderRadius.vertical(bottom: Radius.circular(10)),
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Colors.transparent, Color(0xCC000000)],
+                        ),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.star, color: Color(0xFFF5C518), size: 12),
-                          const SizedBox(width: 2),
-                          Text(
-                            movie.voteAverage.toStringAsFixed(1),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
+                    ),
+                  ),
+                  // Rank number (golden/accent color, bottom-left)
+                  Positioned(
+                    bottom: 4,
+                    left: 8,
+                    child: Text(
+                      '$rank',
+                      style: const TextStyle(
+                        color: Color(0xFFF5C84C),
+                        fontSize: 32,
+                        fontWeight: FontWeight.w900,
+                        height: 1,
+                        shadows: [
+                          Shadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 2)),
                         ],
                       ),
                     ),
                   ),
-              ],
+                  // IMDB rating badge (top-right) — transparent + golden border
+                  if (movie.voteAverage > 0)
+                    Positioned(
+                      top: 6,
+                      right: 6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: const Color(0xFFF5C84C),
+                            width: 1,
+                          ),
+                        ),
+                        child: Text(
+                          'IMDB ${movie.voteAverage.toStringAsFixed(1)}',
+                          style: const TextStyle(
+                            color: Color(0xFFF5C84C),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          // Title
-          Text(
-            movie.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: AppTheme.textPrimary,
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          // Original title
-          if (movie.originalTitle != movie.title)
+            const SizedBox(height: 8),
+            // Title
             Text(
-              movie.originalTitle,
+              movie.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                color: AppTheme.textMuted,
-                fontSize: 11,
+                color: AppTheme.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
               ),
             ),
-        ],
+            // Original title
+            if (movie.originalTitle != movie.title)
+              Text(
+                movie.originalTitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: AppTheme.textMuted,
+                  fontSize: 11,
+                ),
+              ),
+          ],
+        ),
       ),
     );
-    }
+  }
 }

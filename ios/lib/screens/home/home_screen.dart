@@ -134,12 +134,63 @@ class _HomeScreenState extends State<HomeScreen> {
           }
         }
       } catch (_) {}
-      // Không tìm thấy → hiện snackbar
+      // Không tìm thấy → hiện dialog hiện đại
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${tmdbMovie.title} chưa có trong thư viện'),
-            backgroundColor: Colors.orange,
+        showDialog(
+          context: context,
+          builder: (dialogContext) => Dialog(
+            backgroundColor: Colors.transparent,
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 24),
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E2026),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.movie_filter_rounded, color: Colors.orange, size: 24),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    tmdbMovie.title,
+                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700),
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Phim này chưa có trong thư viện.\nĐang được cập nhật sớm nhất!',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13),
+                  ),
+                  const SizedBox(height: 16),
+                  GestureDetector(
+                    onTap: () => Navigator.of(dialogContext).pop(),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppTheme.accent,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Center(
+                        child: Text('Đã hiểu', style: TextStyle(color: Color(0xFF1A1100), fontSize: 14, fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         );
       }
