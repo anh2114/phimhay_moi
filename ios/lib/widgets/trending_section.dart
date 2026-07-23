@@ -6,7 +6,7 @@ import 'package:phimhay_app/services/tmdb_service.dart';
 
 class TrendingSection extends StatefulWidget {
   final String title;
-  final String timeWindow; // 'day' or 'week'
+  final String timeWindow;
   final int limit;
   final Function(TmdbMovie)? onMovieTap;
 
@@ -60,7 +60,6 @@ class _TrendingSectionState extends State<TrendingSection> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 24),
-        // Title
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
@@ -73,7 +72,6 @@ class _TrendingSectionState extends State<TrendingSection> {
           ),
         ),
         const SizedBox(height: 12),
-        // Horizontal scrollable list
         SizedBox(
           height: 260,
           child: ListView.separated(
@@ -110,102 +108,103 @@ class _TrendingCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
+      child: SizedBox(
         width: 140,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: Colors.white.withOpacity(0.2),
-            width: 1,
-          ),
-        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Poster container
+            // Poster with white border
             Expanded(
-              child: Stack(
-                children: [
-                  // Poster image
-                  Positioned.fill(
-                    child: ClipRRect(
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
-                      child: CachedNetworkImage(
-                        imageUrl: movie.posterUrl,
-                        fit: BoxFit.cover,
-                        cacheManager: AppImageCacheManager(),
-                        fadeInDuration: const Duration(milliseconds: 200),
-                        placeholder: (_, __) => Container(
-                          color: AppTheme.bgSurface,
-                          child: const Icon(Icons.movie, color: AppTheme.textMuted, size: 32),
-                        ),
-                        errorWidget: (_, __, ___) => Container(
-                          color: AppTheme.bgSurface,
-                          child: const Icon(Icons.movie, color: AppTheme.textMuted, size: 32),
-                        ),
-                      ),
-                    ),
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.2),
+                    width: 1,
                   ),
-                  // Gradient overlay at bottom
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    height: 60,
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        borderRadius: BorderRadius.vertical(bottom: Radius.circular(10)),
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [Colors.transparent, Color(0xCC000000)],
-                        ),
-                      ),
-                    ),
-                  ),
-                  // Rank number (golden/accent color, bottom-left)
-                  Positioned(
-                    bottom: 4,
-                    left: 8,
-                    child: Text(
-                      '$rank',
-                      style: const TextStyle(
-                        color: Color(0xFFF5C84C),
-                        fontSize: 32,
-                        fontWeight: FontWeight.w900,
-                        height: 1,
-                        shadows: [
-                          Shadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 2)),
-                        ],
-                      ),
-                    ),
-                  ),
-                  // IMDB rating badge (top-right) — transparent + golden border
-                  if (movie.voteAverage > 0)
-                    Positioned(
-                      top: 6,
-                      right: 6,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.5),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(
-                            color: const Color(0xFFF5C84C),
-                            width: 1,
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Stack(
+                    children: [
+                      // Poster image
+                      Positioned.fill(
+                        child: CachedNetworkImage(
+                          imageUrl: movie.posterUrl,
+                          fit: BoxFit.cover,
+                          cacheManager: AppImageCacheManager(),
+                          fadeInDuration: const Duration(milliseconds: 200),
+                          placeholder: (_, __) => Container(
+                            color: AppTheme.bgSurface,
+                            child: const Icon(Icons.movie, color: AppTheme.textMuted, size: 32),
+                          ),
+                          errorWidget: (_, __, ___) => Container(
+                            color: AppTheme.bgSurface,
+                            child: const Icon(Icons.movie, color: AppTheme.textMuted, size: 32),
                           ),
                         ),
+                      ),
+                      // Gradient overlay
+                      Positioned(
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        height: 60,
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [Colors.transparent, Color(0xCC000000)],
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Rank number (golden)
+                      Positioned(
+                        bottom: 4,
+                        left: 8,
                         child: Text(
-                          'IMDB ${movie.voteAverage.toStringAsFixed(1)}',
+                          '$rank',
                           style: const TextStyle(
                             color: Color(0xFFF5C84C),
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
+                            fontSize: 32,
+                            fontWeight: FontWeight.w900,
+                            height: 1,
+                            shadows: [
+                              Shadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 2)),
+                            ],
                           ),
                         ),
                       ),
-                    ),
-                ],
+                      // IMDB rating (transparent + golden border)
+                      if (movie.voteAverage > 0)
+                        Positioned(
+                          top: 6,
+                          right: 6,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: const Color(0xFFF5C84C),
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              'IMDB ${movie.voteAverage.toStringAsFixed(1)}',
+                              style: const TextStyle(
+                                color: Color(0xFFF5C84C),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 8),
