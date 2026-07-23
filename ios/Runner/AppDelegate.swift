@@ -94,6 +94,13 @@ import AVKit
             switch call.method {
             case "showRoutePicker":
                 DispatchQueue.main.async {
+                    // ★ FIX: Nếu picker đang mở → dismiss trước, không mở lại
+                    if self?.window?.rootViewController?.view.viewWithTag(9999) != nil {
+                        self?.dismissAirPlay()
+                        result(true)
+                        return
+                    }
+
                     do {
                         let session = AVAudioSession.sharedInstance()
                         try session.setCategory(.playback, mode: .moviePlayback,
@@ -106,7 +113,7 @@ import AVKit
                     overlay.tag = 9999
 
                     let cardWidth: CGFloat = 280
-                    let cardHeight: CGFloat = 200
+                    let cardHeight: CGFloat = 240
                     let card = UIView(frame: CGRect(
                         x: (UIScreen.main.bounds.width - cardWidth) / 2,
                         y: (UIScreen.main.bounds.height - cardHeight) / 2,
@@ -115,13 +122,22 @@ import AVKit
                     card.backgroundColor = UIColor(white: 0.15, alpha: 1)
                     card.layer.cornerRadius = 16
 
-                    let pickerView = AVRoutePickerView(frame: CGRect(x: 0, y: 20, width: cardWidth, height: 120))
+                    // ★ FIX: Close button — dismiss ngay khi bấm
+                    let closeButton = UIButton(type: .system)
+                    closeButton.frame = CGRect(x: cardWidth - 36, y: 8, width: 28, height: 28)
+                    closeButton.setTitle("✕", for: .normal)
+                    closeButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .bold)
+                    closeButton.setTitleColor(.white, for: .normal)
+                    closeButton.addTarget(self, action: #selector(self?.dismissAirPlay), for: .touchUpInside)
+                    card.addSubview(closeButton)
+
+                    let pickerView = AVRoutePickerView(frame: CGRect(x: 0, y: 20, width: cardWidth, height: 140))
                     pickerView.tintColor = .white
                     pickerView.activeTintColor = .systemBlue
                     pickerView.backgroundColor = .clear
                     card.addSubview(pickerView)
 
-                    let label = UILabel(frame: CGRect(x: 0, y: 145, width: cardWidth, height: 30))
+                    let label = UILabel(frame: CGRect(x: 0, y: 170, width: cardWidth, height: 30))
                     label.text = "Chạm để chọn thiết bị AirPlay"
                     label.textColor = .white
                     label.textAlignment = .center
@@ -129,10 +145,15 @@ import AVKit
                     card.addSubview(label)
 
                     overlay.addSubview(card)
+
+                    // ★ FIX: Tap trên overlay → dismiss (không phải trên card)
                     let tap = UITapGestureRecognizer(target: self, action: #selector(self?.dismissAirPlay))
                     overlay.addGestureRecognizer(tap)
+
+                    // ★ FIX: Tap trên card → KHÔNG dismiss (cho phép chọn route)
+                    card.isUserInteractionEnabled = true
+
                     self?.window?.rootViewController?.view.addSubview(overlay)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 30) { overlay.removeFromSuperview() }
                     result(true)
                 }
             default:
@@ -268,6 +289,12 @@ import AVKit
     /// Sync Flutter player position → native AVPlayer
     private func syncPosition(_ position: Int) {
         guard let player = pipPlayer, pipPrepared else { return }
+
+        // ★ FIX: Luôn update pipRestorePosition — kể cả khi PiP đang active
+        // Để khi PiP stop, position mới nhất được gửi về Flutter
+        pipRestorePosition = position
+
+        // Nếu PiP đang active → KHÔNG seek (native player đang play tự nhiên)
         if pipController?.isPictureInPictureActive == true { return }
 
         let current = Int(player.currentTime().seconds)
@@ -275,7 +302,6 @@ import AVKit
         if offset > 3 {
             let targetTime = CMTime(seconds: Double(position), preferredTimescale: 600)
             player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero)
-            pipRestorePosition = position
             pipLog("Sync: \(position)s (was \(current)s)")
         }
     }
@@ -342,9 +368,19 @@ import AVKit
 
     func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
         pipLog("Did stop — dismissed=\(pipWasDismissed)")
-        let position = Int(pipPlayer?.currentTime().seconds ?? 0)
 
-        // Pause native player
+        // ★ FIX: Capture position TRƯỚC khi pause — vì player đang play trong PiP
+        var position = Int(pipPlayer?.currentTime().seconds ?? 0)
+
+        // ★ FIX: Fallback — nếu native position không hợp lệ (0 hoặc < 0), dùng pipRestorePosition
+        if position <= 0 && pipRestorePosition > 0 {
+            position = pipRestorePosition
+            pipLog("Using pipRestorePosition: \(position)s")
+        } else {
+            pipLog("Position at stop: \(position)s")
+        }
+
+        // Pause native player SAU khi capture position
         DispatchQueue.main.async { [weak self] in
             self?.pipPlayer?.isMuted = true
             self?.pipPlayer?.pause()

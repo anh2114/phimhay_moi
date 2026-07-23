@@ -390,6 +390,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                   movieSlug: cw.slug,
                                   movieTitle: cw.name,
                                   initialPosition: cw.position,
+                                  epName: cw.epName,      // ★ FIX: Pass epName for matching
+                                  epSlug: cw.epSlug,      // ★ FIX: Pass epSlug for matching
                                 ),
                               ),
                             );

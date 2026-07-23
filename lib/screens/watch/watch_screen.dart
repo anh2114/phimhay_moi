@@ -75,6 +75,8 @@ class WatchScreen extends StatefulWidget {
   final String? movieTitle;
   final int initialPosition; // Giây đã xem (để seek khi mở)
   final bool startFullscreen; // Bắt đầu ở fullscreen landscape
+  final String? epName;      // ★ FIX: Tên tập từ watch history (để match chính xác)
+  final String? epSlug;      // ★ FIX: Slug tập từ watch history (để match chính xác)
 
   const WatchScreen({
     super.key,
@@ -86,6 +88,8 @@ class WatchScreen extends StatefulWidget {
     this.movieTitle,
     this.initialPosition = 0,
     this.startFullscreen = false,
+    this.epName,
+    this.epSlug,
   });
 
   @override
@@ -228,6 +232,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _lockBrightness();
     WidgetsBinding.instance.addObserver(this);
     _currentEpId = widget.episodeId;
+    _currentEpName = widget.epName ?? ''; // ★ FIX: Use epName from watch history for matching
     _showControlsWithAutoHide();
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted && _isLandscape) setState(() {});
@@ -828,6 +833,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     } else if (state == AppLifecycleState.resumed) {
       // Skip resume logic if PiP is active — native player handles playback
       if (_isPiPMode) return;
+      // ★ FIX: Skip resume nếu PiP vừa kết thúc — onPiPRestore sẽ handle
+      if (_pipJustEnded) return;
 
       // Android: player was playing during PiP → skip resume (already running)
       if (Platform.isAndroid && _player != null && _isPlaying) return;
@@ -1006,16 +1013,33 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             _pipRebuildCounter++;
             _isBuffering = false;
             _isLoading = false;
+            // ★ FIX: Set flag để skip resumed handler — tránh play từ vị trí cũ
+            _pipJustEnded = true;
+            Future.delayed(const Duration(seconds: 2), () { _pipJustEnded = false; });
             setState(() => _isPiPMode = false);
             if (_playerMode == _PlayerMode.hls && _player != null) {
               if (Platform.isIOS) {
                 _audioChannel.invokeMethod('configureForPlayback').then((_) {}, onError: (_) {});
               }
-              _currentPosition = position;
-              // ★ Nếu PiP dismissed (bấm X) → KHÔNG play lại, giữ nguyên paused
+              // ★ FIX: Luôn update position từ native player (kể cả dismissed)
+              // vì native player đã play trong PiP — position đã advance
+              if (position > 0) {
+                _currentPosition = position;
+                _currentPos = Duration(seconds: position);
+              }
+              // ★ FIX: Seek + play NGAY — không đợi seek completion
               if (!dismissed) {
+                _seekCompleted = false;
+                _seekTargetTime = position;
                 _player!.seek(Duration(seconds: position)).then((_) {
+                  _seekCompleted = true;
                   if (mounted && _player != null) {
+                    _player!.play();
+                  }
+                });
+                // ★ FIX: Backup — force play sau 500ms nếu seek callback chậm
+                Future.delayed(const Duration(milliseconds: 500), () {
+                  if (mounted && _player != null && !_isPlaying) {
                     _player!.play();
                   }
                 });
@@ -1024,6 +1048,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               _prepareNativePiP();
             } else if (_playerMode == _PlayerMode.embed && _webController != null) {
               if (position > 0) {
+                _currentPosition = position;
                 _webController!.evaluateJavascript(
                   source: "var v=document.querySelector('video'); if(v){v.currentTime=$position; v.play();}",
                 );
@@ -1069,7 +1094,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   void _startPiPSync() {
     if (!Platform.isIOS) return;
     _pipSyncTimer?.cancel();
-    _pipSyncTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+    // ★ FIX: Sync mỗi 1s thay vì 2s — position luôn fresh khi enter PiP
+    _pipSyncTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_player != null && _playerMode == _PlayerMode.hls && !_isPiPMode) {
         _pipChannel.invokeMethod('syncPosition', {
           'position': _currentPosition,
@@ -1099,6 +1125,12 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (_currentUrl.isEmpty) return;
 
       debugPrint('[PiP] enterPiP (pos=$_currentPosition)');
+
+      // ★ FIX: Sync position NGAY LẬP TỨC trước khi enter PiP — tránh stale 2s
+      _syncPiPPositionImmediate();
+
+      // ★ FIX: Đợi 200ms để native AVPlayer cập nhật position rồi mới enter
+      await Future.delayed(const Duration(milliseconds: 200));
 
       // ★ iOS: dùng pre-buffered player → instant PiP
       // ★ Android: tạo mới on-demand
@@ -1338,16 +1370,97 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   void _initPlayerFromEpisode() {
     final eps = _currentServerEps;
     Map<String, dynamic>? currentEp;
+    int foundServerIdx = _selectedServer;
     if (eps.isNotEmpty) {
-      try {
-        currentEp = eps.firstWhere(
-          (e) => e['id'] == _currentEpId || e['ep_name'] == _currentEpId,
-        );
-      } catch (_) {}
+      // ★ FIX: Match episode by multiple criteria (ID, name, slug) with type-safe comparison
+      final targetId = _currentEpId?.toString() ?? '';
+      final targetName = _currentEpName.isNotEmpty ? _currentEpName : '';
+      // ★ FIX: Use widget.epSlug from watch history, fallback to saved progress
+      final targetSlug = (widget.epSlug ?? '').isNotEmpty
+          ? widget.epSlug!
+          : ((_savedProgress != null ? ((_savedProgress!['ep_slug'] as String?) ?? '') : ''));
+
+      // Try 1: Match by ID on current server (type-safe toString comparison)
+      if (targetId.isNotEmpty) {
+        try {
+          currentEp = eps.firstWhere(
+            (e) => (e['id']?.toString() ?? '') == targetId,
+          );
+        } catch (_) {}
+      }
+
+      // Try 2: Match by ep_name on current server
+      if (currentEp == null && targetName.isNotEmpty) {
+        try {
+          currentEp = eps.firstWhere(
+            (e) => (e['ep_name']?.toString() ?? '') == targetName,
+          );
+        } catch (_) {}
+      }
+
+      // Try 3: Match by ep_slug on current server
+      if (currentEp == null && targetSlug.isNotEmpty) {
+        try {
+          currentEp = eps.firstWhere(
+            (e) => (e['ep_slug']?.toString() ?? '') == targetSlug,
+          );
+        } catch (_) {}
+      }
+
+      // ★ FIX: If not found on current server, search ALL servers
+      if (currentEp == null && targetId.isNotEmpty) {
+        for (int si = 0; si < _servers.length; si++) {
+          if (si == _selectedServer) continue;
+          final serverEps = (_servers[si]['episodes'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+          try {
+            currentEp = serverEps.firstWhere(
+              (e) => (e['id']?.toString() ?? '') == targetId,
+            );
+            foundServerIdx = si;
+            break;
+          } catch (_) {}
+        }
+      }
+
+      // Try 4: Search all servers by ep_name
+      if (currentEp == null && targetName.isNotEmpty) {
+        for (int si = 0; si < _servers.length; si++) {
+          if (si == _selectedServer) continue;
+          final serverEps = (_servers[si]['episodes'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+          try {
+            currentEp = serverEps.firstWhere(
+              (e) => (e['ep_name']?.toString() ?? '') == targetName,
+            );
+            foundServerIdx = si;
+            break;
+          } catch (_) {}
+        }
+      }
+
+      // Try 5: Search all servers by ep_slug
+      if (currentEp == null && targetSlug.isNotEmpty) {
+        for (int si = 0; si < _servers.length; si++) {
+          if (si == _selectedServer) continue;
+          final serverEps = (_servers[si]['episodes'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+          try {
+            currentEp = serverEps.firstWhere(
+              (e) => (e['ep_slug']?.toString() ?? '') == targetSlug,
+            );
+            foundServerIdx = si;
+            break;
+          } catch (_) {}
+        }
+      }
+
+      // Fallback: first episode on current server
       currentEp ??= eps.isNotEmpty ? eps[0] : null;
     }
 
     if (currentEp != null) {
+      // ★ FIX: Switch to the server where the episode was found
+      if (foundServerIdx != _selectedServer) {
+        _selectedServer = foundServerIdx;
+      }
       _currentEpId = currentEp['id'];
       _currentEpName = (currentEp['ep_name'] ?? currentEp['name'] ?? '').toString();
       _epPage = _detectEpPage(_currentEpId);
@@ -1397,6 +1510,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   int _seekTargetTime = 0;
   bool _isSaving = false; // Dedup concurrent save requests
   DateTime? _lastSaveTime; // Minimum interval between saves
+  bool _pipJustEnded = false; // ★ FIX: Flag to skip resumed handler after PiP restore
 
   int _lastSeekByUser = 0;
   bool _isSeeking = false; // Đang seek → hiện buffering
@@ -3493,6 +3607,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               ),
             if (Platform.isIOS)
               GestureDetector(
+                behavior: HitTestBehavior.opaque, // ★ FIX: Absorb all gestures — prevent long-press falling through to 2x
                 onTap: _showAirPlayPicker,
                 child: const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 8),
