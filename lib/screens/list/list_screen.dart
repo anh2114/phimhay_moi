@@ -296,6 +296,7 @@ class _ListScreenState extends State<ListScreen> with AutomaticKeepAliveClientMi
                           final movie = _movies[index];
                           return MovieCard(
                             movie: movie,
+                            index: index,
                             onTap: () => SmartLinkAd.show(context, onComplete: () => Navigator.push(
                               context,
                               PageRouteBuilder(

@@ -88,6 +88,7 @@ class _MovieRailState extends State<MovieRail> {
               return MovieCard(
                 movie: movie,
                 rank: 0,
+                index: index,
                 onTap: () => widget.onMovieTap?.call(movie),
               );
             },

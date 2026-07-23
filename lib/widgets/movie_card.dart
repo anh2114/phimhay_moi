@@ -7,12 +7,14 @@ import 'package:phimhay_app/services/image_cache_manager.dart';
 class MovieCard extends StatelessWidget {
   final Movie movie;
   final int rank;
+  final int index; // Index trong list (0-based) — dùng để alternate vị trí badge TM
   final VoidCallback? onTap;
 
   const MovieCard({
     super.key,
     required this.movie,
     this.rank = 0,
+    this.index = 0,
     this.onTap,
   });
 
@@ -124,6 +126,19 @@ class MovieCard extends StatelessWidget {
                             '$rank',
                             style: const TextStyle(color: Color(0xFF1A1100), fontSize: 12, fontWeight: FontWeight.w800),
                           ),
+                        ),
+                      ),
+                    // TM badge — Thuyết Minh (top-left/top-right alternate)
+                    if (_isThuyetMinh(movie.lang))
+                      Positioned(
+                        top: 6,
+                        left: (index % 2 == 0) ? 6 : null,
+                        right: (index % 2 == 1) ? 6 : null,
+                        child: _BadgeChip(
+                          label: 'TM',
+                          bgColor: const Color(0xFF10B981),
+                          textColor: Colors.white,
+                          borderColor: Colors.transparent,
                         ),
                       ),
                     // Quality (white) + Episode (green) badges
