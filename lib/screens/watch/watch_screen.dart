@@ -979,6 +979,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               _showControls = false;
               _autoHideControlsTimer?.cancel();
               _saveCurrentProgress();
+              // ★ FIX: Set _pausedByPiP TRONG PiP ON — vì iOS PiP KHÔNG trigger AppLifecycleState.paused
+              // (app vẫn foreground, PiP là overlay nhỏ)
+              _pausedByPiP = true;
               if (Platform.isIOS) {
                 // ★ iOS: KHÔNG restore orientations — PiP window sẽ xuất hiện ngay
                 // Chỉ pause Flutter player, để native AVPlayer handle PiP
@@ -1021,7 +1024,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             _pipRebuildCounter++;
             _isBuffering = false;
             _isLoading = false;
-            _pausedByPiP = false; // Clear flag — restore sẽ handle play
+            // ★ FIX: KHÔNG clear _pausedByPiP ở đây — để nó chặn resumed handler
+            // _pausedByPiP sẽ được clear bởi resumed handler hoặc timeout
             setState(() => _isPiPMode = false);
             if (_playerMode == _PlayerMode.hls && _player != null) {
               if (Platform.isIOS) {
@@ -1052,6 +1056,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               }
               _startPiPSync();
               _prepareNativePiP();
+              // ★ FIX: Clear _pausedByPiP sau 2s — đảm bảo resumed handler không bị block vĩnh viễn
+              Future.delayed(const Duration(seconds: 2), () {
+                _pausedByPiP = false;
+              });
             } else if (_playerMode == _PlayerMode.embed && _webController != null) {
               if (position > 0) {
                 _currentPosition = position;
