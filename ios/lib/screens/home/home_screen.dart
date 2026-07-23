@@ -29,6 +29,8 @@ import '../actors/actors_list_screen.dart';
 import '../../widgets/collection_carousel.dart';
 import '../../widgets/smart_link_ad.dart';
 import '../../widgets/trending_section.dart';
+import '../../services/tmdb_service.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -105,6 +107,42 @@ class _HomeScreenState extends State<HomeScreen> {
           },
         ),
       );
+    });
+  }
+
+  void _onTrendingTap(TmdbMovie tmdbMovie) {
+    SmartLinkAd.show(context, onComplete: () async {
+      // Tìm phim trong DB theo title
+      try {
+        final res = await Dio().get('${AppConfig.apiUrl}/search.php', queryParameters: {
+          'q': tmdbMovie.title,
+          'type': 'phim',
+          'limit': 5,
+        });
+        final data = res.data;
+        if (data is Map<String, dynamic> && data['movies'] is List) {
+          final movies = data['movies'] as List;
+          if (movies.isNotEmpty) {
+            // Tìm thấy trong DB → vào movie detail
+            final movieData = movies.first;
+            final movie = Movie.fromJson(movieData as Map<String, dynamic>);
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => MovieDetailScreen(movie: movie)),
+            );
+            return;
+          }
+        }
+      } catch (_) {}
+      // Không tìm thấy → hiện snackbar
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${tmdbMovie.title} chưa có trong thư viện'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
     });
   }
 
@@ -483,10 +521,11 @@ class _HomeScreenState extends State<HomeScreen> {
             // Collection carousel
             const CollectionCarousel(),
             // Trending Daily - Top 10 phim hot theo ngày
-            const TrendingSection(
+            TrendingSection(
               title: 'Top 10 phim lẻ hot trong ngày',
               timeWindow: 'day',
               limit: 10,
+              onMovieTap: _onTrendingTap,
             ),
             ...provider.sections.map((s) => MovieRail(
               title: s.title,
@@ -497,10 +536,11 @@ class _HomeScreenState extends State<HomeScreen> {
               onMoreTap: (href) => _onMoreTap(href, s.title),
             )),
             // Trending Weekly - Top 10 phim hot theo tuần
-            const TrendingSection(
+            TrendingSection(
               title: 'Top 10 phim lẻ hot trong tuần',
               timeWindow: 'week',
               limit: 10,
+              onMovieTap: _onTrendingTap,
             ),
             const SizedBox(height: 80), // Spacer cho BottomNav
           ],

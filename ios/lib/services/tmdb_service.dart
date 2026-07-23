@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:phimhay_app/config/app_config.dart';
 
@@ -27,8 +26,12 @@ class TmdbMovie {
     required this.genreIds,
   });
 
-  String get posterUrl => posterPath != null ? '${AppConfig.tmdbImageBase}$posterPath' : '';
-  String get backdropUrl => backdropPath != null ? '${AppConfig.tmdbImageBase}$backdropPath' : '';
+  String get posterUrl => posterPath != null && posterPath!.isNotEmpty
+      ? '${AppConfig.tmdbImageBase}$posterPath'
+      : '';
+  String get backdropUrl => backdropPath != null && backdropPath!.isNotEmpty
+      ? '${AppConfig.tmdbImageBase}$backdropPath'
+      : '';
 
   factory TmdbMovie.fromJson(Map<String, dynamic> json) {
     return TmdbMovie(
@@ -38,10 +41,12 @@ class TmdbMovie {
       overview: json['overview'] ?? '',
       posterPath: json['poster_path'],
       backdropPath: json['backdrop_path'],
-      voteAverage: (json['vote_average'] ?? 0).toDouble(),
+      voteAverage: double.tryParse('${json['vote_average'] ?? 0}') ?? 0,
       voteCount: json['vote_count'] ?? 0,
       releaseDate: json['release_date'] ?? '',
-      genreIds: List<int>.from(json['genre_ids'] ?? []),
+      genreIds: json['genre_ids'] is String
+          ? (json['genre_ids'] as String).split(',').map((e) => int.tryParse(e) ?? 0).toList()
+          : List<int>.from(json['genre_ids'] ?? []),
     );
   }
 }
@@ -49,20 +54,19 @@ class TmdbMovie {
 class TmdbService {
   final Dio _dio = Dio();
 
-  /// Fetch trending movies (day or week)
+  /// Fetch trending movies từ server API (cached trong MySQL)
   Future<List<TmdbMovie>> fetchTrending({String timeWindow = 'day', int limit = 10}) async {
     try {
       final response = await _dio.get(
-        '${AppConfig.tmdbBaseUrl}/trending/movie/$timeWindow',
-        queryParameters: {'api_key': AppConfig.tmdbApiKey},
+        '${AppConfig.apiUrl}/tmdb_trending.php',
+        queryParameters: {'window': timeWindow, 'limit': limit},
         options: Options(receiveTimeout: const Duration(seconds: 10)),
       );
 
       final data = response.data;
-      if (data is Map<String, dynamic> && data['results'] is List) {
-        final results = data['results'] as List;
+      if (data is Map<String, dynamic> && data['success'] == true) {
+        final results = data['results'] as List? ?? [];
         return results
-            .take(limit)
             .map((e) => TmdbMovie.fromJson(e as Map<String, dynamic>))
             .toList();
       }

@@ -8,12 +8,14 @@ class TrendingSection extends StatefulWidget {
   final String title;
   final String timeWindow; // 'day' or 'week'
   final int limit;
+  final Function(TmdbMovie)? onMovieTap;
 
   const TrendingSection({
     super.key,
     required this.title,
     this.timeWindow = 'day',
     this.limit = 10,
+    this.onMovieTap,
   });
 
   @override
@@ -83,6 +85,7 @@ class _TrendingSectionState extends State<TrendingSection> {
               return _TrendingCard(
                 movie: _movies[index],
                 rank: index + 1,
+                onTap: () => widget.onMovieTap?.call(_movies[index]),
               );
             },
           ),
@@ -95,17 +98,21 @@ class _TrendingSectionState extends State<TrendingSection> {
 class _TrendingCard extends StatelessWidget {
   final TmdbMovie movie;
   final int rank;
+  final VoidCallback? onTap;
 
   const _TrendingCard({
     required this.movie,
     required this.rank,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 140,
-      child: Column(
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: 140,
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Poster container
@@ -223,5 +230,5 @@ class _TrendingCard extends StatelessWidget {
         ],
       ),
     );
-  }
+    }
 }
