@@ -983,14 +983,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               // (app vẫn foreground, PiP là overlay nhỏ)
               _pausedByPiP = true;
               if (Platform.isIOS) {
-                // ★ iOS: KHÔNG restore orientations — PiP window sẽ xuất hiện ngay
-                // Chỉ pause Flutter player, để native AVPlayer handle PiP
-                _player?.pause();
-                if (_webController != null) {
-                  _webController!.evaluateJavascript(
-                    source: "document.querySelector('video')?.pause();",
-                  ).catchError((_) => null);
-                }
+                // ★ FIX: KHÔNG pause Flutter player — để nó chạy MUTED
+                // Native AVPlayer sẽ play PiP, Flutter player đồng bộ position
+                // Khi PiP ends → Flutter player đã ở đúng position → không cần seek
+                _player?.setVolume(0.0); // Mute thay vì pause
+                // Stop PiP sync — không cần sync nữa vì Flutter player tự chạy
                 _stopPiPSync();
               }
               // Android: Flutter surface IS the PiP surface → player keeps playing
@@ -1037,22 +1034,18 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 _currentPosition = position;
                 _currentPos = Duration(seconds: position);
               }
-              // ★ FIX: media_kit chỉ render frame khi PLAYING
-              // Seek khi paused → internal position update nhưng frame KHÔNG render
-              // Giải pháp: Play TRƯỚC để render frame → stream listener sẽ set position đúng
-              // Rồi lưu progress (position từ native PiP player)
+              // ★ FIX: Flutter player đã chạy muted từ lúc PiP start
+              // Chỉ cần unmute — player đã ở đúng position (32:00)
+              // Không cần seek (HLS seek unreliable) — player tự sync
               if (!dismissed) {
-                // Play ngay — player sẽ phát từ vị trí hiện tại (29:00)
-                // Stream listener sẽ update _currentPosition theo player
-                _player!.play();
-                // Sau 200ms, seek đến vị trí mới (30:00) — player đang play nên frame sẽ render
-                Future.delayed(const Duration(milliseconds: 200), () {
-                  if (mounted && _player != null) {
-                    _player!.seek(Duration(seconds: position));
-                  }
-                });
+                final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
+                _player!.setVolume(restoreVol);
+                // Đảm bảo đang play
+                if (!_isPlaying) {
+                  _player!.play();
+                }
               }
-              // Lưu position mới vào DB (30:00) — dù player play từ 29:00, DB lưu đúng
+              // Lưu position mới vào DB
               _saveCurrentProgress();
               _startPiPSync();
               _prepareNativePiP();
