@@ -14,8 +14,10 @@ import AVKit
     private var pipRestorePosition: Int = 0
     private var pipPrepared = false
     private var pipUrl: String = ""
-    private var pipWasDismissed = false // true = user tapped X to dismiss PiP
-    private var pipPositionTimer: Timer? // ★ FIX: Capture position mỗi 1s khi PiP active
+    private var pipWasDismissed = false
+    private var pipPositionTimer: Timer?
+    private var pipStartDate: Date? // ★ Track thời gian PiP bắt đầu
+    private var pipStartPos: Int = 0 // ★ Position khi PiP bắt đầu
 
     func pipLog(_ msg: String) {
         NSLog("[PiP] \(msg)")
@@ -317,20 +319,18 @@ import AVKit
 
         pipLog("enterPiP: starting... pos=\(pipRestorePosition)")
 
-        // ★ FIX: Seek đến pipRestorePosition TRƯỚC khi unmute — đảm bảo position chính xác
+        // ★ FIX: Track thời gian PiP
+        pipStartDate = Date()
+        pipStartPos = pipRestorePosition
+
         let targetTime = CMTime(seconds: Double(pipRestorePosition), preferredTimescale: 600)
         player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
             guard let self = self else { return }
-            // Unmute + play SAU khi seek xong
             player.isMuted = false
             if player.timeControlStatus != .playing {
                 player.play()
             }
-
-            // Notify Flutter
             self.pipChannel?.invokeMethod("onPiPModeChanged", arguments: true)
-
-            // Start PiP — instant because player is already buffered!
             pipController.startPictureInPicture()
             self.pipLog("enterPiP: startPictureInPicture called (pos=\(self.pipRestorePosition))")
         }
@@ -342,6 +342,8 @@ import AVKit
     private func cleanupPiP() {
         pipPositionTimer?.invalidate()
         pipPositionTimer = nil
+        pipStartDate = nil
+        pipStartPos = 0
         pipPlayerLayer?.removeFromSuperlayer()
         pipPlayerLayer = nil
         pipPlayer?.pause()
@@ -385,19 +387,32 @@ import AVKit
         pipLog("Will stop")
         pipWasDismissed = true
 
-        // ★ Stop position timer — capture position cuối cùng
         pipPositionTimer?.invalidate()
         pipPositionTimer = nil
 
-        // ★ FIX: Capture position TRƯỚC khi PiP stop
-        if let player = pipPlayer {
-            let raw = player.currentTime().seconds
-            if !raw.isNaN && !raw.isInfinite && raw > 0 {
-                pipRestorePosition = Int(raw)
-                pipLog("WillStop: captured position \(pipRestorePosition)s")
+        // ★ FIX: Tính position bằng elapsed time (không phụ thuộc currentTime())
+        if let startDate = pipStartDate {
+            let elapsed = Date().timeIntervalSince(startDate)
+            let timeBasedPos = pipStartPos + Int(elapsed)
+            if timeBasedPos > pipRestorePosition {
+                pipRestorePosition = timeBasedPos
+                pipLog("WillStop: time-based position \(pipRestorePosition)s (start=\(pipStartPos)s + \(Int(elapsed))s)")
             }
         }
 
+        // Fallback: dùng currentTime() nếu time-based không hợp lệ
+        if let player = pipPlayer {
+            let raw = player.currentTime().seconds
+            if !raw.isNaN && !raw.isInfinite && raw > 0 {
+                let playerPos = Int(raw)
+                if playerPos > pipRestorePosition {
+                    pipRestorePosition = playerPos
+                    pipLog("WillStop: player position \(pipRestorePosition)s")
+                }
+            }
+        }
+
+        pipStartDate = nil
         pipChannel?.invokeMethod("onPiPModeChanged", arguments: false)
     }
 
