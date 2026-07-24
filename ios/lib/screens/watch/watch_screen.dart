@@ -1029,35 +1029,27 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 _currentPosition = position;
                 _currentPos = Duration(seconds: position);
               }
-              // ★ FIX: Reinit Flutter player từ position mới (single source sync)
-              // Dispose player cũ → tạo player mới → open URL → seek đến position
-              // Đảm bảo frame và position đồng bộ hoàn hảo
+              // ★ FIX: Single-source sync — seek Flutter player đến PiP position
+              // Không reinit player (race condition) — chỉ seek + play
               if (!dismissed && position > 0) {
-                // Dispose streams cũ
-                _subPosition?.cancel();
-                _subPlaying?.cancel();
-                _subDuration?.cancel();
-                _subCompleted?.cancel();
-                _seekRetryTimer?.cancel();
-
-                // Dispose player cũ
-                _player?.dispose();
-                _player = null;
-                _videoController = null;
-                _playerReady = false;
-
-                // Update position từ native PiP
                 _currentPosition = position;
                 _currentPos = Duration(seconds: position);
-                _seekTargetTime = position;
-                _seekCompleted = false;
 
-                // Tạo player mới với URL hiện tại
-                if (_currentUrl.isNotEmpty) {
-                  _initPlayer(_currentUrl);
+                // ★ FIX: Đảm bảo player đang ở state có thể seek
+                // Nếu player paused → play trước 100ms rồi seek
+                // Nếu player đang playing → seek trực tiếp
+                if (!_isPlaying) {
+                  _player!.play();
+                  Future.delayed(const Duration(milliseconds: 100), () {
+                    if (mounted && _player != null) {
+                      _player!.seek(Duration(seconds: position));
+                    }
+                  });
+                } else {
+                  _player!.seek(Duration(seconds: position));
                 }
               } else if (dismissed) {
-                // PiP dismissed (bấm X) — chỉ unpause, KHÔNG play
+                // PiP dismissed (bấm X) — giữ nguyên frame, KHÔNG play
                 _player?.pause();
               }
               // Lưu position mới vào DB
