@@ -981,9 +981,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               _saveCurrentProgress();
               _pausedByPiP = true;
               if (Platform.isIOS) {
-                // ★ FIX: KHÔNG pause — để Flutter player chạy MUTED
-                // Player tự advance position → khi PiP ends, player đã ở vị trí mới
-                _player?.setVolume(0.0);
+                // Pause Flutter player khi PiP start
+                // Khi PiP ends → seek + play 500ms → pause ở frame mới
+                _player?.pause();
                 _stopPiPSync();
               }
               // Android: Flutter surface IS the PiP surface → player keeps playing
@@ -1030,16 +1030,27 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 _currentPosition = position;
                 _currentPos = Duration(seconds: position);
               }
-              // ★ FIX: Flutter player đã chạy muted từ PiP start
-              // Player tự advance → đã ở vị trí mới → chỉ cần unmute
-              if (!dismissed) {
-                final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
-                _player!.setVolume(restoreVol);
-                if (!_isPlaying) {
-                  _player!.play();
-                }
-              } else {
-                // Dismiss — pause player
+              // ★ FIX: media_kit chỉ render frame khi PLAYING
+              // Seek + play 500ms → render frame → pause ở frame mới
+              if (!dismissed && position > 0) {
+                _currentPosition = position;
+                _currentPos = Duration(seconds: position);
+                _seekCompleted = false;
+
+                // Seek đến vị trí PiP
+                _player!.seek(Duration(seconds: position)).then((_) {
+                  // Play 500ms để render frame, rồi pause
+                  if (mounted && _player != null) {
+                    _player!.play();
+                    Future.delayed(const Duration(milliseconds: 500), () {
+                      if (mounted && _player != null) {
+                        _player!.pause();
+                        _seekCompleted = true;
+                      }
+                    });
+                  }
+                });
+              } else if (dismissed) {
                 _player?.pause();
               }
               // Lưu position mới vào DB
