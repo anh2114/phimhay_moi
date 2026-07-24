@@ -1073,17 +1073,15 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                     readySub?.cancel();
                     // Player đang play → seek an toàn
                     _player!.seek(Duration(seconds: position)).then((_) {
-                      // Pause SAU seek 500ms
-                      Future.delayed(const Duration(milliseconds: 500), () {
-                        if (mounted && _player != null) {
-                          _player!.pause();
-                          setState(() {
-                            _playerReady = true;
-                            _isLoading = false;
-                          });
-                          _startProgressTimer();
-                        }
-                      });
+                      // ★ FIX: KHÔNG pause — tiếp tục play từ PiP position
+                      if (mounted && _player != null) {
+                        setState(() {
+                          _playerReady = true;
+                          _isLoading = false;
+                          _isPlaying = true;
+                        });
+                        _startProgressTimer();
+                      }
                     });
                   }
                 });
@@ -1102,7 +1100,23 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   play: true, // BẮT BUỘC play để player emit event
                 );
               } else if (dismissed) {
-                _player?.pause();
+                // ★ FIX: Dismiss — seek Flutter player đến PiP position TRƯỚC khi pause
+                // media_kit cần player đang play để seek render frame mới
+                if (_player != null && position > 0) {
+                  _player!.play();
+                  _player!.seek(Duration(seconds: position)).then((_) {
+                    Future.delayed(const Duration(milliseconds: 300), () {
+                      if (mounted && _player != null) {
+                        _player!.pause();
+                        _playerReady = true;
+                        _isLoading = false;
+                        setState(() {});
+                      }
+                    });
+                  });
+                } else {
+                  _player?.pause();
+                }
               }
               // Lưu position mới vào DB
               _saveCurrentProgress();

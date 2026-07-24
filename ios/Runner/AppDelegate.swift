@@ -375,13 +375,24 @@ import AVKit
         pipLog("Did stop — dismissed=\(pipWasDismissed)")
 
         // ★ FIX: Capture position TRƯỚC khi pause — vì player đang play trong PiP
-        var position = Int(pipPlayer?.currentTime().seconds ?? 0)
+        var rawSeconds = pipPlayer?.currentTime().seconds ?? 0
+        // ★ FIX: Handle NaN/Inf — CMTime có thể trả invalid value
+        if rawSeconds.isNaN || rawSeconds.isInfinite || rawSeconds < 0 {
+            rawSeconds = 0
+        }
+        var position = Int(rawSeconds)
 
-        // ★ FIX: Fallback — nếu native position không hợp lệ (0 hoặc < 0), dùng pipRestorePosition
-        if position <= 0 && pipRestorePosition > 0 {
-            position = pipRestorePosition
-            pipLog("Using pipRestorePosition: \(position)s")
+        // ★ FIX: Luôn dùng pipRestorePosition làm fallback
+        // vì native player position có thể không sync đúng khi PiP stop
+        if position <= 0 || abs(position - pipRestorePosition) > 2 {
+            // Nếu position quá khác pipRestorePosition (>2s), ưu tiên pipRestorePosition
+            // vì pipRestorePosition được sync từ Flutter player mỗi 1s
+            if pipRestorePosition > 0 {
+                position = pipRestorePosition
+                pipLog("Using pipRestorePosition: \(position)s (raw=\(Int(rawSeconds))s)")
+            }
         } else {
+            // Position hợp lệ, dùng native position (chính xác hơn vì đang play trong PiP)
             pipLog("Position at stop: \(position)s")
         }
 
