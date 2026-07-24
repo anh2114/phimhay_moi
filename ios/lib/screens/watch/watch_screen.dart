@@ -1037,26 +1037,22 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 _currentPosition = position;
                 _currentPos = Duration(seconds: position);
               }
-              // ★ FIX: Seek + play, KHÔNG block stream listener
-              // HLS seek là keyframe-based → có thể offset vài giây, chấp nhận được
-              // Stream listener sẽ tự update _currentPosition khi seek hoàn tất
+              // ★ FIX: media_kit chỉ render frame khi PLAYING
+              // Seek khi paused → internal position update nhưng frame KHÔNG render
+              // Giải pháp: Play TRƯỚC để render frame → stream listener sẽ set position đúng
+              // Rồi lưu progress (position từ native PiP player)
               if (!dismissed) {
-                _seekCompleted = false;
-                _seekTargetTime = position;
-                _player!.seek(Duration(seconds: position)).then((_) {
-                  _seekCompleted = true;
+                // Play ngay — player sẽ phát từ vị trí hiện tại (29:00)
+                // Stream listener sẽ update _currentPosition theo player
+                _player!.play();
+                // Sau 200ms, seek đến vị trí mới (30:00) — player đang play nên frame sẽ render
+                Future.delayed(const Duration(milliseconds: 200), () {
                   if (mounted && _player != null) {
-                    _player!.play();
-                  }
-                });
-                // Backup: force play sau 500ms
-                Future.delayed(const Duration(milliseconds: 500), () {
-                  if (mounted && _player != null && !_isPlaying) {
-                    _player!.play();
+                    _player!.seek(Duration(seconds: position));
                   }
                 });
               }
-              // Lưu position mới vào DB
+              // Lưu position mới vào DB (30:00) — dù player play từ 29:00, DB lưu đúng
               _saveCurrentProgress();
               _startPiPSync();
               _prepareNativePiP();
