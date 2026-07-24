@@ -1025,28 +1025,36 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 } catch (_) {}
               }
               if (position > 0 && _currentUrl.isNotEmpty) {
-                // ★ FIX: Seek TRƯỚC khi player đang pause
-                // → internal position cập nhật ngay
-                // → play() sau sẽ render frame ở vị trí mới (không thấy seek effect)
-                _player!.seek(Duration(seconds: position)).then((_) {
-                  if (mounted && _player != null) {
-                    _currentPosition = position;
-                    _currentPos = Duration(seconds: position);
-                    if (dismissed) {
-                      // Dismiss: giữ pause, frame đã ở vị trí mới
-                      _isPlaying = false;
-                    } else {
-                      // Restore: play — frame render ngay ở vị trí mới
-                      _player!.play();
-                      _isPlaying = true;
-                      _startProgressTimer();
-                    }
-                    setState(() {
-                      _playerReady = true;
-                      _isLoading = false;
+                // ★ FIX: Tách rõ dismiss vs restore
+                _currentPosition = position;
+                _currentPos = Duration(seconds: position);
+                if (dismissed) {
+                  // DISMISS: play → seek → pause (cần play để seek render frame)
+                  _player!.play();
+                  _player!.seek(Duration(seconds: position)).then((_) {
+                    Future.delayed(const Duration(milliseconds: 300), () {
+                      if (mounted && _player != null) {
+                        _player!.pause();
+                        _isPlaying = false;
+                        setState(() {
+                          _playerReady = true;
+                          _isLoading = false;
+                        });
+                      }
                     });
-                  }
-                });
+                  });
+                } else {
+                  // RESTORE: play NGAY + seek trong background
+                  // Không đợi seek — video chạy ngay từ vị trí mới
+                  _player!.play();
+                  _player!.seek(Duration(seconds: position));
+                  _isPlaying = true;
+                  _startProgressTimer();
+                  setState(() {
+                    _playerReady = true;
+                    _isLoading = false;
+                  });
+                }
               } else {
                 setState(() {
                   _playerReady = true;
