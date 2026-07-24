@@ -981,8 +981,9 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               _saveCurrentProgress();
               _pausedByPiP = true;
               if (Platform.isIOS) {
-                // Pause Flutter player — native AVPlayer sẽ handle PiP
-                _player?.pause();
+                // ★ FIX: KHÔNG pause — để Flutter player chạy MUTED
+                // Player tự advance position → khi PiP ends, player đã ở vị trí mới
+                _player?.setVolume(0.0);
                 _stopPiPSync();
               }
               // Android: Flutter surface IS the PiP surface → player keeps playing
@@ -1029,27 +1030,16 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 _currentPosition = position;
                 _currentPos = Duration(seconds: position);
               }
-              // ★ FIX: Single-source sync — seek Flutter player đến PiP position
-              // Không reinit player (race condition) — chỉ seek + play
-              if (!dismissed && position > 0) {
-                _currentPosition = position;
-                _currentPos = Duration(seconds: position);
-
-                // ★ FIX: Đảm bảo player đang ở state có thể seek
-                // Nếu player paused → play trước 100ms rồi seek
-                // Nếu player đang playing → seek trực tiếp
+              // ★ FIX: Flutter player đã chạy muted từ PiP start
+              // Player tự advance → đã ở vị trí mới → chỉ cần unmute
+              if (!dismissed) {
+                final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
+                _player!.setVolume(restoreVol);
                 if (!_isPlaying) {
                   _player!.play();
-                  Future.delayed(const Duration(milliseconds: 100), () {
-                    if (mounted && _player != null) {
-                      _player!.seek(Duration(seconds: position));
-                    }
-                  });
-                } else {
-                  _player!.seek(Duration(seconds: position));
                 }
-              } else if (dismissed) {
-                // PiP dismissed (bấm X) — giữ nguyên frame, KHÔNG play
+              } else {
+                // Dismiss — pause player
                 _player?.pause();
               }
               // Lưu position mới vào DB
