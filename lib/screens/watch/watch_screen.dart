@@ -1030,52 +1030,50 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 _currentPosition = position;
                 _currentPos = Duration(seconds: position);
               }
-              // ★ FIX: Dispose player cũ + tạo mới = clean state
-              // media_kit seek khi paused KHÔNG render frame
-              // Chỉ cách duy nhất: tạo player mới + seek khi playing
+              // ★ FIX: media_kit (libmpp) seek không render frame khi paused
+              // Giải pháp: Dispose sạch → tạo mới → open → đợi ready → seek → pause
               if (!dismissed && position > 0 && _currentUrl.isNotEmpty) {
-                // 1. Dispose streams + player cũ
+                // 1. Dispose TOÀN BỘ player cũ
                 _subPosition?.cancel();
                 _subPlaying?.cancel();
                 _subDuration?.cancel();
                 _subCompleted?.cancel();
                 _seekRetryTimer?.cancel();
+                _pipSyncTimer?.cancel();
+                _saveProgressTimer?.cancel();
 
                 _player?.dispose();
                 _player = null;
                 _videoController = null;
                 _playerReady = false;
                 _isLoading = true;
+                _isPlaying = false;
 
-                // 2. Update position
+                // Update position TRƯỚC khi tạo player mới
                 _currentPosition = position;
                 _currentPos = Duration(seconds: position);
 
-                // 3. Tạo player MỚI
-                _player = Player();
-                _videoController = VideoController(_player!);
-                _initPlayerStreams();
-
                 setState(() {});
 
-                // 4. Open URL + seek khi player ready
-                String playUrl = _currentUrl;
-                if (!kIsWeb && playUrl.contains('.m3u8') && !playUrl.contains('hls_proxy.php')) {
-                  playUrl = AppConfig.proxyM3u8Url(playUrl);
-                }
-                final headers = <String, String>{
-                  'Referer': AppConfig.baseUrl,
-                  'User-Agent': 'Mozilla/5.0',
-                };
+                // 2. Đợi 500ms để player cũ dispose hoàn toàn
+                await Future.delayed(const Duration(milliseconds: 500));
 
-                _player!.open(
-                  Media(playUrl, httpHeaders: headers),
-                  play: true, // Play ngay để render frame
-                ).then((_) {
-                  // Player ready → seek đến position
-                  if (mounted && _player != null) {
+                if (!mounted) return;
+
+                // 3. Tạo player MỚI + init streams
+                _pipRebuildCounter++; // Force Video widget rebuild
+                _player = Player();
+                _videoController = VideoController(_player!);
+                _initPlayerStreams(); // Init streams TRƯỚC khi open
+
+                // 4. Listen playing state — chỉ seek KHI player đang play
+                StreamSubscription? readySub;
+                readySub = _player!.stream.playing.listen((playing) {
+                  if (playing && mounted && _player != null) {
+                    readySub?.cancel();
+                    // Player đang play → seek an toàn
                     _player!.seek(Duration(seconds: position)).then((_) {
-                      // Pause SAU khi seek + render frame
+                      // Pause SAU seek 500ms
                       Future.delayed(const Duration(milliseconds: 500), () {
                         if (mounted && _player != null) {
                           _player!.pause();
@@ -1083,11 +1081,26 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                             _playerReady = true;
                             _isLoading = false;
                           });
+                          _startProgressTimer();
                         }
                       });
                     });
                   }
                 });
+
+                // 5. Open URL + PLAY (bắt buộc play để player emit playing=true)
+                String playUrl = _currentUrl;
+                if (!kIsWeb && playUrl.contains('.m3u8') && !playUrl.contains('hls_proxy.php')) {
+                  playUrl = AppConfig.proxyM3u8Url(playUrl);
+                }
+
+                _player!.open(
+                  Media(playUrl, httpHeaders: {
+                    'Referer': AppConfig.baseUrl,
+                    'User-Agent': 'Mozilla/5.0',
+                  }),
+                  play: true, // BẮT BUỘC play để player emit event
+                );
               } else if (dismissed) {
                 _player?.pause();
               }
