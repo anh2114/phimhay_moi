@@ -367,32 +367,37 @@ import AVKit
 
     func pictureInPictureControllerWillStopPictureInPicture(_ controller: AVPictureInPictureController) {
         pipLog("Will stop")
-        pipWasDismissed = true // Mặc định là dismiss, restore sẽ set lại false
+        pipWasDismissed = true
+
+        // ★ FIX: Capture position TRƯỚC khi PiP stop
+        // Vì khi DidStop fire, player có thể đã bị reset → currentTime() trả 0
+        if let player = pipPlayer {
+            let raw = player.currentTime().seconds
+            if !raw.isNaN && !raw.isInfinite && raw > 0 {
+                pipRestorePosition = Int(raw)
+                pipLog("WillStop: captured position \(pipRestorePosition)s")
+            }
+        }
+
         pipChannel?.invokeMethod("onPiPModeChanged", arguments: false)
     }
 
     func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
         pipLog("Did stop — dismissed=\(pipWasDismissed)")
 
-        // ★ FIX: Capture position TRƯỚC khi pause — vì player đang play trong PiP
+        // ★ FIX: Capture position — ưu tiên native position, fallback pipRestorePosition
         var rawSeconds = pipPlayer?.currentTime().seconds ?? 0
-        // ★ FIX: Handle NaN/Inf — CMTime có thể trả invalid value
         if rawSeconds.isNaN || rawSeconds.isInfinite || rawSeconds < 0 {
             rawSeconds = 0
         }
         var position = Int(rawSeconds)
 
-        // ★ FIX: Luôn dùng pipRestorePosition làm fallback
-        // vì native player position có thể không sync đúng khi PiP stop
-        if position <= 0 || abs(position - pipRestorePosition) > 2 {
-            // Nếu position quá khác pipRestorePosition (>2s), ưu tiên pipRestorePosition
-            // vì pipRestorePosition được sync từ Flutter player mỗi 1s
-            if pipRestorePosition > 0 {
-                position = pipRestorePosition
-                pipLog("Using pipRestorePosition: \(position)s (raw=\(Int(rawSeconds))s)")
-            }
+        // Fallback: nếu native position = 0 hoặc invalid → dùng pipRestorePosition
+        // pipRestorePosition đã được update trong WillStop với position mới nhất
+        if position <= 0 {
+            position = pipRestorePosition
+            pipLog("Using pipRestorePosition: \(position)s (raw=\(Int(rawSeconds))s)")
         } else {
-            // Position hợp lệ, dùng native position (chính xác hơn vì đang play trong PiP)
             pipLog("Position at stop: \(position)s")
         }
 

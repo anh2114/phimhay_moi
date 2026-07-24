@@ -1018,41 +1018,66 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             _isLoading = false;
             setState(() => _isPiPMode = false);
             if (_playerMode == _PlayerMode.hls && _player != null) {
+              // ★ FIX: Await audio session TRƯỚC khi play — iOS cần time switch
               if (Platform.isIOS) {
-                _audioChannel.invokeMethod('configureForPlayback').then((_) {}, onError: (_) {});
+                try {
+                  await _audioChannel.invokeMethod('configureForPlayback');
+                } catch (_) {}
               }
               // Update position từ native player
               if (position > 0) {
                 _currentPosition = position;
                 _currentPos = Duration(seconds: position);
               }
-              // ★ FIX: KHÔNG dispose+recreate — dùng lại player đang pause
-              // Player đã pause khi PiP start, giờ chỉ cần play() → seek(pos)
+              // ★ FIX: play() → đợi playing stream → seek
+              // Không play+seek đồng thời vì seek xảy ra trước khi play生效
               if (position > 0 && _currentUrl.isNotEmpty) {
+                _isLoading = true;
+                setState(() {});
                 _player!.play();
-                _player!.seek(Duration(seconds: position)).then((_) {
-                  if (mounted && _player != null) {
-                    if (dismissed) {
-                      // Dismiss: đợi 300ms cho frame render rồi pause
-                      Future.delayed(const Duration(milliseconds: 300), () {
-                        if (mounted && _player != null) {
-                          _player!.pause();
-                          _isPlaying = false;
+                // Đợi player đang play rồi mới seek
+                bool seekDone = false;
+                StreamSubscription? pipReadySub;
+                pipReadySub = _player!.stream.playing.listen((playing) {
+                  if (playing && !seekDone && mounted && _player != null) {
+                    seekDone = true;
+                    pipReadySub?.cancel();
+                    _player!.seek(Duration(seconds: position)).then((_) {
+                      if (mounted && _player != null) {
+                        if (dismissed) {
+                          // Dismiss: đợi 300ms cho frame render rồi pause
+                          Future.delayed(const Duration(milliseconds: 300), () {
+                            if (mounted && _player != null) {
+                              _player!.pause();
+                              _isPlaying = false;
+                              setState(() {
+                                _playerReady = true;
+                                _isLoading = false;
+                              });
+                            }
+                          });
+                        } else {
+                          // Restore: giữ play, KHÔNG pause
+                          _isPlaying = true;
                           setState(() {
                             _playerReady = true;
                             _isLoading = false;
                           });
+                          _startProgressTimer();
                         }
-                      });
-                    } else {
-                      // Restore: giữ play, KHÔNG pause
-                      _isPlaying = true;
-                      setState(() {
-                        _playerReady = true;
-                        _isLoading = false;
-                      });
-                      _startProgressTimer();
-                    }
+                      }
+                    });
+                  }
+                });
+                // Timeout 3s — nếu player không play được thì clear loader
+                Future.delayed(const Duration(seconds: 3), () {
+                  if (!seekDone && mounted) {
+                    seekDone = true;
+                    pipReadySub?.cancel();
+                    setState(() {
+                      _playerReady = true;
+                      _isLoading = false;
+                    });
                   }
                 });
               } else {
