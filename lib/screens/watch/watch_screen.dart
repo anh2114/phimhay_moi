@@ -979,15 +979,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
               _showControls = false;
               _autoHideControlsTimer?.cancel();
               _saveCurrentProgress();
-              // ★ FIX: Set _pausedByPiP TRONG PiP ON — vì iOS PiP KHÔNG trigger AppLifecycleState.paused
-              // (app vẫn foreground, PiP là overlay nhỏ)
               _pausedByPiP = true;
               if (Platform.isIOS) {
-                // ★ FIX: KHÔNG pause Flutter player — để nó chạy MUTED
-                // Native AVPlayer sẽ play PiP, Flutter player đồng bộ position
-                // Khi PiP ends → Flutter player đã ở đúng position → không cần seek
-                _player?.setVolume(0.0); // Mute thay vì pause
-                // Stop PiP sync — không cần sync nữa vì Flutter player tự chạy
+                // Pause Flutter player — native AVPlayer sẽ handle PiP
+                _player?.pause();
                 _stopPiPSync();
               }
               // Android: Flutter surface IS the PiP surface → player keeps playing
@@ -1034,16 +1029,36 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 _currentPosition = position;
                 _currentPos = Duration(seconds: position);
               }
-              // ★ FIX: Flutter player đã chạy muted từ lúc PiP start
-              // Chỉ cần unmute — player đã ở đúng position (32:00)
-              // Không cần seek (HLS seek unreliable) — player tự sync
-              if (!dismissed) {
-                final restoreVol = _isMuted ? 0.0 : ((_volume > 0 ? _volume : 100.0));
-                _player!.setVolume(restoreVol);
-                // Đảm bảo đang play
-                if (!_isPlaying) {
-                  _player!.play();
+              // ★ FIX: Reinit Flutter player từ position mới (single source sync)
+              // Dispose player cũ → tạo player mới → open URL → seek đến position
+              // Đảm bảo frame và position đồng bộ hoàn hảo
+              if (!dismissed && position > 0) {
+                // Dispose streams cũ
+                _subPosition?.cancel();
+                _subPlaying?.cancel();
+                _subDuration?.cancel();
+                _subCompleted?.cancel();
+                _seekRetryTimer?.cancel();
+
+                // Dispose player cũ
+                _player?.dispose();
+                _player = null;
+                _videoController = null;
+                _playerReady = false;
+
+                // Update position từ native PiP
+                _currentPosition = position;
+                _currentPos = Duration(seconds: position);
+                _seekTargetTime = position;
+                _seekCompleted = false;
+
+                // Tạo player mới với URL hiện tại
+                if (_currentUrl.isNotEmpty) {
+                  _initPlayer(_currentUrl);
                 }
+              } else if (dismissed) {
+                // PiP dismissed (bấm X) — chỉ unpause, KHÔNG play
+                _player?.pause();
               }
               // Lưu position mới vào DB
               _saveCurrentProgress();
