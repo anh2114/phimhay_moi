@@ -1014,115 +1014,56 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           final position = args?['position'] as int? ?? 0;
           final dismissed = args?['dismissed'] as bool? ?? false;
           if (mounted) {
-            _pipRebuildCounter++;
             _isBuffering = false;
             _isLoading = false;
-            // ★ FIX: KHÔNG clear _pausedByPiP ở đây — để nó chặn resumed handler
-            // _pausedByPiP sẽ được clear bởi resumed handler hoặc timeout
             setState(() => _isPiPMode = false);
             if (_playerMode == _PlayerMode.hls && _player != null) {
               if (Platform.isIOS) {
                 _audioChannel.invokeMethod('configureForPlayback').then((_) {}, onError: (_) {});
               }
-              // ★ FIX: Luôn update position từ native player (kể cả dismissed)
-              // vì native player đã play trong PiP — position đã advance
+              // Update position từ native player
               if (position > 0) {
                 _currentPosition = position;
                 _currentPos = Duration(seconds: position);
               }
-              // ★ FIX: media_kit (libmpp) seek không render frame khi paused
-              // Giải pháp: Dispose sạch → tạo mới → open → đợi ready → seek → pause
-              if (!dismissed && position > 0 && _currentUrl.isNotEmpty) {
-                // 1. Dispose TOÀN BỘ player cũ
-                _subPosition?.cancel();
-                _subPlaying?.cancel();
-                _subDuration?.cancel();
-                _subCompleted?.cancel();
-                _seekRetryTimer?.cancel();
-                _pipSyncTimer?.cancel();
-                _saveProgressTimer?.cancel();
-
-                _player?.dispose();
-                _player = null;
-                _videoController = null;
-                _playerReady = false;
-                _isLoading = true;
-                _isPlaying = false;
-
-                // Update position TRƯỚC khi tạo player mới
-                _currentPosition = position;
-                _currentPos = Duration(seconds: position);
-
-                setState(() {});
-
-                // 2. Đợi 500ms để player cũ dispose hoàn toàn
-                await Future.delayed(const Duration(milliseconds: 500));
-
-                if (!mounted) return;
-
-                // 3. Tạo player MỚI + init streams
-                _pipRebuildCounter++; // Force Video widget rebuild
-                _player = Player();
-                _videoController = VideoController(_player!);
-                _initPlayerStreams(); // Init streams TRƯỚC khi open
-
-                // 4. Listen playing state — chỉ seek KHI player đang play
-                StreamSubscription? readySub;
-                readySub = _player!.stream.playing.listen((playing) {
-                  if (playing && mounted && _player != null) {
-                    readySub?.cancel();
-                    // Player đang play → seek an toàn
-                    _player!.seek(Duration(seconds: position)).then((_) {
-                      // ★ FIX: KHÔNG pause — tiếp tục play từ PiP position
-                      if (mounted && _player != null) {
-                        setState(() {
-                          _playerReady = true;
-                          _isLoading = false;
-                          _isPlaying = true;
-                        });
-                        _startProgressTimer();
-                      }
-                    });
-                  }
-                });
-
-                // 5. Open URL + PLAY (bắt buộc play để player emit playing=true)
-                String playUrl = _currentUrl;
-                if (!kIsWeb && playUrl.contains('.m3u8') && !playUrl.contains('hls_proxy.php')) {
-                  playUrl = AppConfig.proxyM3u8Url(playUrl);
-                }
-
-                _player!.open(
-                  Media(playUrl, httpHeaders: {
-                    'Referer': AppConfig.baseUrl,
-                    'User-Agent': 'Mozilla/5.0',
-                  }),
-                  play: true, // BẮT BUỘC play để player emit event
-                );
-              } else if (dismissed) {
-                // ★ FIX: Dismiss — seek Flutter player đến PiP position TRƯỚC khi pause
-                // media_kit cần player đang play để seek render frame mới
-                if (_player != null && position > 0) {
-                  _player!.play();
-                  _player!.seek(Duration(seconds: position)).then((_) {
-                    Future.delayed(const Duration(milliseconds: 300), () {
-                      if (mounted && _player != null) {
-                        _player!.pause();
+              // ★ FIX: KHÔNG dispose+recreate — dùng lại player đang pause
+              // Player đã pause khi PiP start, giờ chỉ cần play() → seek(pos)
+              if (position > 0 && _currentUrl.isNotEmpty) {
+                _player!.play();
+                _player!.seek(Duration(seconds: position)).then((_) {
+                  if (mounted && _player != null) {
+                    if (dismissed) {
+                      // Dismiss: đợi 300ms cho frame render rồi pause
+                      Future.delayed(const Duration(milliseconds: 300), () {
+                        if (mounted && _player != null) {
+                          _player!.pause();
+                          _isPlaying = false;
+                          setState(() {
+                            _playerReady = true;
+                            _isLoading = false;
+                          });
+                        }
+                      });
+                    } else {
+                      // Restore: giữ play, KHÔNG pause
+                      _isPlaying = true;
+                      setState(() {
                         _playerReady = true;
                         _isLoading = false;
-                        setState(() {});
-                      }
-                    });
-                  });
-                } else {
-                  _player?.pause();
-                }
+                      });
+                      _startProgressTimer();
+                    }
+                  }
+                });
+              } else {
+                setState(() {
+                  _playerReady = true;
+                  _isLoading = false;
+                });
               }
-              // Lưu position mới vào DB
               _saveCurrentProgress();
               _startPiPSync();
               _prepareNativePiP();
-              // ★ FIX: Clear _pausedByPiP sau 2s — đảm bảo resumed handler không bị block vĩnh viễn
               Future.delayed(const Duration(seconds: 2), () {
                 _pausedByPiP = false;
               });
