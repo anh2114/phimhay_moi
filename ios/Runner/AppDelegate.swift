@@ -385,23 +385,32 @@ import AVKit
             pipLog("Position at stop: \(position)s")
         }
 
-        // Pause native player SAU khi capture position
-        DispatchQueue.main.async { [weak self] in
-            self?.pipPlayer?.isMuted = true
-            self?.pipPlayer?.pause()
-        }
+        // ★ FIX: KHÔNG pause native player ngay — để Flutter handle
+        // Chỉ mute + pause SAU khi gửi message cho Flutter
+        // Để Flutter có thể đọc position từ native player nếu cần
 
         // Notify Flutter: PiP ended + whether it was dismissed or restored
         pipChannel?.invokeMethod("onPiPRestore", arguments: [
             "position": position,
             "dismissed": pipWasDismissed
         ])
+
+        // Pause native player SAU khi gửi message
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.pipPlayer?.isMuted = true
+            self?.pipPlayer?.pause()
+        }
     }
 
     func pictureInPictureController(_ controller: AVPictureInPictureController, restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
         pipLog("Restore — returning to app")
         pipWasDismissed = false // PiP restored, NOT dismissed
-        completionHandler(true)
+
+        // ★ FIX: Đợi 500ms để Flutter view restore xong rồi mới complete
+        // Tránh race condition: Flutter view chưa restore mà PiP đã stop
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            completionHandler(true)
+        }
     }
 
     @objc func dismissAirPlay() {

@@ -1030,20 +1030,59 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 _currentPosition = position;
                 _currentPos = Duration(seconds: position);
               }
-              // ★ FIX: media_kit seek khi paused = KHÔNG render frame
-              // Giải pháp: Play TRƯỚC → 200ms → Seek (player đang play → frame render)
-              // → 300ms → Pause ở frame mới
-              if (!dismissed && position > 0) {
-                // Play TRƯỚC — player bắt đầu render
-                _player!.play();
-                // Seek SAU 200ms — player đang play → frame render đúng vị trí
-                Future.delayed(const Duration(milliseconds: 200), () {
+              // ★ FIX: Dispose player cũ + tạo mới = clean state
+              // media_kit seek khi paused KHÔNG render frame
+              // Chỉ cách duy nhất: tạo player mới + seek khi playing
+              if (!dismissed && position > 0 && _currentUrl.isNotEmpty) {
+                // 1. Dispose streams + player cũ
+                _subPosition?.cancel();
+                _subPlaying?.cancel();
+                _subDuration?.cancel();
+                _subCompleted?.cancel();
+                _seekRetryTimer?.cancel();
+
+                _player?.dispose();
+                _player = null;
+                _videoController = null;
+                _playerReady = false;
+                _isLoading = true;
+
+                // 2. Update position
+                _currentPosition = position;
+                _currentPos = Duration(seconds: position);
+
+                // 3. Tạo player MỚI
+                _player = Player();
+                _videoController = VideoController(_player!);
+                _initPlayerStreams();
+
+                setState(() {});
+
+                // 4. Open URL + seek khi player ready
+                String playUrl = _currentUrl;
+                if (!kIsWeb && playUrl.contains('.m3u8') && !playUrl.contains('hls_proxy.php')) {
+                  playUrl = AppConfig.proxyM3u8Url(playUrl);
+                }
+                final headers = <String, String>{
+                  'Referer': AppConfig.baseUrl,
+                  'User-Agent': 'Mozilla/5.0',
+                };
+
+                _player!.open(
+                  Media(playUrl, httpHeaders: headers),
+                  play: true, // Play ngay để render frame
+                ).then((_) {
+                  // Player ready → seek đến position
                   if (mounted && _player != null) {
                     _player!.seek(Duration(seconds: position)).then((_) {
-                      // Pause SAU seek — frame đã render xong
-                      Future.delayed(const Duration(milliseconds: 300), () {
+                      // Pause SAU khi seek + render frame
+                      Future.delayed(const Duration(milliseconds: 500), () {
                         if (mounted && _player != null) {
                           _player!.pause();
+                          setState(() {
+                            _playerReady = true;
+                            _isLoading = false;
+                          });
                         }
                       });
                     });
