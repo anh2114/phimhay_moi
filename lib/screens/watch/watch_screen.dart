@@ -1018,65 +1018,41 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
             _isLoading = false;
             setState(() => _isPiPMode = false);
             if (_playerMode == _PlayerMode.hls && _player != null) {
-              // ★ FIX: Await audio session TRƯỚC khi play — iOS cần time switch
+              // ★ FIX: Await audio session TRƯỚC khi play
               if (Platform.isIOS) {
                 try {
                   await _audioChannel.invokeMethod('configureForPlayback');
                 } catch (_) {}
               }
-              // Update position từ native player
+              // Update position
               if (position > 0) {
                 _currentPosition = position;
                 _currentPos = Duration(seconds: position);
               }
-              // ★ FIX: play() → đợi playing stream → seek
-              // Không play+seek đồng thời vì seek xảy ra trước khi play生效
               if (position > 0 && _currentUrl.isNotEmpty) {
-                _isLoading = true;
-                setState(() {});
+                // ★ FIX: Dùng lại player đang pause — KHÔNG dispose
+                // play() → seek ngay (không đợi playing stream)
                 _player!.play();
-                // Đợi player đang play rồi mới seek
-                bool seekDone = false;
-                StreamSubscription? pipReadySub;
-                pipReadySub = _player!.stream.playing.listen((playing) {
-                  if (playing && !seekDone && mounted && _player != null) {
-                    seekDone = true;
-                    pipReadySub?.cancel();
+                // Seek sau 100ms để player có time start
+                Future.delayed(const Duration(milliseconds: 100), () {
+                  if (mounted && _player != null) {
                     _player!.seek(Duration(seconds: position)).then((_) {
                       if (mounted && _player != null) {
                         if (dismissed) {
-                          // Dismiss: đợi 300ms cho frame render rồi pause
-                          Future.delayed(const Duration(milliseconds: 300), () {
-                            if (mounted && _player != null) {
-                              _player!.pause();
-                              _isPlaying = false;
-                              setState(() {
-                                _playerReady = true;
-                                _isLoading = false;
-                              });
-                            }
-                          });
+                          // Dismiss: giữ frame đúng vị trí rồi pause
+                          _player!.pause();
+                          _isPlaying = false;
                         } else {
-                          // Restore: giữ play, KHÔNG pause
+                          // ★ Restore: FORCE play — đảm bảo chạy tiếp
+                          _player!.play();
                           _isPlaying = true;
-                          setState(() {
-                            _playerReady = true;
-                            _isLoading = false;
-                          });
                           _startProgressTimer();
                         }
+                        setState(() {
+                          _playerReady = true;
+                          _isLoading = false;
+                        });
                       }
-                    });
-                  }
-                });
-                // Timeout 3s — nếu player không play được thì clear loader
-                Future.delayed(const Duration(seconds: 3), () {
-                  if (!seekDone && mounted) {
-                    seekDone = true;
-                    pipReadySub?.cancel();
-                    setState(() {
-                      _playerReady = true;
-                      _isLoading = false;
                     });
                   }
                 });
