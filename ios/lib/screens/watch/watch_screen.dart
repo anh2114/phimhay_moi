@@ -1037,21 +1037,33 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 _currentPosition = position;
                 _currentPos = Duration(seconds: position);
               }
-              // ★ FIX: Play TRƯỚC rồi seek SAU — media_kit chỉ render frame khi playing
-              // Nếu seek khi paused → frame không update → video hiển thị ảnh cũ
+              // ★ FIX: Block stream listener ghi đè position trong lúc restore
+              // Nếu không → play() sẽ phát từ 28:00 → stream listener set _currentPosition = 28:00
+              _isRestoringFromPiP = true;
               if (!dismissed) {
                 _seekCompleted = false;
                 _seekTargetTime = position;
-                // Play ngay để player bắt đầu render frame
-                _player!.play();
-                // Seek sau 100ms — player đã play, frame sẽ update đúng
-                Future.delayed(const Duration(milliseconds: 100), () {
+                // Seek TRƯỚC — player cập nhật internal position
+                _player!.seek(Duration(seconds: position)).then((_) {
+                  _seekCompleted = true;
+                  // Play SAU khi seek xong — player render đúng frame
                   if (mounted && _player != null) {
-                    _player!.seek(Duration(seconds: position)).then((_) {
-                      _seekCompleted = true;
-                    });
+                    _player!.play();
+                  }
+                  // Unblock stream listener sau 500ms
+                  Future.delayed(const Duration(milliseconds: 500), () {
+                    _isRestoringFromPiP = false;
+                  });
+                });
+                // ★ FIX: Backup — nếu seek callback chậm, force play + unblock sau 1s
+                Future.delayed(const Duration(seconds: 1), () {
+                  _isRestoringFromPiP = false;
+                  if (mounted && _player != null && !_isPlaying) {
+                    _player!.play();
                   }
                 });
+              } else {
+                _isRestoringFromPiP = false;
               }
               _startPiPSync();
               _prepareNativePiP();
@@ -1521,6 +1533,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   bool _isSaving = false; // Dedup concurrent save requests
   DateTime? _lastSaveTime; // Minimum interval between saves
   bool _pausedByPiP = false; // ★ FIX: Track if PiP caused the pause — prevents race condition
+  bool _isRestoringFromPiP = false; // ★ FIX: Prevent stream listener from overwriting position during PiP restore
 
   int _lastSeekByUser = 0;
   bool _isSeeking = false; // Đang seek → hiện buffering
@@ -1710,6 +1723,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
     _subPosition = _player!.stream.position.listen((pos) {
       if (!mounted) return;
+
+      // ★ FIX: Block stream listener ghi đè position trong lúc restore từ PiP
+      // Nếu không → play() phát từ old position → stream set _currentPosition = old
+      if (_isRestoringFromPiP) return;
 
       _currentPos = pos;
       _currentPosition = pos.inSeconds;
