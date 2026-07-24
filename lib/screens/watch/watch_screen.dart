@@ -1015,46 +1015,88 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           final dismissed = args?['dismissed'] as bool? ?? false;
           if (mounted) {
             _isBuffering = false;
-            _isLoading = false;
             setState(() => _isPiPMode = false);
             if (_playerMode == _PlayerMode.hls && _player != null) {
-              // ★ FIX: Await audio session
               if (Platform.isIOS) {
                 try {
                   await _audioChannel.invokeMethod('configureForPlayback');
                 } catch (_) {}
               }
               if (position > 0 && _currentUrl.isNotEmpty) {
-                // ★ FIX: Tách rõ dismiss vs restore
+                // ★ FIX: Dispose + recreate — old player "deep pause" không play() được
+                // Giống YouTube: tạo AVPlayer mới → open → play
+
+                // 1. Cancel subscriptions
+                _subPosition?.cancel();
+                _subPlaying?.cancel();
+                _subDuration?.cancel();
+                _subCompleted?.cancel();
+                _seekRetryTimer?.cancel();
+                _pipSyncTimer?.cancel();
+                _saveProgressTimer?.cancel();
+
+                // 2. Dispose player cũ
+                _player?.dispose();
+                _player = null;
+                _videoController = null;
+
+                // 3. Update position
                 _currentPosition = position;
                 _currentPos = Duration(seconds: position);
+
+                // 4. Tạo player mới
+                _pipRebuildCounter++;
+                _player = Player();
+                _videoController = VideoController(_player!);
+                _initPlayerStreams();
+
+                // 5. Open URL + play
+                String playUrl = _currentUrl;
+                if (!kIsWeb && playUrl.contains('.m3u8') && !playUrl.contains('hls_proxy.php')) {
+                  playUrl = AppConfig.proxyM3u8Url(playUrl);
+                }
+                _player!.open(
+                  Media(playUrl, httpHeaders: {
+                    'Referer': AppConfig.baseUrl,
+                    'User-Agent': 'Mozilla/5.0',
+                  }),
+                  play: true,
+                );
+
+                // 6. ★ CLEAR LOADER NGAY — không đợi playing event
+                _isLoading = false;
+                _playerReady = true;
+
                 if (dismissed) {
-                  // DISMISS: play → seek → pause (cần play để seek render frame)
-                  _player!.play();
-                  _player!.seek(Duration(seconds: position)).then((_) {
-                    Future.delayed(const Duration(milliseconds: 300), () {
-                      if (mounted && _player != null) {
-                        _player!.pause();
-                        _isPlaying = false;
-                        setState(() {
-                          _playerReady = true;
-                          _isLoading = false;
+                  // DISMISS: đợi playing → seek → pause
+                  _isPlaying = false;
+                  StreamSubscription? dismissSub;
+                  dismissSub = _player!.stream.playing.listen((playing) {
+                    if (playing && mounted && _player != null) {
+                      dismissSub?.cancel();
+                      _player!.seek(Duration(seconds: position)).then((_) {
+                        Future.delayed(const Duration(milliseconds: 300), () {
+                          if (mounted && _player != null) {
+                            _player!.pause();
+                            setState(() {});
+                          }
                         });
-                      }
-                    });
+                      });
+                    }
                   });
                 } else {
-                  // RESTORE: play NGAY + seek trong background
-                  // Không đợi seek — video chạy ngay từ vị trí mới
-                  _player!.play();
-                  _player!.seek(Duration(seconds: position));
+                  // RESTORE: play NGAY, seek trong background
                   _isPlaying = true;
                   _startProgressTimer();
-                  setState(() {
-                    _playerReady = true;
-                    _isLoading = false;
+                  StreamSubscription? restoreSub;
+                  restoreSub = _player!.stream.playing.listen((playing) {
+                    if (playing && mounted && _player != null) {
+                      restoreSub?.cancel();
+                      _player!.seek(Duration(seconds: position));
+                    }
                   });
                 }
+                setState(() {});
               } else {
                 setState(() {
                   _playerReady = true;
