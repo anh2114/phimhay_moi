@@ -1063,39 +1063,46 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   play: true,
                 );
 
-                // 6. ★ CLEAR LOADER NGAY — không đợi playing event
-                _isLoading = false;
-                _playerReady = true;
-
-                if (dismissed) {
-                  // DISMISS: đợi playing → seek → pause
-                  _isPlaying = false;
-                  StreamSubscription? dismissSub;
-                  dismissSub = _player!.stream.playing.listen((playing) {
-                    if (playing && mounted && _player != null) {
-                      dismissSub?.cancel();
-                      _player!.seek(Duration(seconds: position)).then((_) {
-                        Future.delayed(const Duration(milliseconds: 300), () {
-                          if (mounted && _player != null) {
-                            _player!.pause();
-                            setState(() {});
-                          }
+                // 6. ★ Đợi playing event → seek → clear loader
+                // Timeout 2s clear loader nếu playing không fire
+                _isLoading = true;
+                setState(() {});
+                bool done = false;
+                StreamSubscription? pipSub;
+                pipSub = _player!.stream.playing.listen((playing) {
+                  if (playing && !done && mounted && _player != null) {
+                    done = true;
+                    pipSub?.cancel();
+                    _player!.seek(Duration(seconds: position)).then((_) {
+                      if (mounted && _player != null) {
+                        if (dismissed) {
+                          // DISMISS: seek xong → pause
+                          _player!.pause();
+                          _isPlaying = false;
+                        } else {
+                          // RESTORE: giữ play
+                          _isPlaying = true;
+                          _startProgressTimer();
+                        }
+                        setState(() {
+                          _playerReady = true;
+                          _isLoading = false;
                         });
-                      });
-                    }
-                  });
-                } else {
-                  // RESTORE: play NGAY, seek trong background
-                  _isPlaying = true;
-                  _startProgressTimer();
-                  StreamSubscription? restoreSub;
-                  restoreSub = _player!.stream.playing.listen((playing) {
-                    if (playing && mounted && _player != null) {
-                      restoreSub?.cancel();
-                      _player!.seek(Duration(seconds: position));
-                    }
-                  });
-                }
+                      }
+                    });
+                  }
+                });
+                // Timeout 2s
+                Future.delayed(const Duration(seconds: 2), () {
+                  if (!done && mounted) {
+                    done = true;
+                    pipSub?.cancel();
+                    setState(() {
+                      _playerReady = true;
+                      _isLoading = false;
+                    });
+                  }
+                });
                 setState(() {});
               } else {
                 setState(() {

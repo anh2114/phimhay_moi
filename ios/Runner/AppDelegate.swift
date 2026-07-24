@@ -15,6 +15,7 @@ import AVKit
     private var pipPrepared = false
     private var pipUrl: String = ""
     private var pipWasDismissed = false // true = user tapped X to dismiss PiP
+    private var pipPositionTimer: Timer? // ★ FIX: Capture position mỗi 1s khi PiP active
 
     func pipLog(_ msg: String) {
         NSLog("[PiP] \(msg)")
@@ -339,6 +340,8 @@ import AVKit
 
     /// Cleanup
     private func cleanupPiP() {
+        pipPositionTimer?.invalidate()
+        pipPositionTimer = nil
         pipPlayerLayer?.removeFromSuperlayer()
         pipPlayerLayer = nil
         pipPlayer?.pause()
@@ -358,6 +361,19 @@ import AVKit
 
     func pictureInPictureControllerDidStartPictureInPicture(_ controller: AVPictureInPictureController) {
         pipLog("Did start — ACTIVE")
+        // ★ FIX: Capture position mỗi 1s khi PiP đang chạy
+        // Vì Dart syncPosition() bị stop khi PiP start
+        pipPositionTimer?.invalidate()
+        pipPositionTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            guard let self = self, let player = self.pipPlayer else { return }
+            let raw = player.currentTime().seconds
+            if !raw.isNaN && !raw.isInfinite && raw > 0 {
+                let newPos = Int(raw)
+                if newPos != self.pipRestorePosition {
+                    self.pipRestorePosition = newPos
+                }
+            }
+        }
     }
 
     func pictureInPictureController(_ controller: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
@@ -369,8 +385,11 @@ import AVKit
         pipLog("Will stop")
         pipWasDismissed = true
 
+        // ★ Stop position timer — capture position cuối cùng
+        pipPositionTimer?.invalidate()
+        pipPositionTimer = nil
+
         // ★ FIX: Capture position TRƯỚC khi PiP stop
-        // Vì khi DidStop fire, player có thể đã bị reset → currentTime() trả 0
         if let player = pipPlayer {
             let raw = player.currentTime().seconds
             if !raw.isNaN && !raw.isInfinite && raw > 0 {
