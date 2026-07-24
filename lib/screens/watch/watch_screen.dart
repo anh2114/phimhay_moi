@@ -817,18 +817,18 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (_player != null) {
         _positionBeforePause = _currentPos.inSeconds;
         _saveCurrentProgress();
-        // ★ FIX: Track if PiP caused the pause — prevents resumed handler from playing old position
-        if (!_isPiPMode) {
+        // ★ FIX: Dùng _pausedByPiP thay vì _isPiPMode
+        // _isPiPMode bị set false bởi WillStop TRƯỚC khi paused fire
+        // _pausedByPiP được set trong onPiPModeChanged(true) → giữ true đến khi PiP ends
+        if (!_isPiPMode && !_pausedByPiP) {
           _player?.pause();
-          _pausedByPiP = false;
           if (_webController != null) {
             _webController!.evaluateJavascript(
               source: "document.querySelector('video')?.pause();",
             ).catchError((_) => null);
           }
-        } else {
-          _pausedByPiP = true;
         }
+        // Không set _pausedByPiP ở đây nữa — đã set trong onPiPModeChanged(true)
       }
     } else if (state == AppLifecycleState.detached) {
       // iOS/Android: app đang bị kill — lưu progress lần cuối
